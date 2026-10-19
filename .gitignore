@@ -1,0 +1,11 @@
+# Only our own files are tracked; the CARLA release itself is not.
+/*
+!/.gitignore
+!/requirements.txt
+!/CarlaUE4_nosound.bat
+
+!/PythonAPI/
+/PythonAPI/*
+!/PythonAPI/scripts/
+
+__pycache__/

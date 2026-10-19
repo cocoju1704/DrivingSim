@@ -1,0 +1,9 @@
+# Python 3.12 (venv_carla). Install with: python -m pip install -r requirements.txt
+# carla can also come from the local wheel: PythonAPI/carla/dist/carla-0.9.16-cp312-cp312-win_amd64.whl
+carla==0.9.16
+numpy==1.26.4
+pygame==2.6.1
+matplotlib==3.11.2   # analyze_takeover.py figures
+shapely==2.1.2       # PythonAPI/carla/agents
+networkx==3.7        # PythonAPI/carla/agents
+pyfmodex==0.7.2      # carla-audio-engine (vehicle sounds)
