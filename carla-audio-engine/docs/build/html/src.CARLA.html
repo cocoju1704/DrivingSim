@@ -1,0 +1,282 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CARLA Module &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Classes" href="src.CARLA.Classes.html" />
+    <link rel="prev" title="Modules" href="src.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="src.html">Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="src.html">Modules</a></li>
+      <li class="breadcrumb-item active">CARLA Module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/src.CARLA.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="carla-module">
+<h1>CARLA Module<a class="headerlink" href="#carla-module" title="Link to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<section id="module-src.CARLA.cmain">
+<span id="cmain"></span><h2>cmain<a class="headerlink" href="#module-src.CARLA.cmain" title="Link to this heading"></a></h2>
+<section id="carla-operations-handler">
+<h3>CARLA Operations Handler<a class="headerlink" href="#carla-operations-handler" title="Link to this heading"></a></h3>
+<p>This module manages core CARLA operations, including client initialization,
+simulation data retrieval, and dynamic weather configuration.</p>
+</section>
+<dl class="py function">
+<dt class="sig sig-object py" id="src.CARLA.cmain.carla_data_loop">
+<span class="sig-name descname"><span class="pre">carla_data_loop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sock</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/cmain.html#carla_data_loop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.cmain.carla_data_loop" title="Link to this definition"></a></dt>
+<dd><p>Executes a continuous data retrieval loop.</p>
+<p>Fetches the latest simulation state from the CARLA server and
+broadcasts it via the specified UDP socket.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>client</strong> (<a class="reference internal" href="src.CARLA.Classes.html#src.CARLA.Classes.CarlaClient.CarlaClient" title="src.CARLA.Classes.CarlaClient.CarlaClient"><em>CarlaClient</em></a>) – Active instance of the CARLA client.</p></li>
+<li><p><strong>sock</strong> (<a class="reference internal" href="src.CARLA.Classes.html#src.CARLA.Classes.Socket.Socket" title="src.CARLA.Classes.Socket.Socket"><em>Socket</em></a>) – UDP socket instance used for publishing simulation packets.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="src.CARLA.cmain.main">
+<span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/cmain.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.cmain.main" title="Link to this definition"></a></dt>
+<dd><p>Main entry point for CARLA operations.</p>
+<p>Initializes the client and weather modules, then spawns a background
+thread to handle the continuous data retrieval loop.</p>
+</dd></dl>
+
+</section>
+<section id="module-src.CARLA.generate_traffic">
+<span id="generate-traffic-script"></span><h2>generate traffic Script<a class="headerlink" href="#module-src.CARLA.generate_traffic" title="Link to this heading"></a></h2>
+<p>Traffic generation script for asynchronous CARLA simulation.</p>
+<p>This module is based on the official CARLA examples and has been specifically
+adapted to support asynchronous mode for the SoundCARLA project. It handles
+spawning actors, managing traffic, and ensuring synchronization between the
+simulator and the audio engine.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This script requires a running CARLA server and should be used with
+caution regarding performance when spawning a high number of NPCs.</p>
+</div>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>For a detailed technical reference of the classes used here,
+consult the <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/python_api">Python API</a>.</p>
+</div>
+</section>
+<section id="module-src.CARLA.manual_control_sw">
+<span id="manual-control-script"></span><h2>manual control Script<a class="headerlink" href="#module-src.CARLA.manual_control_sw" title="Link to this heading"></a></h2>
+<p>Manual control module with Logitech G29 steering wheel support.</p>
+<p>This script is based on the official CARLA manual control examples and has been
+extensively modified to provide native support for the Logitech G29 Racing
+Wheel, including pedal mapping and force feedback integration. It manages
+user input, vehicle physics control, and real-time sensor data visualization.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Ensure that the Logitech G Hub software is installed and the steering wheel
+is calibrated before starting the simulation to avoid axis mapping issues.</p>
+</div>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p>For a detailed technical reference of the classes used here,
+consult the <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/tuto_G_pygame/#pygame-for-vehicle-control">Pygame for vehicle control</a>.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="src.html" class="btn btn-neutral float-left" title="Modules" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="src.CARLA.Classes.html" class="btn btn-neutral float-right" title="Classes" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

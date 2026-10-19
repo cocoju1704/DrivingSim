@@ -163,7 +163,7 @@ TOR_SECONDS = 5.0        # TOR -> forced manual driving
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 LOG_DIR = os.path.join(ROOT, 'Data')
-AUDIO_ENGINE_DIR = os.path.abspath(os.path.join(ROOT, '..', 'carla-audio-engine'))  # vehicle sounds, --no-audio-engine
+AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, --no-audio-engine
 AUDIO_ENGINE_PYTHON = os.path.join(ROOT, 'venv_carla', 'Scripts', 'python.exe')     # has pyfmodex installed
 POST_WINDOW = 10.0  # seconds after the takeover that count as the takeover period
 FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no overpass
@@ -1692,7 +1692,7 @@ def main():
                                 'pre-alert so the density at the TOR stays the same (default: %g)' % PRE_ALERT_SECONDS)
     argparser.add_argument('--no-sound', action='store_true', help='no alert sounds')
     argparser.add_argument('--no-audio-engine', action='store_true',
-                           help='do not start the vehicle sounds of ..\\carla-audio-engine')
+                           help='do not start the vehicle sounds of carla-audio-engine')
     argparser.add_argument('--no-auto-alert', action='store_true',
                            help='do not start the pre-alert automatically, only with the P key')
     argparser.add_argument('--post-window', metavar='SEC', type=float, default=POST_WINDOW,

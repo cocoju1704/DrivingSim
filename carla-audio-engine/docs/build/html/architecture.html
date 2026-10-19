@@ -1,0 +1,338 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Modules" href="src.html" />
+    <link rel="prev" title="Installation and Setup" href="getting_started.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="src.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="src.CARLA.html">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Architecture</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/architecture.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="architecture">
+<h1>Architecture<a class="headerlink" href="#architecture" title="Link to this heading"></a></h1>
+<p>The system is divided into two parts— <a class="reference internal" href="src.CARLA.html"><span class="doc">CARLA Module</span></a> and <a class="reference internal" href="src.FMOD.html"><span class="doc">FMOD Module</span></a>. The Carla part essentially handles the setup of and communication with the Carla simulator. The FMOD part handles sound playback.</p>
+<section id="carla">
+<h2>1. Carla<a class="headerlink" href="#carla" title="Link to this heading"></a></h2>
+<p>The <strong>CARLA part</strong> is responsible for connecting to the Carla simulator and providing the <strong>simulation data</strong> that is later used by the FMOD subsystem for audio playback. Technically, it consists of a lightweight client that connects to the running Carla server, locates/monitors the “hero” vehicle reads relevant state information, and <strong>periodically sends it via UDP as JSON</strong> to a local receiver.</p>
+<section id="folder-structure">
+<h3>Folder structure<a class="headerlink" href="#folder-structure" title="Link to this heading"></a></h3>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">cmain.py</span></code>: Entry point for the Carla client. Starts the data loop (polling simulation values) and sends data packets at a fixed interval. It also launches a small weather UI to adjust weather parameters during runtim.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Classes/</span></code>: Contains the cor calsses for connecting, sensing, data transport, and UI:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">__init__.py</span></code>: Exposes the main classes as package imports.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CarlaClient.py</span></code>: Encapsulates the Carla server connection, retrieves the <code class="docutils literal notranslate"><span class="pre">world</span></code>, searches for a vehicle, and continuously reads vehicle and environment data. It also attaches a collision sensor and produces a compact data packet (relevant for the sound logic).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CollisionSensor.py</span></code>: Implements a Carla collision sensor that counts collisions and measures their intensity, used to trigger crash events.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Socket.py</span></code>: Minimal UDP wrapper for sending JSON data (locally to 127.0.0.1 on a fix port)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Weather.py</span></code>: Small Tkinter GUI used to set rain and wind intensity in the running simulation.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">generate_traffic.py</span></code>: Script to generate traffic in the simulator.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code>: Python dependencies that are required for the Carla client (will be installed into a venv).</p></li>
+</ul>
+</section>
+<section id="data-flow">
+<span id="data-flow-carla"></span><h3>Data flow<a class="headerlink" href="#data-flow" title="Link to this heading"></a></h3>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cmain.py</span></code> starts the client and the sender loop.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">CarlaClient</span></code> connects to the simulator, finds the ego/hero vehicle, and attaches a <code class="docutils literal notranslate"><span class="pre">CollisionSensor</span></code>.</p></li>
+<li><p>At short intervals, it reads relevant states (vehicle motion/control, speed/speed limit, wheather, events like collisions/honk)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Socket</span></code> serializes the values as JSON and sends them via UDP to the local receiver (<a class="reference internal" href="src.FMOD.utils.html"><span class="doc">utils</span></a>).</p></li>
+</ol>
+<p><strong>Goal of this module:</strong>
+Provide a robust and easily extensible interface between the Carla simulation and the sound system, without embedding sound logic directly inside the Carla side.</p>
+<p>—</p>
+</section>
+</section>
+<section id="fmod">
+<span id="fmod-subsystem"></span><h2>2. FMOD<a class="headerlink" href="#fmod" title="Link to this heading"></a></h2>
+<p>The <strong>FMOD part</strong> handles the actual <strong>sound logic and audio playback</strong>. It receives data packets sent by the Carla client (UDP/JSON), detects changes (diffing), and translates these changes into <strong>FMOD event triggers</strong>, <strong>parameter updates</strong>, or <strong>procedurally generated sounds</strong>. The structure is loosely based on an <strong>MVC-style</strong> split: <em>Model</em> (data receiving/processing), <em>Adapters</em> (logic), and <em>Banks/Sounds</em> (audio resources and playback).</p>
+<figure class="align-center" id="id3">
+<img alt="FMOD class diagramm" src="_images/fmod_class_diagramm.png" />
+<figcaption>
+<p><span class="caption-text">Figure 1: FMOD module class diagramm</span><a class="headerlink" href="#id3" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Adapter classes receive bank and sound class instances via their constructors.</p>
+</div>
+<section id="id1">
+<h3>Folder structure<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">fmain.py</span></code>: Entry point of the FMOD subsystem. Initializes:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>the central <code class="docutils literal notranslate"><span class="pre">EventBus</span></code> (publisher-subscriber),</p></li>
+<li><p>FMOD <code class="docutils literal notranslate"><span class="pre">Banks</span></code> (loading/initializing FMOD Studio events),</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Adapters</span></code> (sound logic reacting to data changes),</p></li>
+<li><p>and the <code class="docutils literal notranslate"><span class="pre">SoundModel</span></code> (UDP receive &amp; diffing).</p></li>
+</ul>
+<p>Then it runs a loop that regularly processes new data and ticks trigger/one-shot logic.</p>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Model/</span></code></p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">SoundModel.py</span></code>: <strong>Receives</strong> Carla data via UDP, <strong>decodes</strong> the JSON, and computes the <strong>difference</strong> to the previous state. Only changed values are published via the <code class="docutils literal notranslate"><span class="pre">EventBus</span></code>. This reduces unnecessary sound updates and cleanly separates data handling from sound logic.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">utils/</span></code></p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">EventBus.py</span></code>: Lightweight event bus enabling loose coupling between publishers (model) and subscribers (adapters).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DataKey.py</span></code>: Central definition of all data keys (Enum). Ensures consistent keys, avoids typos, and supports easy extension.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RangeLevel.py</span></code>: Utility for mapping continuous values (e.g., intensities) to discrete levels.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Adapters/</span></code> (controller/adaper layer): Components that <strong>subscribe</strong> to specific <code class="docutils literal notranslate"><span class="pre">DataKeys</span></code> and translate changes into audio actions.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">EnvironmentAdapter.py</span></code>: Updates environment parameters (e.g., rain/wind) as FMOD parameters on continuously running events. Includes mapping from continuous intensities to levels (<code class="docutils literal notranslate"><span class="pre">RainIntensity</span></code>/<code class="docutils literal notranslate"><span class="pre">WindIntensity</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MotorAdapter.py</span></code>: Handles engine/vehicle sounds. Instead of relying only on FMOD Studio events, it controls a procedural EV sound generator (parameters: speed/throttle → estimated “torque”).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TriggerAdapter.py</span></code>: Handles one-shot/trigger sounds such as crash, honk, handbrake, and reverse warning. Contains simple gating/state logic to prevent double-triggering in noisy input scenarios.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RainIntensity.py</span></code>/<code class="docutils literal notranslate"><span class="pre">WindIntensity.py</span></code>: Define intensity ranges as discrete levels (NONE/LOW/MEDIUM/HIGH) that are mapped to parameter values.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Banks/</span></code> (FMOD Studio interface): Encapsulates <strong>loading FMOD bank files</strong>, creating event instances, and calling <code class="docutils literal notranslate"><span class="pre">studio_system.update()</span></code>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">EnvironmentBank.py</span></code>: Initializes FMOD Studio, loads the relevant bank, and provides instances for rain/wind (including parameter control).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">TriggerBank.py</span></code>: Loads the trigger bank and exposes methods like <code class="docutils literal notranslate"><span class="pre">play_*()</span></code> for warning/crash/honk/handbrake.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MotorBank.py</span></code>: Placeholder/design stub for a dedicated motor bank (the motor sound is currently handled mainly via <code class="docutils literal notranslate"><span class="pre">Sounds/EVSund.py</span></code>).</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Sounds/</span></code> (procedural audio)</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">EVSund.py</span></code>: Generates EV/vehicle sounds procedurally using DSP oscillators, filters, and parameterized volume/frequency control based on speed and load.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ReverseBeep.py</span></code>: Procedurally generated reverse beep (short tone/pattern) as an alternative or supplement to FMOD Studio events.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">requirements.txt</span></code>: Python dependencies that are required for the Carla client (will be installed into a venv).</p></li>
+</ul>
+</section>
+<section id="data-flow-fmod">
+<span id="id2"></span><h3>Data flow<a class="headerlink" href="#data-flow-fmod" title="Link to this heading"></a></h3>
+<ol class="arabic">
+<li><p><strong>``fmain.py`` boots the FMOD subsystem</strong>: It creates the central <code class="docutils literal notranslate"><span class="pre">EventBus</span></code>, initializes the required FMOD components (<code class="docutils literal notranslate"><span class="pre">Banks</span></code> and procedural <code class="docutils literal notranslate"><span class="pre">Sounds</span></code>), instantiates the <code class="docutils literal notranslate"><span class="pre">Adapters</span></code> that subscribe to data changes, and finally starts the <code class="docutils literal notranslate"><span class="pre">SoundModel</span></code> (UDP receiver).</p></li>
+<li><p><strong>``SoundModel`` receives Carla data via UDP</strong>: The model listens on a local UDP socket, decodes incoming JSON packets, and keeps the previous packet as a reference state.</p></li>
+<li><p><strong>Diffing: only changes are published</strong>: For each new packet, the model computes a diff against the last state. Only changed values are converted to <code class="docutils literal notranslate"><span class="pre">DataKeys</span></code> and published on the <code class="docutils literal notranslate"><span class="pre">EventBus</span></code>.</p></li>
+<li><p><strong>Adapters react to published updates</strong>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><strong>Continuous values</strong> (e.g., speed, throttle, rain/wind intensity) are translated into parameter updates (FMOD parameters or DSP/procedural sound parameters).</p></li>
+<li><p><strong>Trigger-like values</strong> (e.g., collision, honk, reverse gear, handbrake) are handled with gating/state logic to avoid duplicate triggers and then played as one-shot sounds.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><strong>FMOD engine is kept alive via regular updates</strong>: Within the main loop in <code class="docutils literal notranslate"><span class="pre">fmain.py</span></code>, the system processes model updates (publishing changes) and ticks adapter/bank update functions so FMOD event playback and procedural audio remain responsive and in sync.</p></li>
+</ol>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="getting_started.html" class="btn btn-neutral float-left" title="Installation and Setup" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="src.html" class="btn btn-neutral float-right" title="Modules" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

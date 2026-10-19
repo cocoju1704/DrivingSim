@@ -1,0 +1,10 @@
+.venv/
+venv/
+.venv38/
+venv38/
+__pycache__/
+*.pyc
+Environment/
+cache/
+desktop.ini
+sim_config.json

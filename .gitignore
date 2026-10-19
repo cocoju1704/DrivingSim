@@ -3,6 +3,8 @@
 !/.gitignore
 !/requirements.txt
 !/CarlaUE4_nosound.bat
+!/carla-audio-engine/
+/carla-audio-engine/logs/
 
 !/PythonAPI/
 /PythonAPI/*

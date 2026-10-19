@@ -1,0 +1,512 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>src.RunOhmUXSim &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../architecture.html#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../architecture.html#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../architecture.html#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../architecture.html#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../architecture.html#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../architecture.html#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../src.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../src.CARLA.html">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">src.RunOhmUXSim</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for src.RunOhmUXSim</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">SoundCARLA Master Launcher</span>
+
+<span class="sd">This module provides a graphical user interface (Tkinter) to control the </span>
+<span class="sd">entire SoundCARLA simulation environment. It acts as an orchestrator, </span>
+<span class="sd">launching the CARLA simulator, client scripts, the FMOD audio engine, </span>
+<span class="sd">and traffic managers within their respective virtual environments.</span>
+
+<span class="sd">Key Features:</span>
+<span class="sd">    * Configuration management via &#39;sim_config.json&#39;.</span>
+<span class="sd">    * Dynamic path selection for various Python interpreters (venvs).</span>
+<span class="sd">    * Automated startup sequence including port cleanup and server health checks.</span>
+<span class="sd">    * Support for rendering options (e.g., DirectX 11).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tkinter</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tkinter</span><span class="w"> </span><span class="kn">import</span> <span class="n">ttk</span><span class="p">,</span> <span class="n">filedialog</span>
+
+<div class="viewcode-block" id="SimulatorGUI">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SimulatorGUI</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    GUI class for managing and launching simulation processes.</span>
+
+<span class="sd">    This class encapsulates the entire process management logic for the SoundCARLA </span>
+<span class="sd">    environment. It ensures the CARLA server is fully initialized and reachable </span>
+<span class="sd">    before triggering dependent clients, such as the FMOD audio engine or </span>
+<span class="sd">    manual control scripts.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        config_path (Path): Path to the JSON configuration file (&#39;sim_config.json&#39;).</span>
+<span class="sd">        paths (dict): Dictionary containing all configured absolute paths to </span>
+<span class="sd">            executables and scripts.</span>
+<span class="sd">        processes (list): List of currently active subprocess.Popen objects for </span>
+<span class="sd">            lifecycle management.</span>
+<span class="sd">        dx11_var (BooleanVar): Tkinter variable tracking the DirectX 11 </span>
+<span class="sd">            rendering preference. If True, the &#39;-dx11&#39; flag is appended to </span>
+<span class="sd">            the CARLA launch command.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="SimulatorGUI.__init__">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the GUI window, loads saved paths from config, and </span>
+<span class="sd">        constructs the interface components.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">base_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config_path</span> <span class="o">=</span> <span class="n">base_dir</span> <span class="o">/</span> <span class="s2">&quot;sim_config.json&quot;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">load_config</span><span class="p">({</span>
+            <span class="s2">&quot;CARLA_SIM&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;CARLA_CLIENT_VENV_PYTHON&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;FMOD_VENV_PYTHON&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;MANUAL_CONTROL_SCRIPT&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;TRAFFIC_SCRIPT&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;CARLA_CLIENT_SCRIPT&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;FMOD_SCRIPT&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;USE_DX11&quot;</span><span class="p">:</span> <span class="kc">True</span>  <span class="c1"># Default value</span>
+        <span class="p">})</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">Tk</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;SoundCARLA Master Launcher&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">geometry</span><span class="p">(</span><span class="s2">&quot;550x600&quot;</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">dx11_var</span> <span class="o">=</span> <span class="n">BooleanVar</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;USE_DX11&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">processes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_build_ui</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="SimulatorGUI.load_config">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.load_config">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">defaults</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_path</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">saved_conf</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">defaults</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">saved_conf</span><span class="p">:</span>
+                        <span class="n">saved_conf</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaults</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">return</span> <span class="n">saved_conf</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fehler beim Laden der Config: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">defaults</span>
+        <span class="k">return</span> <span class="n">defaults</span></div>
+
+
+<div class="viewcode-block" id="SimulatorGUI.save_config">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.save_config">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Update the dict with the current checkbox value before saving</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;USE_DX11&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dx11_var</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SimulatorGUI.browse_file">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.browse_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">browse_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">filedialog</span><span class="o">.</span><span class="n">askopenfilename</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Select </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">filename</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">filename</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_config</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">refresh_ui</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_ui</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">widget</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">winfo_children</span><span class="p">():</span>
+            <span class="n">widget</span><span class="o">.</span><span class="n">destroy</span><span class="p">()</span>
+
+        <span class="n">main_frm</span> <span class="o">=</span> <span class="n">ttk</span><span class="o">.</span><span class="n">Frame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+        <span class="n">main_frm</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">fill</span><span class="o">=</span><span class="n">BOTH</span><span class="p">,</span> <span class="n">expand</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">main_frm</span><span class="o">.</span><span class="n">columnconfigure</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">main_frm</span><span class="o">.</span><span class="n">columnconfigure</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">main_frm</span><span class="o">.</span><span class="n">columnconfigure</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="n">ttk</span><span class="o">.</span><span class="n">Label</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;SoundCARLA Master Launcher&quot;</span><span class="p">,</span> <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="s2">&quot;bold&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">20</span><span class="p">))</span>
+
+        <span class="n">row_idx</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c1"># Filter out the boolean setting from the path-browsing list</span>
+        <span class="n">path_items</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;USE_DX11&quot;</span><span class="p">}</span>
+        
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">path_items</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">ttk</span><span class="o">.</span><span class="n">Label</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">key</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">),</span> <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="s2">&quot;bold&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="n">W</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+            
+            <span class="n">display_text</span> <span class="o">=</span> <span class="n">path</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="s2">&quot;--- NOT SET ---&quot;</span>
+            <span class="n">color</span> <span class="o">=</span> <span class="s2">&quot;black&quot;</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="s2">&quot;red&quot;</span>
+            <span class="n">ttk</span><span class="o">.</span><span class="n">Label</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="n">display_text</span><span class="p">,</span> <span class="n">foreground</span><span class="o">=</span><span class="n">color</span><span class="p">)</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="n">W</span><span class="p">)</span>
+            
+            <span class="n">ttk</span><span class="o">.</span><span class="n">Button</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Browse&quot;</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="k">lambda</span> <span class="n">k</span><span class="o">=</span><span class="n">key</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">browse_file</span><span class="p">(</span><span class="n">k</span><span class="p">))</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+            <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c1"># --- Checkbox Section ---</span>
+        <span class="n">ttk</span><span class="o">.</span><span class="n">Separator</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">orient</span><span class="o">=</span><span class="s1">&#39;horizontal&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="s2">&quot;ew&quot;</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+        <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+        
+        <span class="n">dx_check</span> <span class="o">=</span> <span class="n">ttk</span><span class="o">.</span><span class="n">Checkbutton</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Use DirectX 11 (-dx11)&quot;</span><span class="p">,</span> <span class="n">variable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dx11_var</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_config</span><span class="p">)</span>
+        <span class="n">dx_check</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="n">W</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="n">ttk</span><span class="o">.</span><span class="n">Separator</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">orient</span><span class="o">=</span><span class="s1">&#39;horizontal&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="s2">&quot;ew&quot;</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+        <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span> <span class="o">=</span> <span class="n">StringVar</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="s2">&quot;Bereit&quot;</span><span class="p">)</span>
+        <span class="n">ttk</span><span class="o">.</span><span class="n">Label</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">textvariable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="p">,</span> <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;italic&quot;</span><span class="p">),</span> <span class="n">foreground</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="n">btn_frm</span> <span class="o">=</span> <span class="n">ttk</span><span class="o">.</span><span class="n">Frame</span><span class="p">(</span><span class="n">main_frm</span><span class="p">)</span>
+        <span class="n">btn_frm</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span> <span class="o">=</span> <span class="n">Button</span><span class="p">(</span><span class="n">btn_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;▶ START ALL&quot;</span><span class="p">,</span> <span class="n">bg</span><span class="o">=</span><span class="s2">&quot;#2ecc71&quot;</span><span class="p">,</span> <span class="n">fg</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;bold&quot;</span><span class="p">),</span> 
+                                <span class="n">padx</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">launch_all</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">side</span><span class="o">=</span><span class="n">LEFT</span><span class="p">,</span> <span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+        <span class="n">stop_btn</span> <span class="o">=</span> <span class="n">Button</span><span class="p">(</span><span class="n">btn_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;■ STOP ALL&quot;</span><span class="p">,</span> <span class="n">bg</span><span class="o">=</span><span class="s2">&quot;#e74c3c&quot;</span><span class="p">,</span> <span class="n">fg</span><span class="o">=</span><span class="s2">&quot;white&quot;</span><span class="p">,</span> <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;bold&quot;</span><span class="p">),</span> 
+                          <span class="n">padx</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stop_all</span><span class="p">)</span>
+        <span class="n">stop_btn</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">side</span><span class="o">=</span><span class="n">LEFT</span><span class="p">,</span> <span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+        <span class="n">row_idx</span> <span class="o">+=</span> <span class="mi">1</span>
+        
+        <span class="n">warning_lbl</span> <span class="o">=</span> <span class="n">Label</span><span class="p">(</span><span class="n">main_frm</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;⚠ After STOP ALL - Close Simulator manually!!!&quot;</span><span class="p">,</span> 
+                            <span class="n">font</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Inter&quot;</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="s2">&quot;italic bold&quot;</span><span class="p">),</span> <span class="n">fg</span><span class="o">=</span><span class="s2">&quot;#d35400&quot;</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+        <span class="n">warning_lbl</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">columnspan</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">sticky</span><span class="o">=</span><span class="n">S</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SimulatorGUI.refresh_ui">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">refresh_ui</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_build_ui</span><span class="p">()</span></div>
+
+    
+<div class="viewcode-block" id="SimulatorGUI.kill_process_on_port">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">kill_process_on_port</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">2000</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Kills old CARLA servers which might be blocking the port 2000</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            port (int, optional): Specifies the port CARLA server uses. Defaults to 2000.</span>
+<span class="sd">        </span>
+<span class="sd">        Note:</span>
+<span class="sd">            CARLA uses localhost port 2000 by default. If this is to be modified, all scripts connecting to the</span>
+<span class="sd">            server must be adjusted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">output</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">check_output</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;netstat -ano | findstr :</span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="s2">&quot;LISTENING&quot;</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">or</span> <span class="s2">&quot;ABH&quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                    <span class="n">pid</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;taskkill /f /pid </span><span class="si">{</span><span class="n">pid</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">:</span>
+            <span class="k">pass</span></div>
+
+
+<div class="viewcode-block" id="SimulatorGUI.launch_all">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.launch_all">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">launch_all</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span><span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">DISABLED</span><span class="p">)</span>
+        <span class="n">thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_run_launch_sequence</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run_launch_sequence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Executes the critical launch sequence in a background thread.</span>
+<span class="sd">        </span>
+<span class="sd">        The sequence follows these stages:</span>
+<span class="sd">            1. Port Cleanup: Terminates any existing processes on port 2000.</span>
+<span class="sd">            2. Simulator Start: Launches CARLA with the optional -dx11 flag.</span>
+<span class="sd">            3. Health Check: Polls the CARLA server until a world connection </span>
+<span class="sd">               is established.</span>
+<span class="sd">            4. Orchestration: Sequentially starts Manual Control, the CARLA </span>
+<span class="sd">               Client (cmain.py), FMOD Engine, and Traffic Manager.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Cleaning Ports...&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kill_process_on_port</span><span class="p">(</span><span class="mi">2000</span><span class="p">)</span>
+        
+        <span class="c1"># 1. Start Carla Sim</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_SIM&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Starting CARLA Simulator...&quot;</span><span class="p">)</span>
+            <span class="n">carla_folder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_SIM&quot;</span><span class="p">])</span>
+            
+            <span class="c1"># Build arguments list dynamically</span>
+            <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_SIM&quot;</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dx11_var</span><span class="o">.</span><span class="n">get</span><span class="p">():</span>
+                <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;-dx11&quot;</span><span class="p">)</span>
+                
+            <span class="n">p0</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">cwd</span><span class="o">=</span><span class="n">carla_folder</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p0</span><span class="p">)</span>
+            
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Waiting for CARLA Server...&quot;</span><span class="p">)</span>
+            <span class="n">connected</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">max_retries</span> <span class="o">=</span> <span class="mi">12</span>
+            <span class="n">check_script</span> <span class="o">=</span> <span class="s2">&quot;import carla; client = carla.Client(&#39;localhost&#39;, 2000); client.set_timeout(5.0); client.get_world()&quot;</span>
+            
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_retries</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">],</span> <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="n">check_script</span><span class="p">],</span> 
+                                   <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+                    <span class="n">connected</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Server-Check </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">max_retries</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+                    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">connected</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Fehler: CARLA Timeout!&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span><span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">NORMAL</span><span class="p">)</span>
+                <span class="k">return</span>
+
+        <span class="c1"># ... (Rest of the manual control, client, and traffic logic remains the same)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;MANUAL_CONTROL_SCRIPT&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Starting Manual Control...&quot;</span><span class="p">)</span>
+            <span class="n">p1</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;MANUAL_CONTROL_SCRIPT&quot;</span><span class="p">]])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p1</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_CLIENT_VENV_PYTHON&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_CLIENT_SCRIPT&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Starting Carla Client (cmain.py)...&quot;</span><span class="p">)</span>
+            <span class="n">p2</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_CLIENT_VENV_PYTHON&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;CARLA_CLIENT_SCRIPT&quot;</span><span class="p">]])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p2</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;FMOD_VENV_PYTHON&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;FMOD_SCRIPT&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Starting FMOD Engine...&quot;</span><span class="p">)</span>
+            <span class="n">p3</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;FMOD_VENV_PYTHON&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;FMOD_SCRIPT&quot;</span><span class="p">]])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p3</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;TRAFFIC_SCRIPT&quot;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Generating Traffic...&quot;</span><span class="p">)</span>
+            <span class="n">p4</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;SIM_VENV_PYTHON&quot;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">paths</span><span class="p">[</span><span class="s2">&quot;TRAFFIC_SCRIPT&quot;</span><span class="p">]])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">p4</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;All Systemes running!&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span><span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">NORMAL</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SimulatorGUI.stop_all">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.stop_all">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop_all</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Stopping all processes...&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">processes</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">p</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Ready&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status_var</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;Ready&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_btn</span><span class="o">.</span><span class="n">config</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="n">NORMAL</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="SimulatorGUI.run">
+<a class="viewcode-back" href="../../src.html#src.RunOhmUXSim.SimulatorGUI.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">mainloop</span><span class="p">()</span></div>
+</div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">gui</span> <span class="o">=</span> <span class="n">SimulatorGUI</span><span class="p">()</span>
+    <span class="n">gui</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

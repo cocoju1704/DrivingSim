@@ -1,0 +1,432 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sounds &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="utils" href="src.FMOD.utils.html" />
+    <link rel="prev" title="Model" href="src.FMOD.Model.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="src.html">Modules</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="src.CARLA.html">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="reference internal" href="src.FMOD.html">FMOD</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="src.html">Modules</a></li>
+          <li class="breadcrumb-item"><a href="src.FMOD.html">FMOD Module</a></li>
+      <li class="breadcrumb-item active">Sounds</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/src.FMOD.Sounds.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="sounds">
+<h1>Sounds<a class="headerlink" href="#sounds" title="Link to this heading"></a></h1>
+<section id="module-src.FMOD.Sounds.EVSoundEngine">
+<span id="evsoundengine"></span><h2>EVSoundEngine<a class="headerlink" href="#module-src.FMOD.Sounds.EVSoundEngine" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">EVSoundEngine</span></span><a class="reference internal" href="_modules/src/FMOD/Sounds/EVSoundEngine.html#EVSoundEngine"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Procedural Audio Engine for Electric Vehicle (EV) sound synthesis.</p>
+<p>This engine utilizes the FMOD Core API to synthesize vehicle sounds in
+real-time using oscillators and noise generators. It simulates three
+primary acoustic components:</p>
+<ol class="arabic simple">
+<li><p><strong>Inverter/Motor</strong>: Sine-wave synthesis with harmonic overtones.</p></li>
+<li><p><strong>Road/Tire Noise</strong>: Filtered white noise modulated by speed.</p></li>
+<li><p><strong>Aerodynamic Hiss</strong>: High-frequency wind noise appearing at higher velocities.</p></li>
+</ol>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.system">
+<span class="sig-name descname"><span class="pre">system</span></span><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.system" title="Link to this definition"></a></dt>
+<dd><p>The FMOD Core system instance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pyfmodex.System</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.is_running">
+<span class="sig-name descname"><span class="pre">is_running</span></span><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.is_running" title="Link to this definition"></a></dt>
+<dd><p>Tracks the active state of the audio emitters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.engine_group">
+<span class="sig-name descname"><span class="pre">engine_group</span></span><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.engine_group" title="Link to this definition"></a></dt>
+<dd><p>Audio bus for motor-related DSPs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ChannelGroup</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.road_group">
+<span class="sig-name descname"><span class="pre">road_group</span></span><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.road_group" title="Link to this definition"></a></dt>
+<dd><p>Audio bus for tire and wind-related DSPs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ChannelGroup</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/EVSoundEngine.html#EVSoundEngine.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initializes the FMOD Core system and constructs the DSP signal chain.</p>
+<p>Sets up sine oscillators for the motor, noise generators for the road,
+and a filtering pipeline (low-pass and resonance) to simulate cabin
+insulation and tire resonance.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.start">
+<span class="sig-name descname"><span class="pre">start</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/EVSoundEngine.html#EVSoundEngine.start"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.start" title="Link to this definition"></a></dt>
+<dd><p>Activates the DSP chain and begins audio playback.</p>
+<p>Assigns DSPs to their respective channel groups and establishes
+the hierarchical routing from road and engine groups to the master group.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.update_params">
+<span class="sig-name descname"><span class="pre">update_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">speed_kmh</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torque</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">road_roughness</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/EVSoundEngine.html#EVSoundEngine.update_params"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.update_params" title="Link to this definition"></a></dt>
+<dd><p>Modulates the synthesized sound based on real-time vehicle dynamics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>speed_kmh</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Current vehicle speed. Affects pitch of the
+motor and volume/frequency of road and wind noise.</p></li>
+<li><p><strong>torque</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Engine load. Directly modulates the volume of
+the motor oscillators to simulate power delivery.</p></li>
+<li><p><strong>road_roughness</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><em>optional</em>) – Multiplier for tire noise volume.
+Defaults to 0.01.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.stop">
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/EVSoundEngine.html#EVSoundEngine.stop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.EVSoundEngine.EVSoundEngine.stop" title="Link to this definition"></a></dt>
+<dd><p>Gracefully releases the FMOD Core system resources.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-src.FMOD.Sounds.ReverseBeep">
+<span id="reversebeep"></span><h2>ReverseBeep<a class="headerlink" href="#module-src.FMOD.Sounds.ReverseBeep" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ReverseBeep</span></span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Procedural audio generator for vehicle reverse warning signals.</p>
+<p>This class synthesizes a rhythmic “beep” sound using a DSP signal chain
+instead of audio files. It uses a high-frequency sine oscillator processed
+through a distortion unit to create the characteristic industrial warning
+tone. The timing logic (on/off cycles) is managed via the internal state.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.system">
+<span class="sig-name descname"><span class="pre">system</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.system" title="Link to this definition"></a></dt>
+<dd><p>The dedicated FMOD Core system for reverse sounds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pyfmodex.System</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.is_playing">
+<span class="sig-name descname"><span class="pre">is_playing</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.is_playing" title="Link to this definition"></a></dt>
+<dd><p>Tracks whether a beep pulse is currently active.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.start_time">
+<span class="sig-name descname"><span class="pre">start_time</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.start_time" title="Link to this definition"></a></dt>
+<dd><p>Timestamp of when the current beep pulse started.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.grundton">
+<span class="sig-name descname"><span class="pre">grundton</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.grundton" title="Link to this definition"></a></dt>
+<dd><p>Sine wave oscillator (1500Hz).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DSP</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.verzerrung">
+<span class="sig-name descname"><span class="pre">verzerrung</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.verzerrung" title="Link to this definition"></a></dt>
+<dd><p>Distortion unit for harmonic grit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DSP</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.fader">
+<span class="sig-name descname"><span class="pre">fader</span></span><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.fader" title="Link to this definition"></a></dt>
+<dd><p>Final gain stage for the signal chain.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>DSP</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initializes the audio system and constructs the DSP signal chain.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.dynamisch_Beep_erstellen">
+<span class="sig-name descname"><span class="pre">dynamisch_Beep_erstellen</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep.dynamisch_Beep_erstellen"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.dynamisch_Beep_erstellen" title="Link to this definition"></a></dt>
+<dd><p>Constructs the DSP signal chain: Oscillator -&gt; Distortion -&gt; Fader.</p>
+<p>Configures a Sine wave at 1500.0Hz and applies full distortion (level 1.0)
+to create the sharp, piercing warning tone.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.play">
+<span class="sig-name descname"><span class="pre">play</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep.play"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.play" title="Link to this definition"></a></dt>
+<dd><p>Initiates a single beep pulse.</p>
+<p>Starts the DSP chain on a new channel and records the start time
+to facilitate the 400ms duration limit.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep.update"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.update" title="Link to this definition"></a></dt>
+<dd><p>Handles the lifecycle and timing of the beep pulse.</p>
+<p>If a beep has been active for more than 0.4 seconds (400ms),
+the channel is stopped. Also advances the FMOD system clock.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.FMOD.Sounds.ReverseBeep.ReverseBeep.shutdown">
+<span class="sig-name descname"><span class="pre">shutdown</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/FMOD/Sounds/ReverseBeep.html#ReverseBeep.shutdown"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.FMOD.Sounds.ReverseBeep.ReverseBeep.shutdown" title="Link to this definition"></a></dt>
+<dd><p>Releases FMOD resources and shuts down the reverse beep audio system.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="src.FMOD.Model.html" class="btn btn-neutral float-left" title="Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="src.FMOD.utils.html" class="btn btn-neutral float-right" title="utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

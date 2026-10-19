@@ -1,0 +1,540 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Classes &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=2709fde1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="FMOD Module" href="src.FMOD.html" />
+    <link rel="prev" title="CARLA Module" href="src.CARLA.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="architecture.html#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="architecture.html#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="src.html">Modules</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="src.CARLA.html">CARLA</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="src.html">Modules</a></li>
+          <li class="breadcrumb-item"><a href="src.CARLA.html">CARLA Module</a></li>
+      <li class="breadcrumb-item active">Classes</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/src.CARLA.Classes.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="classes">
+<h1>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h1>
+<section id="module-src.CARLA.Classes.CarlaClient">
+<span id="carlaclient"></span><h2>CarlaClient<a class="headerlink" href="#module-src.CARLA.Classes.CarlaClient" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">CarlaClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ip</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">port</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CarlaClient.html#CarlaClient"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Communication interface for the CARLA simulator.</p>
+<p>This class handles the connection to the CARLA server, identifies the
+player vehicle (tagged as ‘hero’), and extracts real-time simulation
+data required for the sound engine and logic processing.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.client">
+<span class="sig-name descname"><span class="pre">client</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.client" title="Link to this definition"></a></dt>
+<dd><p>The official CARLA client instance. <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/python_api/#carlaclient">carla.Client</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>carla.Client</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.world">
+<span class="sig-name descname"><span class="pre">world</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.world" title="Link to this definition"></a></dt>
+<dd><p>The current simulation world instance. <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/core_world/#the-world">carla.World</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>carla.World</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.vehicle">
+<span class="sig-name descname"><span class="pre">vehicle</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.vehicle" title="Link to this definition"></a></dt>
+<dd><p>The identified player vehicle. <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/python_api/#carla.Vehicle">carla.Vehicle</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>carla.Vehicle</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.collision_sensor">
+<span class="sig-name descname"><span class="pre">collision_sensor</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.collision_sensor" title="Link to this definition"></a></dt>
+<dd><p>Sensor for detecting impact events. <a class="extlink-carla_docs reference external" href="https://carla.readthedocs.io/en/0.9.15/ref_sensors/#collision-detector">Collision detector</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor" title="src.CARLA.Classes.CollisionSensor.CollisionSensor">CollisionSensor</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.crash_counter">
+<span class="sig-name descname"><span class="pre">crash_counter</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.crash_counter" title="Link to this definition"></a></dt>
+<dd><p>Counter to track the number of collisions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.honk_trigger">
+<span class="sig-name descname"><span class="pre">honk_trigger</span></span><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.honk_trigger" title="Link to this definition"></a></dt>
+<dd><p>State tracker for the horn input logic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)">bool</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.retrieve_data">
+<span class="sig-name descname"><span class="pre">retrieve_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CarlaClient.html#CarlaClient.retrieve_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.retrieve_data" title="Link to this definition"></a></dt>
+<dd><p>Extracts and aggregates simulation state data into a telemetry packet.</p>
+<p>This method polls the CARLA world for environmental conditions (weather),
+monitors hardware/keyboard inputs (honk), and fetches real-time vehicle
+physics. It also manages the lifecycle of the collision sensor and
+processes collision impulses based on defined intensity thresholds.</p>
+<p>The resulting data packet is formatted for downstream consumption,
+typically for synchronization with the FMOD audio engine.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><p>A dictionary containing telemetry data, or None if no
+vehicle is found or initialized.</p>
+<dl class="simple">
+<dt>Telemetry dictionary keys:</dt><dd><ul class="simple">
+<li><p>speed (float): Vehicle speed in km/h.</p></li>
+<li><p>throttle (float): Throttle position [0.0, 1.0].</p></li>
+<li><p>brake (float): Brake position [0.0, 1.0].</p></li>
+<li><p>speed_limit (float): Current road speed limit.</p></li>
+<li><p>gear (int): Current active gear.</p></li>
+<li><p>collision_event (bool): True if a collision above intensity 100 is detected.</p></li>
+<li><p>rain_intensity (float): Precipitation amount [0, 100].</p></li>
+<li><p>wind_intensity (float): Wind strength [0, 100].</p></li>
+<li><p>acceleration (float): Lateral acceleration (Y-axis).</p></li>
+<li><p>honk (bool): Single-trigger state of the horn.</p></li>
+<li><p>handbrake (bool): State of the handbrake.</p></li>
+</ul>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)">dict</a> or None</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#AttributeError" title="(in Python v3.14)"><strong>AttributeError</strong></a> – Handled internally if vehicle reference is lost during
+    actor switching or rapid simulation resets.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.set_rain">
+<span class="sig-name descname"><span class="pre">set_rain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">in_rain_intensity</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CarlaClient.html#CarlaClient.set_rain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.set_rain" title="Link to this definition"></a></dt>
+<dd><p>Adjusts the precipitation and road wetness levels in the simulation.</p>
+<p>This method updates the CARLA weather parameters simultaneously to ensure
+visual rain matches the physical road conditions (puddles/friction).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>in_rain_intensity</strong> (<em>float/int</em>) – The intensity of the rain.
+Typically a value between 0 (none) and 100 (heavy).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CarlaClient.CarlaClient.set_wind">
+<span class="sig-name descname"><span class="pre">set_wind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">in_wind_intensity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CarlaClient.html#CarlaClient.set_wind"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CarlaClient.CarlaClient.set_wind" title="Link to this definition"></a></dt>
+<dd><p>Sets the wind intensity for the simulation environment.</p>
+<p>Updates the physical wind force acting on actors and environmental
+elements like trees or rain particles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>in_wind_intensity</strong> (<em>float/int</em><em>, </em><em>optional</em>) – The wind strength.
+Ranges from 0 to 100. Defaults to 0.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-src.CARLA.Classes.CollisionSensor">
+<span id="collisionsensor"></span><h2>CollisionSensor<a class="headerlink" href="#module-src.CARLA.Classes.CollisionSensor" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CollisionSensor.CollisionSensor">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">CollisionSensor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parent_actor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CollisionSensor.html#CollisionSensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Sensor responsible for detecting and logging vehicle collisions.</p>
+<p>This class wraps a CARLA collision sensor, attaching it to a parent vehicle
+to monitor physical impacts. It maintains a rolling history of collision
+intensities and uses class-level variables to track global collision events.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CollisionSensor.CollisionSensor.collision_counter">
+<span class="sig-name descname"><span class="pre">collision_counter</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor.collision_counter" title="Link to this definition"></a></dt>
+<dd><p>A global counter incremented on every collision event.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CollisionSensor.CollisionSensor.intensity">
+<span class="sig-name descname"><span class="pre">intensity</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor.intensity" title="Link to this definition"></a></dt>
+<dd><p>The magnitude (Euclidean norm) of the last detected collision impulse.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CollisionSensor.CollisionSensor.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">parent_actor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CollisionSensor.html#CollisionSensor.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initializes the sensor and attaches it to the parent actor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>parent_actor</strong> (<em>carla.Actor</em>) – The vehicle actor to which the
+collision sensor will be attached.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.CollisionSensor.CollisionSensor.get_collision_history">
+<span class="sig-name descname"><span class="pre">get_collision_history</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/CollisionSensor.html#CollisionSensor.get_collision_history"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.CollisionSensor.CollisionSensor.get_collision_history" title="Link to this definition"></a></dt>
+<dd><p>Retrieves the collision history.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A mapping of simulation frames to the
+total collision intensity recorded during that frame.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://docs.python.org/3/library/collections.html#collections.defaultdict" title="(in Python v3.14)">collections.defaultdict</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-src.CARLA.Classes.Socket">
+<span id="socket"></span><h2>Socket<a class="headerlink" href="#module-src.CARLA.Classes.Socket" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Socket.Socket">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Socket</span></span><a class="reference internal" href="_modules/src/CARLA/Classes/Socket.html#Socket"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Socket.Socket" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>Handles UDP networking for broadcasting simulation telemetry.</p>
+<p>This class initializes a local UDP socket to transmit JSON-encoded data
+packets. It acts as the primary transmitter for sending CARLA vehicle
+states and environmental data to external listeners, such as the FMOD
+integration layer.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Socket.Socket.UDP_IP">
+<span class="sig-name descname"><span class="pre">UDP_IP</span></span><a class="headerlink" href="#src.CARLA.Classes.Socket.Socket.UDP_IP" title="Link to this definition"></a></dt>
+<dd><p>The destination IP address (default: “127.0.0.1”).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Socket.Socket.UDP_PORT">
+<span class="sig-name descname"><span class="pre">UDP_PORT</span></span><a class="headerlink" href="#src.CARLA.Classes.Socket.Socket.UDP_PORT" title="Link to this definition"></a></dt>
+<dd><p>The destination port number (default: 5005).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Socket.Socket.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/Socket.html#Socket.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Socket.Socket.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initializes the UDP socket and sets network parameters.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Socket.Socket.publish_data">
+<span class="sig-name descname"><span class="pre">publish_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_packet</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/Socket.html#Socket.publish_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Socket.Socket.publish_data" title="Link to this definition"></a></dt>
+<dd><p>Serializes and sends a data packet over the UDP socket.</p>
+<p>Converts a dictionary-based data packet into a JSON string,
+encodes it into bytes, and transmits it to the pre-configured
+IP and Port.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data_packet</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a>) – The telemetry data dictionary generated
+by the CarlaClient’s retrieve_data method.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-src.CARLA.Classes.Weather">
+<span id="weather"></span><h2>Weather<a class="headerlink" href="#module-src.CARLA.Classes.Weather" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Weather.Weather">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Weather</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/Weather.html#Weather"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Weather.Weather" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference external" href="https://docs.python.org/3/library/functions.html#object" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></a></p>
+<p>A graphical user interface for real-time CARLA weather manipulation.</p>
+<p>This class creates a Tkinter-based window with sliders to dynamically
+adjust environmental parameters in the simulation. It maps UI inputs
+directly to the control methods of a provided CARLA client.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Weather.Weather.client">
+<span class="sig-name descname"><span class="pre">client</span></span><a class="headerlink" href="#src.CARLA.Classes.Weather.Weather.client" title="Link to this definition"></a></dt>
+<dd><p>An instance of the CARLA client (e.g., CarlaClient)
+responsible for executing weather updates.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Weather.Weather.root">
+<span class="sig-name descname"><span class="pre">root</span></span><a class="headerlink" href="#src.CARLA.Classes.Weather.Weather.root" title="Link to this definition"></a></dt>
+<dd><p>The main Tkinter window instance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tk</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Weather.Weather.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/Weather.html#Weather.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Weather.Weather.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initializes the Weather UI with a reference to the simulation client.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>client</strong> – The client object containing <cite>set_rain</cite> and <cite>set_wind</cite>
+methods to be controlled via the UI sliders.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="src.CARLA.Classes.Weather.Weather.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/src/CARLA/Classes/Weather.html#Weather.run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#src.CARLA.Classes.Weather.Weather.run" title="Link to this definition"></a></dt>
+<dd><p>Starts the Tkinter event loop to display the weather control window.</p>
+<p>This method blocks execution until the window is closed.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="src.CARLA.html" class="btn btn-neutral float-left" title="CARLA Module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="src.FMOD.html" class="btn btn-neutral float-right" title="FMOD Module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

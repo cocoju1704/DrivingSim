@@ -1,0 +1,436 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>src.CARLA.Classes.CarlaClient &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Architecture:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../architecture.html">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../architecture.html#carla">1. Carla</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../architecture.html#folder-structure">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../architecture.html#data-flow">Data flow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../architecture.html#fmod">2. FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../architecture.html#id1">Folder structure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../architecture.html#data-flow-fmod">Data flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../src.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.CARLA.html">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.EngineAdapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">src.CARLA.Classes.CarlaClient</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for src.CARLA.Classes.CarlaClient</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">carla</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">keyboard</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">Classes.CollisionSensor</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+<div class="viewcode-block" id="CarlaClient">
+<a class="viewcode-back" href="../../../../src.CARLA.Classes.html#src.CARLA.Classes.CarlaClient.CarlaClient">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CarlaClient</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Communication interface for the CARLA simulator.</span>
+
+<span class="sd">    This class handles the connection to the CARLA server, identifies the </span>
+<span class="sd">    player vehicle (tagged as &#39;hero&#39;), and extracts real-time simulation </span>
+<span class="sd">    data required for the sound engine and logic processing.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        client (carla.Client): The official CARLA client instance. :carla_docs:`carla.Client &lt;python_api/#carlaclient&gt;`</span>
+<span class="sd">        world (carla.World): The current simulation world instance. :carla_docs:`carla.World &lt;core_world/#the-world&gt;`</span>
+<span class="sd">        vehicle (carla.Vehicle): The identified player vehicle. :carla_docs:`carla.Vehicle &lt;python_api/#carla.Vehicle&gt;`</span>
+<span class="sd">        collision_sensor (CollisionSensor): Sensor for detecting impact events. :carla_docs:`Collision detector &lt;ref_sensors/#collision-detector&gt;`</span>
+<span class="sd">        crash_counter (int): Counter to track the number of collisions.</span>
+<span class="sd">        honk_trigger (bool): State tracker for the horn input logic.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_MIN_COLLISION_INTENSITY</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">_MS_IN_KMH</span> <span class="o">=</span> <span class="mf">3.6</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ip</span><span class="p">,</span><span class="n">port</span><span class="p">,</span><span class="n">timeout</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">carla</span><span class="o">.</span><span class="n">Client</span><span class="p">(</span><span class="n">ip</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">set_timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Carla_client.py konnte sich nicht mit Carla Server verbinden.</span><span class="se">\n</span><span class="s2">Sicherstellen, dass Carla Simulator läuft.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">world</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vehicle_found</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crash_impulse</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">old_handbrake_state</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handbrake_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">__connect</span><span class="p">()</span>
+        
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__connect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Connects to the CARLA server and retrieves the simulation world.</span>
+
+<span class="sd">            Sets the `self.world` attribute by fetching the current world instance </span>
+<span class="sd">            from the CARLA client. This is a prerequisite for manipulating </span>
+<span class="sd">            environment actors or weather settings.</span>
+
+<span class="sd">            Returns:</span>
+<span class="sd">                None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">world</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">get_world</span><span class="p">()</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="nf">__get_vehicle</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Finds and returns the primary ego-vehicle from the simulation.</span>
+
+<span class="sd">        Iterates through all active vehicle actors in the current world and </span>
+<span class="sd">        identifies the one assigned the &#39;hero&#39; role. This is typically used </span>
+<span class="sd">        to bind the simulation sensors to the user-controlled vehicle.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            carla.Vehicle: The vehicle actor with role_name &#39;hero&#39;, </span>
+<span class="sd">                           or None if no such vehicle is found.</span>
+
+<span class="sd">        Note:</span>
+<span class="sd">            This method expects the vehicle to have been spawned with </span>
+<span class="sd">            the attribute &#39;role_name&#39; set to &#39;hero&#39; in CARLA.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">vehicles</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">get_actors</span><span class="p">()</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s1">&#39;vehicle.*&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">vehicles</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">vehicle</span> <span class="ow">in</span> <span class="n">vehicles</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">vehicle</span><span class="o">.</span><span class="n">attributes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;role_name&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;hero&quot;</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Verbunden mit vorhandenem Fahrzeug: </span><span class="si">{</span><span class="n">vehicle</span><span class="o">.</span><span class="n">type_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">vehicle</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Es wurden keine Autos gefunden!&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="CarlaClient.retrieve_data">
+<a class="viewcode-back" href="../../../../src.CARLA.Classes.html#src.CARLA.Classes.CarlaClient.CarlaClient.retrieve_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">retrieve_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extracts and aggregates simulation state data into a telemetry packet.</span>
+
+<span class="sd">        This method polls the CARLA world for environmental conditions (weather), </span>
+<span class="sd">        monitors hardware/keyboard inputs (honk), and fetches real-time vehicle </span>
+<span class="sd">        physics. It also manages the lifecycle of the collision sensor and </span>
+<span class="sd">        processes collision impulses based on defined intensity thresholds.</span>
+
+<span class="sd">        The resulting data packet is formatted for downstream consumption, </span>
+<span class="sd">        typically for synchronization with the FMOD audio engine.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict or None: A dictionary containing telemetry data, or None if no </span>
+<span class="sd">            vehicle is found or initialized.</span>
+<span class="sd">            </span>
+<span class="sd">            Telemetry dictionary keys:</span>
+<span class="sd">                - speed (float): Vehicle speed in km/h.</span>
+<span class="sd">                - throttle (float): Throttle position [0.0, 1.0].</span>
+<span class="sd">                - brake (float): Brake position [0.0, 1.0].</span>
+<span class="sd">                - speed_limit (float): Current road speed limit.</span>
+<span class="sd">                - gear (int): Current active gear.</span>
+<span class="sd">                - collision_event (bool): True if a collision above intensity 100 is detected.</span>
+<span class="sd">                - rain_intensity (float): Precipitation amount [0, 100].</span>
+<span class="sd">                - wind_intensity (float): Wind strength [0, 100].</span>
+<span class="sd">                - acceleration (float): Lateral acceleration (Y-axis).</span>
+<span class="sd">                - honk (bool): Single-trigger state of the horn.</span>
+<span class="sd">                - handbrake (bool): State of the handbrake.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            AttributeError: Handled internally if vehicle reference is lost during </span>
+<span class="sd">                actor switching or rapid simulation resets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#Wetterdaten</span>
+        <span class="n">weather</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">get_weather</span><span class="p">()</span>
+        <span class="n">rain_intensity</span> <span class="o">=</span> <span class="n">weather</span><span class="o">.</span><span class="n">precipitation</span>
+        <span class="n">wind_intensity</span> <span class="o">=</span> <span class="n">weather</span><span class="o">.</span><span class="n">wind_intensity</span>
+        <span class="c1">#Hupen</span>
+        <span class="n">honk</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="n">keyboard</span><span class="o">.</span><span class="n">is_pressed</span><span class="p">(</span><span class="s1">&#39;h&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span><span class="p">:</span>
+            <span class="n">honk</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="n">keyboard</span><span class="o">.</span><span class="n">is_pressed</span><span class="p">(</span><span class="s1">&#39;h&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span><span class="p">:</span>
+            <span class="n">honk</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">keyboard</span><span class="o">.</span><span class="n">is_pressed</span><span class="p">(</span><span class="s1">&#39;h&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+            
+        <span class="c1">#Fahrzeugdaten</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle_found</span> <span class="o">==</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="c1">#1. Fahrzeug finden:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__get_vehicle</span><span class="p">()</span>
+            <span class="c1">#2. Variable setzen:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">vehicle_found</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="c1">#Attach Collision Sensor to vehicle</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span> <span class="o">=</span> <span class="n">CollisionSensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="p">)</span>
+        <span class="c1">#3. Daten auslesen:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="o">.</span><span class="n">is_alive</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__get_vehicle</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span> <span class="o">=</span> <span class="n">CollisionSensor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">acceleration</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="o">.</span><span class="n">get_acceleration</span><span class="p">()</span>
+                <span class="n">speed_limit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="o">.</span><span class="n">get_speed_limit</span><span class="p">()</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="o">.</span><span class="n">get_velocity</span><span class="p">()</span>
+                <span class="n">kmh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_MS_IN_KMH</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">v</span><span class="o">.</span><span class="n">y</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">v</span><span class="o">.</span><span class="n">z</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+                <span class="n">control</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span><span class="o">.</span><span class="n">get_control</span><span class="p">()</span>
+                <span class="n">gear</span> <span class="o">=</span> <span class="n">control</span><span class="o">.</span><span class="n">gear</span>
+                <span class="n">handbrake</span> <span class="o">=</span> <span class="n">control</span><span class="o">.</span><span class="n">hand_brake</span>
+                <span class="n">steer</span> <span class="o">=</span> <span class="n">control</span><span class="o">.</span><span class="n">steer</span>
+
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">old_handbrake_state</span> <span class="ow">is</span> <span class="kc">False</span> <span class="ow">and</span> <span class="n">handbrake</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">handbrake_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">old_handbrake_state</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">handbrake_trigger</span>
+
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span><span class="o">.</span><span class="n">collision_counter</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span><span class="o">.</span><span class="n">intensity</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_MIN_COLLISION_INTENSITY</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">crash_impulse</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">collision_sensor</span><span class="o">.</span><span class="n">collision_counter</span>
+
+                <span class="c1">#4. Daten in JSON Packet umwandeln:</span>
+                <span class="n">data_packet</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;speed&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">kmh</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+                        <span class="s2">&quot;throttle&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">control</span><span class="o">.</span><span class="n">throttle</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+                        <span class="s2">&quot;brake&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">control</span><span class="o">.</span><span class="n">brake</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+                        <span class="s2">&quot;speed_limit&quot;</span><span class="p">:</span> <span class="n">speed_limit</span><span class="p">,</span>
+                        <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;GREEN&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;gear&quot;</span> <span class="p">:</span> <span class="n">gear</span><span class="p">,</span>
+                        <span class="s2">&quot;collision_event&quot;</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_impulse</span><span class="p">,</span>
+                        <span class="s2">&quot;rain_intensity&quot;</span> <span class="p">:</span> <span class="n">rain_intensity</span><span class="p">,</span>
+                        <span class="s2">&quot;wind_intensity&quot;</span> <span class="p">:</span> <span class="n">wind_intensity</span><span class="p">,</span>
+                        <span class="s2">&quot;acceleration&quot;</span> <span class="p">:</span> <span class="n">acceleration</span><span class="o">.</span><span class="n">y</span><span class="p">,</span>
+                        <span class="s2">&quot;honk&quot;</span> <span class="p">:</span> <span class="n">honk</span><span class="p">,</span>
+                        <span class="s2">&quot;handbrake&quot;</span> <span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">handbrake_trigger</span>
+                    <span class="p">}</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">crash_impulse</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handbrake_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="k">return</span> <span class="n">data_packet</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">RuntimeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                        <span class="c1"># Catching RuntimeError as well, as CARLA often throws this if the actor is destroyed</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Vehicle reference lost or switching: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">vehicle_found</span> <span class="o">=</span> <span class="kc">False</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">vehicle</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="k">return</span> <span class="kc">None</span> <span class="c1"># Return None so the caller knows data is currently unavailable</span></div>
+
+
+
+    
+<div class="viewcode-block" id="CarlaClient.set_rain">
+<a class="viewcode-back" href="../../../../src.CARLA.Classes.html#src.CARLA.Classes.CarlaClient.CarlaClient.set_rain">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_rain</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_rain_intensity</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adjusts the precipitation and road wetness levels in the simulation.</span>
+
+<span class="sd">        This method updates the CARLA weather parameters simultaneously to ensure </span>
+<span class="sd">        visual rain matches the physical road conditions (puddles/friction).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            in_rain_intensity (float/int): The intensity of the rain. </span>
+<span class="sd">                Typically a value between 0 (none) and 100 (heavy).</span>
+<span class="sd">        </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weather</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">get_weather</span><span class="p">()</span>
+        <span class="n">weather</span><span class="o">.</span><span class="n">precipitation</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">in_rain_intensity</span><span class="p">)</span>
+        <span class="n">weather</span><span class="o">.</span><span class="n">wetness</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">in_rain_intensity</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">set_weather</span><span class="p">(</span><span class="n">weather</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="CarlaClient.set_wind">
+<a class="viewcode-back" href="../../../../src.CARLA.Classes.html#src.CARLA.Classes.CarlaClient.CarlaClient.set_wind">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_wind</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_wind_intensity</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sets the wind intensity for the simulation environment.</span>
+
+<span class="sd">        Updates the physical wind force acting on actors and environmental </span>
+<span class="sd">        elements like trees or rain particles.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            in_wind_intensity (float/int, optional): The wind strength. </span>
+<span class="sd">                Ranges from 0 to 100. Defaults to 0.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weather</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">get_weather</span><span class="p">()</span>
+        <span class="n">weather</span><span class="o">.</span><span class="n">wind_intensity</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">in_wind_intensity</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">world</span><span class="o">.</span><span class="n">set_weather</span><span class="p">(</span><span class="n">weather</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

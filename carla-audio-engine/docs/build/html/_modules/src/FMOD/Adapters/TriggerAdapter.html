@@ -1,0 +1,364 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>src.FMOD.Adapters.TriggerAdapter &mdash; SoundCARLA 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            SoundCARLA
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User Guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../getting_started.html">Installation and Setup</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#dependencies">Dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#carla-client-venv">1. CARLA Client Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#carla-code-venv">2. CARLA Code Venv</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../getting_started.html#fmod-code-venv">3. FMOD Code Venv</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../src.html">Modules</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.CARLA.html">CARLA</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.Classes.html">Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.CarlaClient">CarlaClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.CollisionSensor">CollisionSensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.Socket">Socket</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.Classes.html#module-src.CARLA.Classes.Weather">Weather</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.cmain">cmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#carla-operations-handler">CARLA Operations Handler</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#src.CARLA.cmain.carla_data_loop"><code class="docutils literal notranslate"><span class="pre">carla_data_loop()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.CARLA.html#src.CARLA.cmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.generate_traffic">generate traffic Script</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.CARLA.html#module-src.CARLA.manual_control_sw">manual control Script</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.FMOD.html">FMOD</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Adapters.html">Adapters</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#engineadapter">EngineAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.EnvironmentAdapter">EnvironmentAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.RainIntensity">RainIntensity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.TriggerAdapter">TriggerAdapter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Adapters.html#module-src.FMOD.Adapters.WindIntensity">WindIntensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Banks.html">Banks</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.EnvironmentBank">EnvironmentBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.ExampleBank">ExampleBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.TriggerBank">TriggerBank</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Banks.html#module-src.FMOD.Banks.config">config</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Model.html">Model</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Model.html#module-src.FMOD.Model.SoundModel">SoundModel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.Sounds.html">Sounds</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.EVSoundEngine">EVSoundEngine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.Sounds.html#module-src.FMOD.Sounds.ReverseBeep">ReverseBeep</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.utils.html">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.DataKey">DataKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.EventBus">EventBus</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.utils.html#module-src.FMOD.utils.RangeLevel">RangeLevel</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.FMOD.html#module-src.FMOD.fmain">fmain</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../src.FMOD.html#src.FMOD.fmain.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../src.html#module-src.RunOhmUXSim">RunOhmUXSim</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.config_path"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.config_path</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.paths"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.paths</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.processes"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.processes</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.dx11_var"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.dx11_var</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.__init__"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.__init__()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.load_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.load_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.save_config"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.save_config()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.browse_file"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.browse_file()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.refresh_ui"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.refresh_ui()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.kill_process_on_port"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.kill_process_on_port()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.launch_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.launch_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.stop_all"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.stop_all()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../src.html#src.RunOhmUXSim.SimulatorGUI.run"><code class="docutils literal notranslate"><span class="pre">SimulatorGUI.run()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">SoundCARLA</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">src.FMOD.Adapters.TriggerAdapter</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for src.FMOD.Adapters.TriggerAdapter</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">..utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..Banks</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">..Sounds</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">keyboard</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyfmodex</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyfmodex.studio</span><span class="w"> </span><span class="kn">import</span> <span class="n">StudioSystem</span> 
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyfmodex.studio.enums</span><span class="w"> </span><span class="kn">import</span> <span class="n">PLAYBACK_STATE</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pyfmodex.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">FmodError</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Erklärung für self.honk_counter:</span>
+<span class="sd">In SoundModel.py wird bei jeder Änderung des Wertes von Honk der Wert veröffentlicht.</span>
+<span class="sd">Bei einem Tastendruckt wurde also honk immer doppelt getriggert.</span>
+<span class="sd">durch die Einführung des Zählers und der Abfrage ob der Zähler gerade ist, wird </span>
+<span class="sd">das Event nur noch korrekt ein einziges Mal abgespielt</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="TriggerAdapter">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TriggerAdapter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Adapter for managing discrete sound triggers based on simulation events.</span>
+
+<span class="sd">    This class handles one-shot audio events such as gear shifts, crashes, </span>
+<span class="sd">    speed warnings, and the vehicle horn. It implements internal debouncing </span>
+<span class="sd">    logic and state tracking (e.g., counters and flags) to ensure sounds are </span>
+<span class="sd">    triggered correctly and only once per event, preventing double-triggering </span>
+<span class="sd">    from the EventBus.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        reverse_beep (ReverseBeep): Engine for the rhythmic reverse warning sound.</span>
+<span class="sd">        bank (TriggerBank): FMOD bank containing one-shot sound events.</span>
+<span class="sd">        honk_counter (int): Counter used to debounce horn events, ensuring the </span>
+<span class="sd">            sound only plays once per key press.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">GEAR_REVERSE</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="n">SPEED_LIMIT</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">HANDBRAKE_SPEED</span> <span class="o">=</span> <span class="mi">40</span>
+<div class="viewcode-block" id="TriggerAdapter.__init__">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event_bus</span><span class="p">:</span> <span class="n">EventBus</span><span class="p">,</span> <span class="n">rev_beep</span><span class="p">:</span> <span class="n">ReverseBeep</span><span class="p">,</span> <span class="n">bank</span><span class="p">:</span> <span class="n">TriggerBank</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the TriggerAdapter and subscribes to simulation data.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            event_bus (EventBus): The system bus for event subscriptions.</span>
+<span class="sd">            rev_beep (ReverseBeep): The sound engine instance for reverse beeps.</span>
+<span class="sd">            bank (TriggerBank): The bank containing one-shot audio instances.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">past_gear</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">speed_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crash_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reverse_beep</span> <span class="o">=</span> <span class="n">rev_beep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bank</span> <span class="o">=</span> <span class="n">bank</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">honk_counter</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_flag</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">speed</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">event_bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">DataKey</span><span class="o">.</span><span class="n">GEAR</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_reverse</span><span class="p">)</span>
+        <span class="n">event_bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">DataKey</span><span class="o">.</span><span class="n">COLLISION_EVENT</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_crash</span><span class="p">)</span>
+        <span class="n">event_bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">DataKey</span><span class="o">.</span><span class="n">SPEED</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_speed</span><span class="p">)</span>
+        <span class="n">event_bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">DataKey</span><span class="o">.</span><span class="n">HONK</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_honk</span><span class="p">)</span>
+        <span class="n">event_bus</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span><span class="n">DataKey</span><span class="o">.</span><span class="n">HANDBRAKE</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">on_handBrake</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TriggerAdapter.on_reverse">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_reverse">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_reverse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_gear</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluates gear changes to trigger the reverse beep engine.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            current_gear (int): The current gear value from the simulation.</span>
+<span class="sd">            GEAR_REVERSE (int): Constant identifying the reverse gear (-1).</span>
+<span class="sd">            SPEED_LIMIT (int): Threshold in km/h for the overspeed warning.</span>
+<span class="sd">            HANDBRAKE_SPEED (int): Minimum speed required to trigger handbrake sounds.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">current_gear</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEAR_REVERSE</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">past_gear</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="n">current_gear</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEAR_REVERSE</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">past_gear</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEAR_REVERSE</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">elif</span> <span class="n">current_gear</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEAR_REVERSE</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">past_gear</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">GEAR_REVERSE</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">past_gear</span> <span class="o">=</span> <span class="n">current_gear</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="o">==</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reverse_beep</span><span class="o">.</span><span class="n">play</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="TriggerAdapter.on_tick">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_tick">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_tick</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Updates the internal sound engine and FMOD system on every frame.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reverse_beep</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">update_studio_system</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="TriggerAdapter.on_speed">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_speed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_speed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">speed</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Triggers an overspeed warning sound if the speed limit is exceeded.</span>
+
+<span class="sd">        The trigger is reset only once the warning sound has finished playing.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            speed (float): Current vehicle speed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">speed</span> <span class="o">=</span> <span class="n">speed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reverse_beep</span><span class="o">.</span><span class="n">update</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">speed</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">SPEED_LIMIT</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">speed_trigger</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">play_warning</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">speed_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">warning_sound</span><span class="o">.</span><span class="n">playback_state</span> <span class="o">==</span> <span class="n">PLAYBACK_STATE</span><span class="o">.</span><span class="n">STOPPED</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">speed_trigger</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="TriggerAdapter.on_crash">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_crash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_crash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">crash</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Triggers the crash sound effect upon impact.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            crash: unused.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_trigger</span> <span class="ow">is</span> <span class="kc">False</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">play_crash</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crash_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">crash_sound</span><span class="o">.</span><span class="n">playback_state</span> <span class="o">==</span> <span class="n">PLAYBACK_STATE</span><span class="o">.</span><span class="n">STOPPED</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crash_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">crash_counter</span> <span class="o">+</span> <span class="mi">1</span></div>
+
+    
+<div class="viewcode-block" id="TriggerAdapter.on_honk">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_honk">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_honk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">honk</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Triggers the vehicle horn with debouncing logic.</span>
+
+<span class="sd">        Uses an internal counter to filter out redundant triggers from </span>
+<span class="sd">        continuous key-press updates.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="ow">is</span> <span class="kc">False</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">honk_counter</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">play_honk</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">crash_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">honk_sound</span><span class="o">.</span><span class="n">playback_state</span> <span class="o">==</span> <span class="n">PLAYBACK_STATE</span><span class="o">.</span><span class="n">STOPPED</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">honk_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">honk_counter</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">honk_counter</span> <span class="o">+</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="TriggerAdapter.on_handBrake">
+<a class="viewcode-back" href="../../../../src.FMOD.Adapters.html#src.FMOD.Adapters.TriggerAdapter.TriggerAdapter.on_handBrake">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_handBrake</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">handBrake</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Triggers the handbrake sound effect if the vehicle is moving.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            handBrake: unused.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">speed</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">HANDBRAKE_SPEED</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_trigger</span> <span class="ow">is</span> <span class="kc">False</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_flag</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">play_handBrake</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_trigger</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">bank</span><span class="o">.</span><span class="n">handBrake_sound</span><span class="o">.</span><span class="n">playback_state</span> <span class="o">==</span> <span class="n">PLAYBACK_STATE</span><span class="o">.</span><span class="n">STOPPED</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_trigger</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_flag</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">handBrake_flag</span> <span class="o">=</span> <span class="kc">True</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Kai Braun, Ozan Miguel Gündogdu, Yeri Jikong.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
