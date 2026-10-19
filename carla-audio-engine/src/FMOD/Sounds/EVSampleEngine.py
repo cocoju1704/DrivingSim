@@ -11,7 +11,7 @@ from pyfmodex.flags import MODE
 MOTOR_FILE = SOUNDS_DIR / "ev_motor.wav"
 #: Tire/road noise loop. Its volume follows the speed.
 ROAD_FILE = SOUNDS_DIR / "ev_road.wav"
-#: Interior cabin noise loop (HVAC hum, muffled wind/road). Volume proportional to the speed, slightly higher with speed.
+#: Interior cabin noise loop (HVAC hum, muffled wind/road). Louder with speed up to CABIN_FULL_SPEED.
 CABIN_FILE = SOUNDS_DIR / "ev_cabin.wav"
 
 
@@ -25,7 +25,7 @@ class EVSampleEngine:
     - ``ev_motor.wav``: motor whine, played back faster (higher) with speed.
       Without it, the synthesized motor of :class:`EVSoundEngine` is used if SYNTH_MOTOR is True.
     - ``ev_road.wav``: tire/road rumble, louder with speed.
-    - ``ev_cabin.wav``: interior cabin noise, silent up to CABIN_START_SPEED, then proportional to the speed.
+    - ``ev_cabin.wav``: interior cabin noise, audible from standstill, louder with speed up to CABIN_FULL_SPEED.
 
     Tune the class constants below to change how the sound reacts.
     """
@@ -36,9 +36,9 @@ class EVSampleEngine:
     MOTOR_VOLUME_SPEED = 0.35   # added at TOP_SPEED
     MOTOR_VOLUME_THROTTLE = 0.3 # added while the throttle is pressed
     ROAD_VOLUME_MAX = 0.6       # road noise at TOP_SPEED
-    CABIN_START_SPEED = 20.0    # km/h; at or below this the cabin noise is silent
-    CABIN_VOLUME_IDLE = 0.0     # cabin noise at CABIN_START_SPEED
-    CABIN_VOLUME_SPEED = 0.6    # added at TOP_SPEED, proportional to the speed above CABIN_START_SPEED
+    CABIN_FULL_SPEED = 50.0     # km/h at which the cabin noise reaches CABIN_VOLUME_MAX
+    CABIN_VOLUME_IDLE = 0.1     # cabin noise at standstill
+    CABIN_VOLUME_MAX = 0.6      # cabin noise at CABIN_FULL_SPEED and above
     CABIN_PITCH_MIN = 0.95      # cabin noise playback speed at standstill
     CABIN_PITCH_MAX = 1.1       # cabin noise playback speed at TOP_SPEED
     MASTER_VOLUME = 1.0
@@ -110,11 +110,9 @@ class EVSampleEngine:
 
         if self.cabin_ch is not None:
             self.cabin_ch.pitch = self.CABIN_PITCH_MIN + ratio * (self.CABIN_PITCH_MAX - self.CABIN_PITCH_MIN)
-            if speed_kmh <= self.CABIN_START_SPEED:
-                self.cabin_ch.volume = 0.0
-            else:
-                cabin_ratio = min((speed_kmh - self.CABIN_START_SPEED) / (self.TOP_SPEED - self.CABIN_START_SPEED), 1.0)
-                self.cabin_ch.volume = (self.CABIN_VOLUME_IDLE + cabin_ratio * self.CABIN_VOLUME_SPEED) * self.MASTER_VOLUME
+            cabin_ratio = min(max(speed_kmh, 0.0) / self.CABIN_FULL_SPEED, 1.0)
+            cabin_volume = self.CABIN_VOLUME_IDLE + cabin_ratio * (self.CABIN_VOLUME_MAX - self.CABIN_VOLUME_IDLE)
+            self.cabin_ch.volume = cabin_volume * self.MASTER_VOLUME
 
     def set_paused(self, paused):
         """Pauses or resumes every loop (used while there is no vehicle)."""

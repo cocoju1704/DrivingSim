@@ -89,6 +89,7 @@ import socket
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 import carla
@@ -148,21 +149,57 @@ DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instru
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
 MIRROR_FOV = 60.0          # degrees, side mirror views
 DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
-# Mirror glass, measured on the Lincoln MKZ 2020 from where its mirrors appear in the driver's seat view.
-MIRROR_GLASS = (0.281, 0.05, 1.40)  # side mirror: x and z as shares of the car's half length / height, y m outside
-LEFT_MIRROR_SIZE = (0.251, 0.127)  # m, as seen from the driver (the right glass is seen more from the side)
-RIGHT_MIRROR_SIZE = (0.180, 0.116)
-# Glass outlines in the driver's seat view, as (x, y) shares of the glass's bounding box
-LEFT_MIRROR_OUTLINE = [(0.0, 0.40), (0.13, 0.05), (0.77, 0.0), (0.88, 0.08), (1.0, 0.50), (0.99, 0.81),
-                       (0.93, 0.98), (0.85, 1.0), (0.05, 0.71)]
-RIGHT_MIRROR_OUTLINE = [(0.0, 0.48), (0.06, 0.06), (0.66, 0.0), (0.87, 0.15), (1.0, 0.51), (0.95, 0.86),
-                        (0.66, 1.0), (0.02, 1.0)]
+# Mirror glass, measured on the Lincoln MKZ 2020 from where its mirrors appear in the driver views.
+# Side mirrors, per driver view (driver seat, windshield): (glass center, glass size, glass outline).
+# Center: x and z as shares of the car's half length / height, y m outside the car. Size: m, as seen
+# from that view (the glass is seen at an angle). Outline: (x, y) shares of the glass's bounding box;
+# in the windshield view the window pillar hides the left part of the right glass.
+LEFT_MIRROR = {
+    0: ((0.2800, 0.0512, 1.3944), (0.234, 0.121),
+        [(0.0, 0.42), (0.14, 0.11), (0.26, 0.02), (0.36, 0.0), (0.8, 0.02), (0.87, 0.08), (0.93, 0.17),
+         (0.95, 0.23), (1.0, 0.54), (0.99, 0.73), (0.97, 0.86), (0.92, 0.99), (0.64, 0.92), (0.05, 0.72)]),
+    1: ((0.2802, 0.0506, 1.3889), (0.1359, 0.1279),
+        [(0.0, 0.39), (0.0, 0.33), (0.12, 0.09), (0.2, 0.02), (0.25, 0.0), (0.51, 0.0), (0.77, 0.04),
+         (0.85, 0.09), (0.91, 0.18), (1.0, 0.53), (1.0, 0.78), (0.94, 1.0), (0.07, 0.63), (0.03, 0.56)]),
+}
+RIGHT_MIRROR = {
+    0: ((0.2786, 0.0535, 1.3983), (0.161, 0.106),
+        [(0.0, 0.23), (0.07, 0.09), (0.12, 0.0), (0.79, 0.0), (0.85, 0.05), (0.92, 0.18), (1.0, 0.51),
+         (0.99, 0.71), (0.96, 0.84), (0.92, 0.89), (0.56, 0.97), (0.12, 1.0), (0.0, 1.0)]),
+    1: ((0.2782, 0.0540, 1.3990), (0.1024, 0.1105),
+        [(0.11, 0.05), (0.18, 0.0), (0.76, 0.0), (0.87, 0.07), (0.97, 0.22), (1.0, 0.36), (0.99, 0.57),
+         (0.97, 0.77), (0.93, 0.83), (0.59, 0.92), (0.21, 0.99), (0.0, 1.0)]),
+}
 MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
-REAR_MIRROR = (0.60, 0.0, 0.11)    # rear-view mirror glass, m from the driver's eyes (forward, right, up)
-REAR_MIRROR_SIZE = (0.26, 0.055)   # m
+# Rear-view mirror glass, m from the driver's eyes (forward, right, up). The windshield view is in
+# front of it, so there its image stays where the driver's seat view shows the glass.
+REAR_MIRROR = (0.571, 0.017, 0.110)
+REAR_MIRROR_SIZE = (0.236, 0.081)  # m
+# Its outline bends where the glass crosses from the middle monitor to the right one
+REAR_MIRROR_OUTLINE = [(0.01, 0.48), (0.04, 0.14), (0.06, 0.05), (0.12, 0.0), (0.31, 0.0), (0.91, 0.38), (0.97, 0.49),
+                       (1.0, 0.9), (1.0, 0.95), (0.95, 1.0), (0.33, 0.76), (0.15, 0.76), (0.04, 0.73), (0.0, 0.62)]
 REAR_MIRROR_FOV = 45.0             # degrees
+MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 WHEEL_SETUP_WAIT = 10         # seconds --wheel-setup waits for each button
 PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals are not exactly at rest)
+# The MKZ's engine brakes with the throttle released (damping_rate_zero_throttle_clutch_engaged
+# 2.0: from 80 km/h to a stop in 10 s). With this it rolls on at about 0.5 m/s^2 from 85 km/h.
+ENGINE_DAMPING = 0.35
+# CARLA's throttle is a share of the engine torque at any speed: a slightly pressed pedal would keep
+# accelerating to well past 100 km/h. The wheel's throttle pedal instead asks for an acceleration
+# that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
+# controller finds the CARLA throttle for it (see PedalThrottle).
+PEDAL_ACCEL_MAX = 3.5        # m/s^2 asked for with the pedal fully pressed, at standstill
+PEDAL_ACCEL_CURVE = 1.2      # acceleration asked for grows with travel ** this: gentle at small travel
+PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pressed, proportionally less with less
+# CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle), measured
+HOLD_THROTTLE = [(0.0, 0.08), (8.0, 0.10), (33.0, 0.15), (53.0, 0.20), (112.0, 0.30), (130.0, 0.45), (190.0, 0.85)]
+# Pedal released: like an automatic, the car creeps forward at a walking pace unless the brake is pressed.
+CREEP_SPEED = 7.0            # km/h
+CREEP_ACCEL = 0.5            # m/s^2 creeping off from standstill
+PEDAL_GAIN_P = 0.10         # throttle per m/s^2 of acceleration missing
+PEDAL_GAIN_I = 0.30          # throttle per m/s^2 per second (makes up for hills and HOLD_THROTTLE's error)
+PEDAL_ACCEL_FILTER = 0.3     # seconds, smoothing of the measured acceleration
 WHEEL_SPRING_STANDSTILL = 0.45  # force feedback: centering force when standing, share of --wheel-force
 WHEEL_SPRING_FULL_SPEED = 80.0  # km/h at which the centering force reaches --wheel-force
 WHEEL_DAMPING = 0.3            # damping (wheel weight), share of --wheel-force
@@ -327,9 +364,9 @@ def experiment_views(extent):
     ]
 
 
-def car_mirrors(extent):
-    """The car's mirrors as (glass center, glass width and height in m, glass outline or None,
-    camera transform, fov).
+def car_mirrors(extent, view):
+    """The car's mirrors in driver view `view` as (glass center, glass width and height in m, glass
+    outline or None, camera transform, fov, view the glass is seen from).
 
     CARLA does not render reflections, so the mirrors of the car model stay empty. Each mirror gets
     a camera looking back, and its image is drawn over the glass where the glass appears in the
@@ -337,17 +374,21 @@ def car_mirrors(extent):
     """
     eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z
     side_x, side_y, side_z = 0.25 * extent.x, extent.y + 0.1, 1.35 * extent.z
-    glass_x, glass_y, glass_z = MIRROR_GLASS[0] * extent.x, extent.y + MIRROR_GLASS[1], MIRROR_GLASS[2] * extent.z
+
+    def side_glass(fits, side):
+        (share_x, outside, share_z), size, outline = fits[view]
+        return carla.Location(x=share_x * extent.x, y=side * (extent.y + outside), z=share_z * extent.z), size, outline
     return [
-        (carla.Location(x=glass_x, y=-glass_y, z=glass_z), LEFT_MIRROR_SIZE, LEFT_MIRROR_OUTLINE,
-         carla.Transform(carla.Location(x=side_x, y=-side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=-170.0)),
-         MIRROR_INSET_FOV),
-        (carla.Location(x=glass_x, y=glass_y, z=glass_z), RIGHT_MIRROR_SIZE, RIGHT_MIRROR_OUTLINE,
-         carla.Transform(carla.Location(x=side_x, y=side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=170.0)),
-         MIRROR_INSET_FOV),
-        (carla.Location(x=eye_x + REAR_MIRROR[0], y=REAR_MIRROR[1], z=eye_z + REAR_MIRROR[2]), REAR_MIRROR_SIZE, None,
+        side_glass(LEFT_MIRROR, -1) + (
+            carla.Transform(carla.Location(x=side_x, y=-side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=-170.0)),
+            MIRROR_INSET_FOV, view),
+        side_glass(RIGHT_MIRROR, 1) + (
+            carla.Transform(carla.Location(x=side_x, y=side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=170.0)),
+            MIRROR_INSET_FOV, view),
+        (carla.Location(x=eye_x + REAR_MIRROR[0], y=REAR_MIRROR[1], z=eye_z + REAR_MIRROR[2]), REAR_MIRROR_SIZE,
+         REAR_MIRROR_OUTLINE,
          carla.Transform(carla.Location(x=-extent.x - 0.2, z=eye_z + 0.1), carla.Rotation(pitch=-2.0, yaw=180.0)),
-         REAR_MIRROR_FOV),
+         REAR_MIRROR_FOV, 0),
     ]
 
 
@@ -395,8 +436,8 @@ def _mirror_rect(manager, eye, center, size):
 
 
 def add_driver_view(world, args):
-    """Add the experiment's camera positions in front of manual_control's; start in the driver's
-    seat unless --view chase. TAB (next_view) cycles through all of them and shows the name.
+    """Add the experiment's camera positions in front of manual_control's; start in the view --view
+    names. TAB (next_view) cycles through all of them and shows the name.
 
     With --screens N the window is split into N monitors, each with its own camera: in the driver
     views the outer cameras are turned by --screen-fov per monitor so the images join at the
@@ -416,7 +457,8 @@ def add_driver_view(world, args):
     manager.screen_fov = args.screen_fov
     manager.side_views = []  # [(screen, camera, {'image', 'surface'})], driver views only
     manager.mirror_views = []  # [(window rect, camera, {'image', 'surface'})], driver views only
-    manager.mirrors = [] if args.no_mirrors else car_mirrors(world.player.bounding_box.extent)
+    extent = world.player.bounding_box.extent
+    manager.mirrors = {} if args.no_mirrors else {view: car_mirrors(extent, view) for view in DRIVER_VIEWS}
     manager.latest_image = None  # newest RGB image, converted when it is drawn
     # cameras render at --render-scale of a monitor, the client scales them up
     manager.render_size = (int(manager.screen_width * args.render_scale), int(args.height * args.render_scale))
@@ -431,7 +473,7 @@ def add_driver_view(world, args):
         middle = manager.screens // 2
         image, manager.latest_image = manager.latest_image, None
         if image is not None:
-            manager.surface = _camera_surface(manager, image)
+            manager.surface, manager.surface_image = _camera_surface(manager, image), image
         if manager.surface is not None:
             surface = pygame.transform.flip(manager.surface, True, False) if mirrored else manager.surface
             display.blit(surface, (middle * manager.screen_width, 0))
@@ -439,7 +481,7 @@ def add_driver_view(world, args):
         for screen, _, view in manager.side_views:
             image, view['image'] = view['image'], None
             if image is not None:
-                view['surface'] = _camera_surface(manager, image)
+                view['surface'], view['surface_image'] = _camera_surface(manager, image), image
             if view['surface'] is not None:
                 display.blit(view['surface'], (screen * manager.screen_width, 0))
                 shown.add(screen)
@@ -459,16 +501,19 @@ def add_driver_view(world, args):
                 display.blit(view['surface'], rect)
     manager.render = render
 
-    manager.transform_index = len(views) if args.view == 'chase' else 0  # driver's seat, or behind the car
+    manager.transform_index = {'driver': 0, 'windshield': 1, 'chase': len(views)}[args.view]  # chase: behind the car
     _respawn_view(manager)
 
 
 def _camera_surface(manager, image):
-    """carla.Image (BGRA) -> display-format surface the size of one monitor. SDL converts the
-    pixels directly; manual_control's numpy path is too slow for 2560x1440 images."""
-    surface = pygame.image.frombuffer(image.raw_data, (image.width, image.height), 'BGRA').convert()
+    """carla.Image (BGRA) -> surface the size of one monitor; manual_control's numpy path is too
+    slow for 2560x1440 images. Unscaled, the surface is the image's own pixels, not a copy (the
+    caller keeps the image while the surface is drawn): the display has the same pixel layout, so
+    drawing it opaque is a plain copy, twice as fast as converting it first."""
+    surface = pygame.image.frombuffer(image.raw_data, (image.width, image.height), 'BGRA')
     if surface.get_size() != manager.screen_size:
         surface = pygame.transform.scale(surface, manager.screen_size)
+    surface.set_alpha(None)  # opaque: CARLA's alpha channel is not blended in
     return surface
 
 
@@ -525,16 +570,16 @@ def _respawn_view(manager):
 
     if manager.transform_index in DRIVER_VIEWS:
         # pylint: disable=protected-access
-        eye = manager._camera_transforms[manager.transform_index][0]
         library = manager._parent.get_world().get_blueprint_library()
-        for center, size, outline, transform, fov in manager.mirrors:
-            rect = _mirror_rect(manager, eye, center, size)
+        for center, size, outline, transform, fov, seen_from in manager.mirrors.get(manager.transform_index, []):
+            rect = _mirror_rect(manager, manager._camera_transforms[seen_from][0], center, size)
             if rect is None:
                 continue
             blueprint = library.find('sensor.camera.rgb')
             blueprint.set_attribute('image_size_x', str(rect.width))
             blueprint.set_attribute('image_size_y', str(rect.height))
             blueprint.set_attribute('fov', str(fov))
+            blueprint.set_attribute('sensor_tick', str(1.0 / MIRROR_FPS))
             blueprint.set_attribute('gamma', str(manager.sensors[0][-1].get_attribute('gamma').as_float()))
             camera = manager._parent.get_world().spawn_actor(
                 blueprint, transform, attach_to=manager._parent, attachment_type=carla.AttachmentType.Rigid)
@@ -562,6 +607,43 @@ class _FixedBoundingBox(object):
 
     def __getattr__(self, name):
         return getattr(self._vehicle, name)
+
+
+def soften_engine_braking(vehicle):
+    """With the pedal released the MKZ's engine brakes like a brake pedal (80 km/h to a stop in
+    10 s, it shifts down to first gear); ENGINE_DAMPING lets it roll on like a real car."""
+    physics = vehicle.get_physics_control()
+    physics.damping_rate_zero_throttle_clutch_engaged = ENGINE_DAMPING
+    vehicle.apply_physics_control(physics)
+
+
+def hold_loop_lights_green(sim_world, routes):
+    """Green for the loop at the junction where it crosses a road with traffic lights (Town04,
+    ~944 m from the start), red for the crossing road, held there: the autonomous mode and the
+    traffic cars ignore traffic lights and would drive through red. Returns the lights for
+    release_lights()."""
+    loop = {}
+    for route in routes.values():
+        for waypoint in route:
+            for light in sim_world.get_traffic_lights_from_waypoint(waypoint, 3.0):
+                loop[light.id] = light
+    held = []
+    for light in loop.values():
+        for member in light.get_group_traffic_lights():
+            member.set_state(carla.TrafficLightState.Green if member.id in loop else carla.TrafficLightState.Red)
+            member.freeze(True)
+            held.append(member)
+    if loop:
+        logging.info('Traffic lights %s on the loop held green', sorted(loop))
+    return held
+
+
+def release_lights(lights):
+    """Back to the normal light cycle after hold_loop_lights_green."""
+    for light in lights:
+        light.freeze(False)
+    if lights:
+        lights[0].reset_group()
 
 
 class LoopFollower(object):
@@ -715,6 +797,70 @@ def prune_traffic(traffic, sim_world):
         traffic.remove(npc)
 
 
+def advance(sim_world, args):
+    """Next simulation step: the client makes it in synchronous mode (--fps), else waits for it."""
+    if args.sync:
+        sim_world.tick()
+    else:
+        sim_world.wait_for_tick()
+
+
+class LatencyMeter(object):
+    """Control-to-display latency, synchronous mode only: from the moment a frame's controls (read
+    from the wheel or keyboard) go to the server, to the moment the first camera image of the step
+    they drive is on the screen (after the display flip). The monitor's own delay comes on top."""
+
+    def __init__(self):
+        self._pending = []  # [(simulation frame the controls drive, time sent)]
+        self.latest = None  # ms, last measured
+
+    def sent(self, frame, now):
+        self._pending.append((frame, now))
+
+    def shown(self, image, now):
+        """`image`: the carla.Image just shown (None: no image yet)."""
+        if image is None:
+            return
+        while self._pending and self._pending[0][0] <= image.frame:
+            _, sent = self._pending.pop(0)
+            self.latest = (now - sent) * 1000.0
+
+
+def _free_port():
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
+
+
+class SimTicker(object):
+    """Makes the synchronous simulation's steps in a thread, so the server computes the next step
+    while the client draws this one (tick() releases the GIL)."""
+
+    def __init__(self, sim_world):
+        self._world = sim_world
+        self._thread = None
+        self._error = None
+        self.frame = sim_world.get_snapshot().frame  # frame number of the last finished step
+
+    def start(self):
+        def run():
+            try:
+                self.frame = self._world.tick()
+            except RuntimeError as error:  # e.g. the server stopped answering
+                self._error = error
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+
+    def wait(self):
+        """Wait for the step started last; raises its error."""
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+        error, self._error = self._error, None
+        if error is not None:
+            raise error
+
+
 def spawn_traffic(sim_world, routes, args, traffic_manager, lanes):
     """Place args.vehicles cars on the highway, each driving the loop in one of the given lanes."""
     if args.vehicles <= 0:
@@ -735,7 +881,7 @@ def spawn_traffic(sim_world, routes, args, traffic_manager, lanes):
     # Passenger cars only: they handle the highway curves at traffic speed.
     blueprints = [bp for bp in sim_world.get_blueprint_library().filter('vehicle.*')
                   if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car']
-    traffic = []
+    spawned = []
     for lane, index in chosen:
         blueprint = random.choice(blueprints)
         blueprint.set_attribute('role_name', 'npc')
@@ -745,7 +891,11 @@ def spawn_traffic(sim_world, routes, args, traffic_manager, lanes):
         transform.location.z += 0.5
         vehicle = sim_world.try_spawn_actor(blueprint, transform)
         if vehicle is not None:
-            traffic.append(TrafficVehicle(vehicle, routes[lane], traffic_manager, args.npc_speed))
+            spawned.append((vehicle, lane))
+    # Each car's path starts where the car is: before a tick the client does not know new cars'
+    # positions yet, and a path from the wrong place sends cars into the guardrail.
+    advance(sim_world, args)
+    traffic = [TrafficVehicle(vehicle, routes[lane], traffic_manager, args.npc_speed) for vehicle, lane in spawned]
     logging.info('Traffic: %d of %d vehicles placed (%.0f km/h)', len(traffic), args.vehicles, args.npc_speed)
     return traffic
 
@@ -803,7 +953,7 @@ class KeyboardInput(object):
         return (float((keys[K_RIGHT] or keys[K_d]) - (keys[K_LEFT] or keys[K_a])),
                 float(keys[K_UP] or keys[K_w]), float(keys[K_DOWN] or keys[K_s]))
 
-    def update(self, control, keys, milliseconds):
+    def update(self, control, keys, milliseconds, speed_kmh, incline):
         control.throttle = min(control.throttle + 0.1, 1.0) if (keys[K_UP] or keys[K_w]) else 0.0
         control.brake = min(control.brake + 0.2, 1.0) if (keys[K_DOWN] or keys[K_s]) else 0.0
 
@@ -984,6 +1134,7 @@ class WheelInput(object):
         logging.info('Steering wheel: %s (steer axis %d, throttle axis %d, brake axis %d)',
                      self._joystick.get_name(), self._steer_axis, self._throttle_axis, self._brake_axis)
         self._steer_baseline = 0.0
+        self._throttle = PedalThrottle()
         self.reset()
         self._force = WheelForceFeedback(self._joystick.get_name(), args.wheel_force)
 
@@ -1054,10 +1205,58 @@ class WheelInput(object):
         """(steer, throttle, brake) the driver is asking for right now."""
         return self._steer(), self._pedal(self._throttle_axis), self._pedal(self._brake_axis)
 
-    def update(self, control, keys, milliseconds):
+    def update(self, control, keys, milliseconds, speed_kmh, incline):
         control.steer = self._steer()
-        control.throttle = self._pedal(self._throttle_axis)
         control.brake = self._pedal(self._brake_axis)
+        control.throttle = self._throttle.step(self._pedal(self._throttle_axis), control.brake, speed_kmh, incline,
+                                               milliseconds / 1000.0)
+
+
+class PedalThrottle(object):
+    """CARLA throttle for the throttle pedal (see PEDAL_ACCEL_MAX): the pedal travel asks for an
+    acceleration, fading out at the settle speed (on level road); the throttle is what holds the
+    current speed (HOLD_THROTTLE) plus a PI correction on the measured acceleration. With the pedal
+    released (or pressed less than the speed needs) the car rolls on with throttle 0 and creeps at
+    CREEP_SPEED, until the brake is pressed. The road's slope is taken off the acceleration asked
+    for, as it would be with a real engine: uphill the car slows down and settles slower, downhill
+    it speeds up."""
+
+    def __init__(self):
+        self._speed = None   # m/s, last step
+        self._accel = 0.0    # m/s^2, filtered
+        self._integral = 0.0
+
+    def step(self, pedal, brake, speed_kmh, incline, dt):
+        speed = speed_kmh / 3.6
+        if self._speed is not None and dt > 0:
+            share = min(1.0, dt / PEDAL_ACCEL_FILTER)
+            self._accel += share * ((speed - self._speed) / dt - self._accel)
+        self._speed = speed
+        wanted = CREEP_ACCEL * (1.0 - speed_kmh / CREEP_SPEED)  # < 0 above the creep speed
+        if pedal > 0.0:
+            settle_speed = PEDAL_FULL_SPEED * pedal
+            wanted = max(wanted, PEDAL_ACCEL_MAX * pedal ** PEDAL_ACCEL_CURVE * (1.0 - (speed_kmh / settle_speed) ** 2))
+        rolling = speed_kmh > 2 * CREEP_SPEED
+        if brake > 0.0 or (rolling and wanted <= 0.0):  # roll on
+            self._integral = 0.0
+            return 0.0
+        wanted -= 9.81 * incline
+        error = wanted - self._accel
+        hold = _interpolate(HOLD_THROTTLE, speed_kmh)
+        throttle = hold + PEDAL_GAIN_P * error + self._integral
+        if 0.0 < throttle < 1.0 or (throttle >= 1.0) != (error > 0):  # no wind-up while the throttle is at a limit
+            self._integral += PEDAL_GAIN_I * error * dt
+        return min(1.0, max(0.0, throttle))
+
+
+def _interpolate(table, x):
+    """Linear interpolation in a [(x, y)] table sorted by x, clamped at its ends."""
+    if x <= table[0][0]:
+        return table[0][1]
+    for (x0, y0), (x1, y1) in zip(table, table[1:]):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return table[-1][1]
 
 
 WHEEL_BUTTONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wheel_buttons.json')
@@ -1185,6 +1384,9 @@ class TrialRecorder(object):
       malat / malon    max |lateral| / |longitudinal| acceleration in the takeover period
       sdlp, max_lane_offset, lane_changes, speed, TTC and collisions over the same period
 
+    Per frame, frame_ms is the time since the last frame and latency_ms the last measured
+    control-to-display latency (see LatencyMeter; empty in asynchronous mode).
+
     The takeover period is the POST_WINDOW seconds that follow the takeover.
     """
 
@@ -1192,14 +1394,16 @@ class TrialRecorder(object):
                'x', 'y', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',
                'driver_steer', 'driver_throttle', 'driver_brake', 'lane_id', 'lane_offset_m',
                'lead_gap_m', 'lead_speed_kmh', 'ttc_s', 'collisions', 'event_dist_m', 'fog_density',
-               'scenario', 'input', 'lane', 'vehicles',
+               'frame_ms', 'latency_ms', 'scenario', 'input', 'lane', 'vehicles',
                'takeover_type', 'tot_s', 'tor_reaction_s', 'first_input_s',
                'speed_prealert_kmh', 'speed_takeover_kmh', 'window_complete',
                'malat', 'malon', 'sdlp', 'max_lane_offset', 'lane_changes',
                'speed_min_kmh', 'speed_mean_kmh', 'min_ttc_s', 'min_gap_m', 'collisions_window']
 
-    def __init__(self, world, traffic, driver_input, args, started, window=POST_WINDOW):
+    def __init__(self, world, traffic, driver_input, args, started, window=POST_WINDOW, latency=None):
         self._world = world
+        self._latency = latency
+        self._last_sample = None
         self._traffic = traffic
         self._half_length = world.player.bounding_box.extent.x  # bounding_box is a server round trip
         self._input = driver_input
@@ -1224,6 +1428,7 @@ class TrialRecorder(object):
         self._trial += 1
         self._active = True
         self._t0 = now
+        self._last_sample = None
         self._tor_time = None
         self._takeover_time = None
         self._takeover_type = None
@@ -1345,7 +1550,10 @@ class TrialRecorder(object):
             'lead_gap_m': _fmt(gap), 'lead_speed_kmh': _fmt(lead_speed), 'ttc_s': _fmt(ttc),
             'collisions': self._collisions, 'event_dist_m': _fmt(self._event_dist, 1),
             'fog_density': _fmt(self._fog, 1),
+            'frame_ms': _fmt(None if self._last_sample is None else (now - self._last_sample) * 1000.0, 1),
+            'latency_ms': _fmt(self._latency and self._latency.latest, 1),
         }
+        self._last_sample = now
         row.update(self._constant)
         self._pending = ''
         return row, {'lane_id': lane_id, 'lane_offset': lane_offset, 'gap': gap, 'ttc': ttc}
@@ -1975,18 +2183,20 @@ class TakeoverExperiment(object):
             elif self.mode == TOR and now - self._tor_time >= TOR_SECONDS:
                 self._take_over(now, forced=True)
 
+        speed_kmh = self._world.player.get_velocity().length() * 3.6
         if self.mode in AUTONOMOUS_MODES:
             control = self._follower.run_step()
         else:
-            self._parse_manual_keys(keys, clock.get_time())
+            incline = self._world.player.get_transform().get_forward_vector().z  # sine of the road's slope, uphill > 0
+            self._parse_manual_keys(keys, clock.get_time(), speed_kmh, incline)
             control = self._control
         self._world.player.apply_control(control)
-        self._input.force_feedback(self._world.player.get_velocity().length() * 3.6)
+        self._input.force_feedback(speed_kmh)
         self._update_lights(control)
         self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
 
-    def _parse_manual_keys(self, keys, milliseconds):
-        self._input.update(self._control, keys, milliseconds)
+    def _parse_manual_keys(self, keys, milliseconds, speed_kmh, incline):
+        self._input.update(self._control, keys, milliseconds, speed_kmh, incline)
         self._control.hand_brake = bool(keys[K_SPACE]) or self._input.hand_brake()
         self._control.reverse = self._control.gear < 0  # also when shifting down with the manual transmission
 
@@ -2057,10 +2267,14 @@ def game_loop(args):
     world = None
     traffic = []
     scenario = None
+    green_lights = []
     recorder = None
     client = None
     audio = None
     driver_input = None
+    sim_world = None
+    async_settings = None
+    ticker = None
 
     try:
         driver_input = WheelInput(args) if args.input == 'wheel' else KeyboardInput()
@@ -2071,6 +2285,21 @@ def game_loop(args):
         if not sim_world.get_map().name.endswith(MAP_NAME):
             logging.info('Loading %s...', MAP_NAME)
             sim_world = client.load_world(MAP_NAME)
+        # A Traffic Manager of our own on a free port: the server still lists the one of the run
+        # before (it lived in that process), and a synchronous tick that reaches it waits forever.
+        traffic_manager = client.get_trafficmanager(_free_port())
+        if args.sync:
+            # The Traffic Manager drives traffic cars into the guardrails in asynchronous mode
+            # when the server runs slowly (the monitor cameras): the client makes the steps
+            # instead. Each step is as long as the time since the last one, so the simulation
+            # keeps real time however many frames per second the computer draws.
+            async_settings = sim_world.get_settings()
+            settings = sim_world.get_settings()
+            settings.synchronous_mode = True
+            settings.fixed_delta_seconds = None
+            sim_world.apply_settings(settings)
+            traffic_manager.set_synchronous_mode(True)
+            ticker = SimTicker(sim_world)
         audio = AudioEngine(not args.no_audio_engine)  # after the map change, so it connects to Town04
 
         remove_stale_actors(client, sim_world)
@@ -2087,6 +2316,7 @@ def game_loop(args):
         hud = HUD(args.width, args.height)
         world = World(sim_world, hud, args)
         add_driver_view(world, args)
+        soften_engine_braking(world.player)
 
         # Put the vehicle on the figure-8 highway.
         carla_map = world.map
@@ -2095,18 +2325,20 @@ def game_loop(args):
         route = routes[args.lane]
         logging.info('Figure-8 route, lane %d: %d waypoints, ~%.0f m',
                      args.lane, len(route), len(route) * ROUTE_RESOLUTION)
+        green_lights = hold_loop_lights_green(sim_world, routes)
         start = route[0].transform
         start.location.z += 0.5
         world.player.set_transform(start)
-        sim_world.wait_for_tick()  # let the new position reach the client
+        advance(sim_world, args)  # let the new position reach the client
 
         route_planner = GlobalRoutePlanner(carla_map, ROUTE_RESOLUTION)
         follower = LoopFollower(world.player, route, args.speed, carla_map, route_planner)
         # in scenario 2 cars driving the lane that gets closed would run into the work zone
         traffic_lanes = tuple(lane for lane in LANES if not (args.scenario == 2 and lane in WORKZONE_LANES))
-        traffic = spawn_traffic(sim_world, routes, args, client.get_trafficmanager(), traffic_lanes)
+        traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes)
         last_refresh = time.monotonic()
-        recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window)
+        latency = LatencyMeter()
+        recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window, latency)
         if args.scenario == 2 and args.lane in WORKZONE_LANES:
             logging.warning('The car drives in lane %d, which the work zone closes', args.lane)
         scenario = make_scenario(args, sim_world, routes, route)
@@ -2116,10 +2348,12 @@ def game_loop(args):
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
-        sim_world.wait_for_tick()
+        advance(sim_world, args)
         clock = pygame.time.Clock()
         while True:
-            clock.tick_busy_loop(60)
+            clock.tick_busy_loop(args.fps or 60)
+            if ticker is not None:
+                ticker.wait()
             now = time.monotonic()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -2138,12 +2372,23 @@ def game_loop(args):
                 last_refresh = now
                 for npc in traffic:
                     npc.refresh_path()
+            if ticker is not None:  # the next step, with this frame's controls, while this frame is drawn
+                latency.sent(ticker.frame + 1, time.monotonic())
+                ticker.start()
             world.tick(clock)
             world.render(display)
             experiment.render(display, fonts, now)
             pygame.display.flip()
+            latency.shown(getattr(world.camera_manager, 'surface_image', None), time.monotonic())
 
     finally:
+        if async_settings is not None:  # first: a server left in synchronous mode stops until someone ticks it
+            try:
+                ticker.wait()
+            except RuntimeError:
+                pass
+            traffic_manager.set_synchronous_mode(False)
+            sim_world.apply_settings(async_settings)
         if driver_input is not None:
             driver_input.close()  # releases the wheel's force feedback
         if audio is not None:
@@ -2154,6 +2399,7 @@ def game_loop(args):
             destroy_actors(client, [npc.actor for npc in traffic])
         if scenario is not None:
             scenario.cleanup(client)
+        release_lights(green_lights)
         if world is not None:
             if getattr(world.camera_manager, 'side_views', None):
                 destroy_side_views(world.camera_manager)
@@ -2187,10 +2433,15 @@ def main():
     argparser.add_argument('--render-scale', metavar='F', type=float, default=1.0,
                            help='cameras render at F x the monitor resolution and are scaled up, '
                                 'e.g. 0.5 for more FPS (default: 1.0)')
+    argparser.add_argument('--fps', metavar='N', type=float, default=30.0,
+                           help='most frames per second: the server runs in synchronous mode, one step per '
+                                'frame, which keeps the traffic cars steady; each step is as long as the frame, '
+                                'so the simulation keeps real time. 0 = asynchronous (default: 30)')
     argparser.add_argument('--filter', metavar='PATTERN', default=DEFAULT_VEHICLE,
                            help='vehicle blueprint (default: "%s")' % DEFAULT_VEHICLE)
-    argparser.add_argument('--view', choices=['driver', 'chase'], default='driver',
-                           help='start in the driver\'s seat or behind the car; TAB switches (default: driver)')
+    argparser.add_argument('--view', choices=['driver', 'windshield', 'chase'], default='driver',
+                           help='start in the driver\'s seat, at the windshield (no steering wheel, wider view of '
+                                'the road) or behind the car; TAB switches (default: driver)')
     argparser.add_argument('--speed', metavar='KMH', default=80.0, type=float,
                            help='autonomous target speed in km/h (default: 80)')
     argparser.add_argument('--gamma', default=2.2, type=float, help='camera gamma correction (default: 2.2)')
@@ -2286,7 +2537,7 @@ def main():
         except (AttributeError, OSError):
             pass
     # Options the stock World class expects.
-    args.sync = False
+    args.sync = args.fps > 0
     args.generation = 'All'
     args.rolename = 'hero'
 
