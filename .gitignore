@@ -8,6 +8,9 @@
 
 !/PythonAPI/
 /PythonAPI/*
-!/PythonAPI/scripts/
+!/PythonAPI/examples/
+/PythonAPI/examples/*
+!/PythonAPI/examples/takeover_experiment.py
+!/PythonAPI/examples/analyze_takeover.py
 
 __pycache__/

@@ -24,10 +24,10 @@ collision (0.1 s before to 1 s after it).
 
 Run from the CARLA_0.9.16 root folder:
 
-    python PythonAPI\\scripts\\analyze_takeover.py                     newest run in Data
-    python PythonAPI\\scripts\\analyze_takeover.py Data\\261006_173529   chosen run(s)
-    python PythonAPI\\scripts\\analyze_takeover.py --all               every run in Data
-    python PythonAPI\\scripts\\analyze_takeover.py --window 15         other takeover period
+    python PythonAPI\\examples\\analyze_takeover.py                     newest run in Data
+    python PythonAPI\\examples\\analyze_takeover.py Data\\261006_173529   chosen run(s)
+    python PythonAPI\\examples\\analyze_takeover.py --all               every run in Data
+    python PythonAPI\\examples\\analyze_takeover.py --window 15         other takeover period
 """
 
 from __future__ import print_function

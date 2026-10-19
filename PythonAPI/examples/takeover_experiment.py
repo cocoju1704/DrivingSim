@@ -5,8 +5,11 @@ Takeover (TOR) experiment on the Town04 figure-8 highway.
 
 The vehicle starts in autonomous mode in lane 2 (the second lane from the median)
 and loops the figure-8 highway forever. Use --vehicles N to add traffic.
+--scenario 0 is a practice drive: manual driving from the start.
 
-    Driver input      : keyboard (default) or steering wheel + pedals (--input wheel).
+    Driver input      : steering wheel + pedals if one is connected, else keyboard
+                        (--input wheel / keyboard to choose). Wheel buttons (reverse,
+                        turn signals, horn, lights, ...): set them up once with --wheel-setup.
                           keyboard : W/A/S/D or ARROWS
                           wheel    : steering wheel, throttle pedal, brake pedal
                         Autonomous driving is locked until the pre-alert: input is
@@ -38,6 +41,9 @@ and loops the figure-8 highway forever. Use --vehicles N to add traffic.
 
 Scenarios (--scenario N). Each has an event point on the loop; the pre-alert starts
 automatically --alert-lead seconds before the car reaches it, once per pass:
+    0  practice       manual driving from the start, for getting used to the wheel and
+                      pedals: no autonomous mode, no pre-alert (P and E do nothing),
+                      nothing logged
     1  highway exit   event: the exit point (end of the overpass, --exit-at)
                       pre-alert 10 s before it
     2  work zone      after the first lap, lanes 3 and 4 are closed further ahead
@@ -62,17 +68,19 @@ dashboard is in view (--view chase: from behind the car).
 
 Run from the CARLA_0.9.16 root folder:
 
-    python PythonAPI\\scripts\\takeover_experiment.py
-    python PythonAPI\\scripts\\takeover_experiment.py --input wheel
-    python PythonAPI\\scripts\\takeover_experiment.py --lane 1 --vehicles 15
-    python PythonAPI\\scripts\\takeover_experiment.py --wheel-test   (find axis numbers)
+    python PythonAPI\\examples\\takeover_experiment.py
+    python PythonAPI\\examples\\takeover_experiment.py --input wheel
+    python PythonAPI\\examples\\takeover_experiment.py --lane 1 --vehicles 15
+    python PythonAPI\\examples\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
 
 from __future__ import print_function
 
 import argparse
 import csv
+import ctypes
 import datetime
+import json
 import logging
 import math
 import os
@@ -85,6 +93,10 @@ import time
 
 import carla
 import numpy
+
+# SDL drops wheel input while none of its windows has focus: --wheel-test has no window at all,
+# and in the experiment a click on the CARLA server window would freeze the wheel
+os.environ.setdefault('SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS', '1')
 
 try:
     import pygame
@@ -120,8 +132,7 @@ from agents.navigation.global_route_planner import GlobalRoutePlanner  # pylint:
 from agents.navigation.local_planner import RoadOption  # pylint: disable=import-error
 
 # Reuse the world, HUD and camera of the stock manual_control example.
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'examples'))
-from manual_control import HUD, World  # pylint: disable=import-error
+from manual_control import HUD, CameraManager, World  # pylint: disable=import-error
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------
@@ -136,6 +147,25 @@ DEFAULT_LANE = 2
 DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instrument cluster
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
 MIRROR_FOV = 60.0          # degrees, side mirror views
+DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
+# Mirror glass, measured on the Lincoln MKZ 2020 from where its mirrors appear in the driver's seat view.
+MIRROR_GLASS = (0.281, 0.05, 1.40)  # side mirror: x and z as shares of the car's half length / height, y m outside
+LEFT_MIRROR_SIZE = (0.251, 0.127)  # m, as seen from the driver (the right glass is seen more from the side)
+RIGHT_MIRROR_SIZE = (0.180, 0.116)
+# Glass outlines in the driver's seat view, as (x, y) shares of the glass's bounding box
+LEFT_MIRROR_OUTLINE = [(0.0, 0.40), (0.13, 0.05), (0.77, 0.0), (0.88, 0.08), (1.0, 0.50), (0.99, 0.81),
+                       (0.93, 0.98), (0.85, 1.0), (0.05, 0.71)]
+RIGHT_MIRROR_OUTLINE = [(0.0, 0.48), (0.06, 0.06), (0.66, 0.0), (0.87, 0.15), (1.0, 0.51), (0.95, 0.86),
+                        (0.66, 1.0), (0.02, 1.0)]
+MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
+REAR_MIRROR = (0.60, 0.0, 0.11)    # rear-view mirror glass, m from the driver's eyes (forward, right, up)
+REAR_MIRROR_SIZE = (0.26, 0.055)   # m
+REAR_MIRROR_FOV = 45.0             # degrees
+WHEEL_SETUP_WAIT = 10         # seconds --wheel-setup waits for each button
+PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals are not exactly at rest)
+WHEEL_SPRING_STANDSTILL = 0.45  # force feedback: centering force when standing, share of --wheel-force
+WHEEL_SPRING_FULL_SPEED = 80.0  # km/h at which the centering force reaches --wheel-force
+WHEEL_DAMPING = 0.3            # damping (wheel weight), share of --wheel-force
 # manual_control's camera positions, in its order (they come after the experiment's views)
 STOCK_VIEW_NAMES = ['Behind the car', 'Hood', 'Front side', 'Far behind', 'Low side']
 LANES = (1, 2, 3)
@@ -178,6 +208,7 @@ FOG_FALLOFF = 0.2       # fog stays close to the ground
 # Scenario number -> name, pre-alert message, seconds before the event point at which
 # the pre-alert starts.
 SCENARIOS = {
+    0: ('practice', 'Practice drive', 0.0),  # manual driving only, no alerts
     1: ('exit', 'Highway exit ahead', 10.0),
     2: ('workzone', 'Work zone ahead', 20.0),
     3: ('fog', 'Low visibility', 0.0),   # the lead starts the fog; the pre-alert follows its density
@@ -237,15 +268,16 @@ def destroy_actors(client, actors):
 
 
 def remove_stale_actors(client, sim_world):
-    """Destroy hero/npc cars (and their sensors) that an earlier run left in the server."""
+    """Destroy hero/npc cars (and their sensors) that an earlier run left in the server, and sensors
+    whose car is gone (the audio engine's collision sensor: its process is killed, not closed)."""
     actors = sim_world.get_actors()
     stale = [a for a in actors.filter('vehicle.*') if a.attributes.get('role_name') in ('hero', 'npc', 'workzone')]
     stale += [a for a in actors.filter('static.prop.*') if a.attributes.get('role_name') == 'workzone']
-    if not stale:
-        return
     ids = set(a.id for a in stale)
-    sensors = [a for a in actors.filter('sensor.*') if a.parent is not None and a.parent.id in ids]
-    logging.warning('Removing %d actor(s) left over from an earlier run', len(stale))
+    sensors = [a for a in actors.filter('sensor.*') if a.parent is None or a.parent.id in ids]
+    if not stale and not sensors:
+        return
+    logging.warning('Removing %d actor(s) left over from an earlier run', len(stale) + len(sensors))
     destroy_actors(client, sensors + stale)
 
 
@@ -295,37 +327,220 @@ def experiment_views(extent):
     ]
 
 
-def add_driver_view(world, select):
+def car_mirrors(extent):
+    """The car's mirrors as (glass center, glass width and height in m, glass outline or None,
+    camera transform, fov).
+
+    CARLA does not render reflections, so the mirrors of the car model stay empty. Each mirror gets
+    a camera looking back, and its image is drawn over the glass where the glass appears in the
+    driver views (see _mirror_rect), cut to the glass outline. Fitted to the Lincoln MKZ 2020.
+    """
+    eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z
+    side_x, side_y, side_z = 0.25 * extent.x, extent.y + 0.1, 1.35 * extent.z
+    glass_x, glass_y, glass_z = MIRROR_GLASS[0] * extent.x, extent.y + MIRROR_GLASS[1], MIRROR_GLASS[2] * extent.z
+    return [
+        (carla.Location(x=glass_x, y=-glass_y, z=glass_z), LEFT_MIRROR_SIZE, LEFT_MIRROR_OUTLINE,
+         carla.Transform(carla.Location(x=side_x, y=-side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=-170.0)),
+         MIRROR_INSET_FOV),
+        (carla.Location(x=glass_x, y=glass_y, z=glass_z), RIGHT_MIRROR_SIZE, RIGHT_MIRROR_OUTLINE,
+         carla.Transform(carla.Location(x=side_x, y=side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=170.0)),
+         MIRROR_INSET_FOV),
+        (carla.Location(x=eye_x + REAR_MIRROR[0], y=REAR_MIRROR[1], z=eye_z + REAR_MIRROR[2]), REAR_MIRROR_SIZE, None,
+         carla.Transform(carla.Location(x=-extent.x - 0.2, z=eye_z + 0.1), carla.Rotation(pitch=-2.0, yaw=180.0)),
+         REAR_MIRROR_FOV),
+    ]
+
+
+def _glass_mask(size, outline):
+    """White glass shape on transparent, multiplied into a mirror image to cut it to the glass."""
+    mask = pygame.Surface(size, pygame.SRCALPHA)
+    mask.fill((0, 0, 0, 0))
+    pygame.draw.polygon(mask, (255, 255, 255, 255), [(x * (size[0] - 1), y * (size[1] - 1)) for x, y in outline])
+    return mask
+
+
+def _project(manager, eye, point):
+    """Window pixel (x, y) of `point` (car coordinates) seen from the driver view `eye`, and pixels
+    per meter at that distance; None when it is off the monitors."""
+    fov = manager.view_options.get(manager.transform_index, (None, False))[0] or manager.default_fov
+    width, height = manager.screen_size
+    focal = width / 2.0 / math.tan(math.radians(fov) / 2.0)
+    dx, dy, dz = point.x - eye.location.x, point.y - eye.location.y, point.z - eye.location.z
+    pitch = math.radians(eye.rotation.pitch)
+    middle = manager.screens // 2
+    for screen in range(manager.screens):
+        yaw = math.radians(eye.rotation.yaw + (screen - middle) * manager.screen_fov)
+        x = dx * math.cos(yaw) + dy * math.sin(yaw)
+        y = -dx * math.sin(yaw) + dy * math.cos(yaw)
+        x, z = x * math.cos(pitch) + dz * math.sin(pitch), -x * math.sin(pitch) + dz * math.cos(pitch)
+        if x <= 0.05:
+            continue
+        u, v = width / 2.0 + focal * y / x, height / 2.0 - focal * z / x
+        if 0 <= u < width:
+            return screen * width + u, v, focal / x
+    return None
+
+
+def _mirror_rect(manager, eye, center, size):
+    """Window rectangle of a mirror glass of `size` (m) at `center`, seen from `eye`. Mirrors are
+    turned towards the driver, so the glass is taken as facing the eye."""
+    projected = _project(manager, eye, center)
+    if projected is None:
+        return None
+    x, y, scale = projected
+    width, height = size[0] * scale, size[1] * scale
+    if width < 8 or height < 8:
+        return None
+    return pygame.Rect(int(x - width / 2), int(y - height / 2), int(width), int(height))
+
+
+def add_driver_view(world, args):
     """Add the experiment's camera positions in front of manual_control's; start in the driver's
-    seat if `select`. TAB (next_view) cycles through all of them and shows the name."""
+    seat unless --view chase. TAB (next_view) cycles through all of them and shows the name.
+
+    With --screens N the window is split into N monitors, each with its own camera: in the driver
+    views the outer cameras are turned by --screen-fov per monitor so the images join at the
+    monitor edges; the other views use only the middle monitor.
+    """
     manager = world.camera_manager
     views = experiment_views(world.player.bounding_box.extent)
     # pylint: disable=protected-access
     manager._camera_transforms[0:0] = [(transform, carla.AttachmentType.Rigid) for _, transform, _, _ in views]
     manager.view_names = [name for name, _, _, _ in views] + STOCK_VIEW_NAMES
-    manager.view_options = {i: (fov, mirrored) for i, (_, _, fov, mirrored) in enumerate(views)}
+    driver_fov = args.screen_fov if args.screens > 1 else None
+    manager.view_options = {i: (fov or driver_fov, mirrored) for i, (_, _, fov, mirrored) in enumerate(views)}
     manager.default_fov = manager.sensors[0][-1].get_attribute('fov').as_float()
-    stock_render = manager.render
+
+    manager.screens = args.screens
+    manager.screen_width = args.width // args.screens
+    manager.screen_fov = args.screen_fov
+    manager.side_views = []  # [(screen, camera, {'image', 'surface'})], driver views only
+    manager.mirror_views = []  # [(window rect, camera, {'image', 'surface'})], driver views only
+    manager.mirrors = [] if args.no_mirrors else car_mirrors(world.player.bounding_box.extent)
+    manager.latest_image = None  # newest RGB image, converted when it is drawn
+    # cameras render at --render-scale of a monitor, the client scales them up
+    manager.render_size = (int(manager.screen_width * args.render_scale), int(args.height * args.render_scale))
+    manager.screen_size = (manager.screen_width, args.height)
+    for sensor in manager.sensors:
+        if sensor[0].startswith('sensor.camera'):
+            sensor[-1].set_attribute('image_size_x', str(manager.render_size[0]))
+            sensor[-1].set_attribute('image_size_y', str(manager.render_size[1]))
 
     def render(display):
         _, mirrored = manager.view_options.get(manager.transform_index, (None, False))
-        if mirrored and manager.surface is not None:
-            display.blit(pygame.transform.flip(manager.surface, True, False), (0, 0))
-        else:
-            stock_render(display)
+        middle = manager.screens // 2
+        image, manager.latest_image = manager.latest_image, None
+        if image is not None:
+            manager.surface = _camera_surface(manager, image)
+        if manager.surface is not None:
+            surface = pygame.transform.flip(manager.surface, True, False) if mirrored else manager.surface
+            display.blit(surface, (middle * manager.screen_width, 0))
+        shown = {middle}
+        for screen, _, view in manager.side_views:
+            image, view['image'] = view['image'], None
+            if image is not None:
+                view['surface'] = _camera_surface(manager, image)
+            if view['surface'] is not None:
+                display.blit(view['surface'], (screen * manager.screen_width, 0))
+                shown.add(screen)
+        for screen in range(manager.screens):
+            if screen not in shown:
+                display.fill((0, 0, 0), (screen * manager.screen_width, 0, manager.screen_width, args.height))
+        for rect, _, view in manager.mirror_views:
+            image, view['image'] = view['image'], None
+            if image is not None:  # flipped left-right like a real mirror
+                surface = pygame.transform.flip(
+                    pygame.image.frombuffer(image.raw_data, (image.width, image.height), 'BGRA').convert(), True, False)
+                if view['mask'] is not None:
+                    surface = surface.convert_alpha()
+                    surface.blit(view['mask'], (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                view['surface'] = surface
+            if view['surface'] is not None:
+                display.blit(view['surface'], rect)
     manager.render = render
 
-    manager.transform_index = 0 if select else len(views)  # driver's seat, or behind the car (--view chase)
+    manager.transform_index = len(views) if args.view == 'chase' else 0  # driver's seat, or behind the car
     _respawn_view(manager)
 
 
+def _camera_surface(manager, image):
+    """carla.Image (BGRA) -> display-format surface the size of one monitor. SDL converts the
+    pixels directly; manual_control's numpy path is too slow for 2560x1440 images."""
+    surface = pygame.image.frombuffer(image.raw_data, (image.width, image.height), 'BGRA').convert()
+    if surface.get_size() != manager.screen_size:
+        surface = pygame.transform.scale(surface, manager.screen_size)
+    return surface
+
+
+def _parse_image(weak_self, image):
+    """Replaces CameraManager._parse_image: RGB images are only kept and converted when drawn (the
+    server sends more images than the client draws), other sensors take the stock path."""
+    self = weak_self()
+    if self is not None and hasattr(self, 'screen_size') and self.sensors[self.index][0] == 'sensor.camera.rgb' \
+            and self.sensors[self.index][1] == carla.ColorConverter.Raw:
+        self.latest_image = image
+    else:
+        _stock_parse_image(weak_self, image)
+
+
+_stock_parse_image = CameraManager._parse_image
+CameraManager._parse_image = staticmethod(_parse_image)
+
+
+def destroy_side_views(manager):
+    for _, camera, _ in manager.side_views + manager.mirror_views:
+        camera.stop()
+        camera.destroy()
+    manager.side_views = []
+    manager.mirror_views = []
+
+
 def _respawn_view(manager):
-    """Respawn the camera at manager.transform_index with that view's field of view."""
+    """Respawn the camera at manager.transform_index with that view's field of view, and the side
+    monitors' cameras in the driver views."""
     fov, _ = manager.view_options.get(manager.transform_index, (None, False))
     for sensor in manager.sensors:
         if sensor[-1].has_attribute('fov'):
             sensor[-1].set_attribute('fov', str(fov or manager.default_fov))
     manager.set_sensor(manager.index, notify=False, force_respawn=True)
+    manager.latest_image = None
+
+    destroy_side_views(manager)
+    if manager.screens > 1 and manager.transform_index in DRIVER_VIEWS:
+        # pylint: disable=protected-access
+        transform = manager._camera_transforms[manager.transform_index][0]
+        blueprint = manager.sensors[0][-1]  # RGB, already at this view's fov
+        middle = manager.screens // 2
+        for screen in range(manager.screens):
+            if screen == middle:
+                continue
+            rotation = carla.Rotation(pitch=transform.rotation.pitch,
+                                      yaw=transform.rotation.yaw + (screen - middle) * manager.screen_fov)
+            camera = manager._parent.get_world().spawn_actor(
+                blueprint, carla.Transform(transform.location, rotation),
+                attach_to=manager._parent, attachment_type=carla.AttachmentType.Rigid)
+            view = {'image': None, 'surface': None}
+            camera.listen(lambda image, view=view: view.__setitem__('image', image))
+            manager.side_views.append((screen, camera, view))
+
+    if manager.transform_index in DRIVER_VIEWS:
+        # pylint: disable=protected-access
+        eye = manager._camera_transforms[manager.transform_index][0]
+        library = manager._parent.get_world().get_blueprint_library()
+        for center, size, outline, transform, fov in manager.mirrors:
+            rect = _mirror_rect(manager, eye, center, size)
+            if rect is None:
+                continue
+            blueprint = library.find('sensor.camera.rgb')
+            blueprint.set_attribute('image_size_x', str(rect.width))
+            blueprint.set_attribute('image_size_y', str(rect.height))
+            blueprint.set_attribute('fov', str(fov))
+            blueprint.set_attribute('gamma', str(manager.sensors[0][-1].get_attribute('gamma').as_float()))
+            camera = manager._parent.get_world().spawn_actor(
+                blueprint, transform, attach_to=manager._parent, attachment_type=carla.AttachmentType.Rigid)
+            view = {'image': None, 'surface': None, 'mask': outline and _glass_mask(rect.size, outline)}
+            camera.listen(lambda image, view=view: view.__setitem__('image', image))
+            manager.mirror_views.append((rect, camera, view))
 
 
 def next_view(world):
@@ -336,13 +551,26 @@ def next_view(world):
     world.hud.notification(manager.view_names[manager.transform_index])
 
 
+class _FixedBoundingBox(object):
+    """The vehicle, with its bounding box read once. Each bounding_box read is a server round trip
+    (5 ms, several times that while the server renders the monitor cameras) and BasicAgent reads it
+    four times per step."""
+
+    def __init__(self, vehicle):
+        self._vehicle = vehicle
+        self.bounding_box = vehicle.bounding_box
+
+    def __getattr__(self, name):
+        return getattr(self._vehicle, name)
+
+
 class LoopFollower(object):
     """Drives a vehicle around a closed route forever with a BasicAgent."""
 
     def __init__(self, vehicle, route, target_speed, carla_map, route_planner):
         self._vehicle = vehicle
         self._route = route
-        self._agent = BasicAgent(vehicle, target_speed=target_speed, opt_dict={},
+        self._agent = BasicAgent(_FixedBoundingBox(vehicle), target_speed=target_speed, opt_dict={},
                                  map_inst=carla_map, grp_inst=route_planner)
         self._agent.ignore_traffic_lights(True)
         self._agent.ignore_stop_signs(True)
@@ -450,6 +678,7 @@ class TrafficVehicle(object):
         self._vehicle = vehicle
         self._route = route
         self._tm = traffic_manager
+        self.half_length = vehicle.bounding_box.extent.x  # read once: bounding_box is a server round trip
         vehicle.set_autopilot(True, traffic_manager.get_port())
         traffic_manager.auto_lane_change(vehicle, False)
         traffic_manager.set_desired_speed(vehicle, speed)
@@ -560,6 +789,15 @@ class KeyboardInput(object):
     def hand_brake(self):
         return False
 
+    def force_feedback(self, speed_kmh):
+        pass
+
+    def horn_event(self, event):
+        return False
+
+    def close(self):
+        pass
+
     def peek(self, keys):
         """(steer, throttle, brake) the driver is asking for right now."""
         return (float((keys[K_RIGHT] or keys[K_d]) - (keys[K_LEFT] or keys[K_a])),
@@ -578,6 +816,135 @@ class KeyboardInput(object):
             self._steer_cache = 0.0
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         control.steer = round(self._steer_cache, 1)
+
+
+class _HapticDirection(ctypes.Structure):
+    _fields_ = [('type', ctypes.c_uint8), ('dir', ctypes.c_int32 * 3)]
+
+
+class _HapticCondition(ctypes.Structure):
+    """SDL_HapticCondition (spring, damper, ...)."""
+    _fields_ = [('type', ctypes.c_uint16), ('direction', _HapticDirection), ('length', ctypes.c_uint32),
+                ('delay', ctypes.c_uint16), ('button', ctypes.c_uint16), ('interval', ctypes.c_uint16),
+                ('right_sat', ctypes.c_uint16 * 3), ('left_sat', ctypes.c_uint16 * 3),
+                ('right_coeff', ctypes.c_int16 * 3), ('left_coeff', ctypes.c_int16 * 3),
+                ('deadband', ctypes.c_uint16 * 3), ('center', ctypes.c_int16 * 3)]
+
+
+class _HapticEffect(ctypes.Union):
+    """SDL_HapticEffect; the padding covers the union's larger members."""
+    _fields_ = [('type', ctypes.c_uint16), ('condition', _HapticCondition), ('padding', ctypes.c_uint8 * 128)]
+
+
+class WheelForceFeedback(object):
+    """Resistance in the steering wheel: a centering spring that gets stiffer with speed, like the
+    self-aligning torque of a real car, plus some damping so the wheel does not feel weightless.
+
+    pygame has no force feedback, so this calls the haptic functions of the SDL2 library pygame
+    ships with (the same library instance, so the joystick and haptic parts share their state).
+    """
+
+    INIT_HAPTIC = 0x1000
+    SPRING, DAMPER, GAIN = 1 << 7, 1 << 8, 1 << 12
+    INFINITY = 0xFFFFFFFF
+    CARTESIAN, STEERING_AXIS = 1, 3  # SDL_HapticDirection types
+    RAMP_SECONDS = 1.5      # the force fades in, so the wheel does not jerk to the center at the start
+    UPDATE_SECONDS = 0.2    # each update goes through the wheel driver: not every frame
+
+    def __init__(self, name, strength):
+        self._sdl = None
+        self._strength = max(0.0, min(strength, 100.0)) / 100.0
+        self._start = time.monotonic()
+        self._last_update = 0.0
+        self._spring_coeff = None
+        if self._strength <= 0.0:
+            return
+        try:
+            sdl = ctypes.CDLL(os.path.join(os.path.dirname(pygame.__file__), 'SDL2.dll'))
+        except OSError as error:
+            logging.warning('No force feedback, SDL2.dll not found: %s', error)
+            return
+        sdl.SDL_GetError.restype = ctypes.c_char_p
+        sdl.SDL_HapticName.restype = ctypes.c_char_p
+        sdl.SDL_HapticOpen.restype = ctypes.c_void_p
+        for function in ('SDL_HapticQuery', 'SDL_HapticClose', 'SDL_HapticStopAll'):
+            getattr(sdl, function).argtypes = [ctypes.c_void_p]
+        sdl.SDL_HapticQuery.restype = ctypes.c_uint
+        sdl.SDL_HapticSetGain.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        sdl.SDL_HapticNewEffect.argtypes = [ctypes.c_void_p, ctypes.POINTER(_HapticEffect)]
+        sdl.SDL_HapticUpdateEffect.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(_HapticEffect)]
+        sdl.SDL_HapticRunEffect.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_uint32]
+        if sdl.SDL_InitSubSystem(self.INIT_HAPTIC) != 0:
+            logging.warning('No force feedback: %s', sdl.SDL_GetError().decode(errors='replace'))
+            return
+        index = next((i for i in range(sdl.SDL_NumHaptics())
+                      if (sdl.SDL_HapticName(i) or b'').decode(errors='replace') == name), None)
+        haptic = sdl.SDL_HapticOpen(index) if index is not None else None
+        if not haptic:
+            logging.warning('No force feedback for %s', name)
+            return
+        supported = sdl.SDL_HapticQuery(haptic)
+        if not supported & self.SPRING:
+            logging.warning('No force feedback: %s has no spring effect', name)
+            sdl.SDL_HapticClose(haptic)
+            return
+        self._sdl, self._haptic = sdl, haptic
+        if supported & self.GAIN:
+            sdl.SDL_HapticSetGain(haptic, 100)
+        # the default (polar) direction needs two axes; a wheel has one
+        for self._direction in (self.STEERING_AXIS, self.CARTESIAN):
+            self._spring = self._effect(self.SPRING, 0)
+            self._spring_id = sdl.SDL_HapticNewEffect(haptic, ctypes.byref(self._spring))
+            if self._spring_id >= 0:
+                break
+        self._damper_id = -1
+        if self._spring_id >= 0 and supported & self.DAMPER:
+            self._damper = self._effect(self.DAMPER, int(0x7FFF * WHEEL_DAMPING * self._strength))
+            self._damper_id = sdl.SDL_HapticNewEffect(haptic, ctypes.byref(self._damper))
+        if self._spring_id < 0:
+            logging.warning('No force feedback: %s', sdl.SDL_GetError().decode(errors='replace'))
+            self.close()
+            return
+        for effect_id in (self._spring_id, self._damper_id):
+            if effect_id >= 0:
+                sdl.SDL_HapticRunEffect(haptic, effect_id, self.INFINITY)
+        logging.info('Force feedback on %s, strength %.0f%% (--wheel-force)', name, self._strength * 100)
+
+    def _effect(self, kind, coeff):
+        effect = _HapticEffect()
+        condition = effect.condition
+        condition.type = kind
+        condition.direction.type = self._direction
+        condition.direction.dir[0] = 1
+        condition.length = self.INFINITY
+        condition.right_sat[0] = condition.left_sat[0] = 0xFFFF
+        condition.right_coeff[0] = condition.left_coeff[0] = coeff
+        return effect
+
+    def update(self, speed_kmh):
+        """Spring stiffness for the current speed: WHEEL_SPRING_STANDSTILL of the full force when
+        standing, rising to the full force at WHEEL_SPRING_FULL_SPEED km/h."""
+        if self._sdl is None:
+            return
+        now = time.monotonic()
+        if now - self._last_update < self.UPDATE_SECONDS:
+            return
+        self._last_update = now
+        share = min(speed_kmh / WHEEL_SPRING_FULL_SPEED, 1.0)
+        stiffness = WHEEL_SPRING_STANDSTILL + (1.0 - WHEEL_SPRING_STANDSTILL) * share
+        ramp = min((now - self._start) / self.RAMP_SECONDS, 1.0)
+        coeff = int(0x7FFF * self._strength * stiffness * ramp)
+        if self._spring_coeff is not None and abs(coeff - self._spring_coeff) < 300:
+            return
+        self._spring_coeff = coeff
+        self._spring.condition.right_coeff[0] = self._spring.condition.left_coeff[0] = coeff
+        self._sdl.SDL_HapticUpdateEffect(self._haptic, self._spring_id, ctypes.byref(self._spring))
+
+    def close(self):
+        if self._sdl is not None:
+            self._sdl.SDL_HapticStopAll(self._haptic)
+            self._sdl.SDL_HapticClose(self._haptic)
+            self._sdl = None
 
 
 class WheelInput(object):
@@ -600,11 +967,15 @@ class WheelInput(object):
         self._steer_axis = args.steer_axis
         self._throttle_axis = args.throttle_axis
         self._brake_axis = args.brake_axis
-        self._handbrake_button = args.handbrake_button
-        self._reverse_button = args.reverse_button
-        self._light_buttons = {args.left_blinker_button: 'left', args.right_blinker_button: 'right',
-                               args.light_button: 'lights', args.high_beam_button: 'high_beam'}
+        buttons = wheel_buttons(args, self._joystick.get_name())
+        self._handbrake_button = buttons['handbrake']
+        self._reverse_button = buttons['reverse']
+        self._horn_button = buttons['horn']
+        self._light_buttons = {buttons['left_blinker']: 'left', buttons['right_blinker']: 'right',
+                               buttons['lights']: 'lights', buttons['high_beam']: 'high_beam',
+                               buttons['interior']: 'interior'}
         self._light_buttons.pop(-1, None)
+        self._keyboard = None  # the horn: the audio engine listens for the H key
         self._pedal_rest = 1.0 if args.pedal_rest > 0 else -1.0
         for axis in (self._steer_axis, self._throttle_axis, self._brake_axis):
             if not 0 <= axis < self._joystick.get_numaxes():
@@ -614,6 +985,13 @@ class WheelInput(object):
                      self._joystick.get_name(), self._steer_axis, self._throttle_axis, self._brake_axis)
         self._steer_baseline = 0.0
         self.reset()
+        self._force = WheelForceFeedback(self._joystick.get_name(), args.wheel_force)
+
+    def force_feedback(self, speed_kmh):
+        self._force.update(speed_kmh)
+
+    def close(self):
+        self._force.close()
 
     def reset(self):
         # The wheel is not necessarily centered when autonomous driving starts.
@@ -625,7 +1003,12 @@ class WheelInput(object):
 
     def _pedal(self, axis):
         raw = self._joystick.get_axis(axis)
-        return min(1.0, max(0.0, (raw - self._pedal_rest) / (-2.0 * self._pedal_rest)))
+        pressed = min(1.0, max(0.0, (raw - self._pedal_rest) / (-2.0 * self._pedal_rest)))
+        # A released pedal reads 0.99997 (pygame divides by 32768), not 1: the brake would stay at
+        # 0.00002, and CARLA holds a car with any brake above 0, whatever the throttle.
+        if pressed < PEDAL_DEADZONE:
+            return 0.0
+        return (pressed - PEDAL_DEADZONE) / (1.0 - PEDAL_DEADZONE)
 
     def is_takeover_event(self, event):
         return False
@@ -633,6 +1016,25 @@ class WheelInput(object):
     def is_reverse_event(self, event):
         return (event.type == pygame.JOYBUTTONDOWN and self._reverse_button >= 0 and
                 event.button == self._reverse_button)
+
+    def horn_event(self, event):
+        """Horn button: holds the H key down while pressed, because the audio engine (a separate
+        process) reads the horn from the keyboard. True if the event was the horn button."""
+        if event.type not in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP) or event.button != self._horn_button:
+            return False
+        if self._keyboard is None:
+            try:
+                import keyboard  # pylint: disable=import-outside-toplevel
+                self._keyboard = keyboard
+            except ImportError:
+                logging.warning('The horn button needs the keyboard package: pip install keyboard')
+                self._horn_button = -1
+                return True
+        if event.type == pygame.JOYBUTTONDOWN:
+            self._keyboard.press('h')
+        else:
+            self._keyboard.release('h')
+        return True
 
     def light_event(self, event):
         """Light switch the event asks for (wheel button or key, see keyboard_light_event), else None."""
@@ -656,6 +1058,86 @@ class WheelInput(object):
         control.steer = self._steer()
         control.throttle = self._pedal(self._throttle_axis)
         control.brake = self._pedal(self._brake_axis)
+
+
+WHEEL_BUTTONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wheel_buttons.json')
+# (action, option, button suggested on a PlayStation wheel such as the Thrustmaster T300 RS, what it does)
+WHEEL_ACTIONS = [
+    ('reverse', 'reverse_button', 'R2', 'reverse on/off'),
+    ('left_blinker', 'left_blinker_button', 'the LEFT paddle behind the wheel', 'left turn signal'),
+    ('right_blinker', 'right_blinker_button', 'the RIGHT paddle behind the wheel', 'right turn signal'),
+    ('horn', 'horn_button', 'CROSS (X)', 'horn'),
+    ('lights', 'light_button', 'SQUARE', 'lights: position -> low beam -> fog -> off'),
+    ('high_beam', 'high_beam_button', 'TRIANGLE', 'high beam on/off'),
+    ('interior', 'interior_button', 'CIRCLE', 'interior light on/off'),
+    ('handbrake', 'handbrake_button', 'L2', 'hand-brake (while held)'),
+]
+
+
+def wheel_buttons(args, wheel_name):
+    """{action: button number, -1 = none}: the command line options, else wheel_buttons.json."""
+    saved = {}
+    try:
+        with open(WHEEL_BUTTONS_FILE) as file:
+            data = json.load(file)
+        if data.get('wheel') == wheel_name:
+            saved = data.get('buttons', {})
+        else:
+            logging.warning('%s was set up for "%s", not this wheel: run --wheel-setup',
+                            WHEEL_BUTTONS_FILE, data.get('wheel'))
+    except (OSError, ValueError):
+        logging.warning('No wheel buttons set up yet: run --wheel-setup')
+    buttons = {}
+    for action, option, _, _ in WHEEL_ACTIONS:
+        value = getattr(args, option)
+        buttons[action] = value if value is not None else saved.get(action, -1)
+    logging.info('Wheel buttons: %s', ', '.join('%s %d' % item for item in buttons.items() if item[1] >= 0) or 'none')
+    return buttons
+
+
+def wheel_setup(args):
+    """Ask for each wheel button in turn and save the numbers to wheel_buttons.json."""
+    pygame.init()
+    pygame.joystick.init()
+    if not 0 <= args.joystick < pygame.joystick.get_count():
+        print('No steering wheel found.')
+        return
+    joystick = pygame.joystick.Joystick(args.joystick)
+    joystick.init()
+    name = joystick.get_name()
+    print('\nWheel: %s (%d buttons)' % (name, joystick.get_numbuttons()))
+    print('Press the button asked for. Wait %d s to skip one, Ctrl+C to cancel.\n' % WHEEL_SETUP_WAIT)
+    buttons = {}
+
+    def held():
+        pygame.event.pump()
+        return {i for i in range(joystick.get_numbuttons()) if joystick.get_button(i)}
+
+    try:
+        for action, _, suggested, description in WHEEL_ACTIONS:
+            print('  %-42s press %s ... ' % (description, suggested), end='', flush=True)
+            pressed, deadline, before = None, time.time() + WHEEL_SETUP_WAIT, held()
+            while pressed is None and time.time() < deadline:
+                new = held() - before - set(buttons.values())
+                before &= held()
+                if new:
+                    pressed = min(new)
+                time.sleep(0.01)
+            if pressed is None:
+                print('skipped')
+                continue
+            buttons[action] = pressed
+            print('button %d' % pressed)
+            while pressed in held():  # wait for the release
+                time.sleep(0.01)
+    except KeyboardInterrupt:
+        print('\nCancelled, nothing saved.')
+        return
+    finally:
+        pygame.quit()
+    with open(WHEEL_BUTTONS_FILE, 'w') as file:
+        json.dump({'wheel': name, 'buttons': buttons}, file, indent=2)
+    print('\nSaved to %s' % WHEEL_BUTTONS_FILE)
 
 
 def wheel_test(args):
@@ -719,6 +1201,7 @@ class TrialRecorder(object):
     def __init__(self, world, traffic, driver_input, args, started, window=POST_WINDOW):
         self._world = world
         self._traffic = traffic
+        self._half_length = world.player.bounding_box.extent.x  # bounding_box is a server round trip
         self._input = driver_input
         self._window = window
         self._constant = {'scenario': args.scenario, 'input': args.input, 'lane': args.lane,
@@ -839,7 +1322,7 @@ class TrialRecorder(object):
             delta = transform.location - waypoint.transform.location
             lane_offset = delta.x * wp_right.x + delta.y * wp_right.y + delta.z * wp_right.z
 
-        gap, lead_speed, ttc = self._lead(transform, forward, player, speed)
+        gap, lead_speed, ttc = self._lead(transform, forward, speed)
 
         frames = len(self._world.collision_sensor.history)
         if frames > self._collision_frames:
@@ -867,7 +1350,7 @@ class TrialRecorder(object):
         self._pending = ''
         return row, {'lane_id': lane_id, 'lane_offset': lane_offset, 'gap': gap, 'ttc': ttc}
 
-    def _lead(self, transform, forward, player, speed):
+    def _lead(self, transform, forward, speed):
         """Gap (m), speed (km/h) and time-to-collision (s) of the closest traffic car ahead in this lane."""
         best = None
         location = transform.location
@@ -881,11 +1364,12 @@ class TrialRecorder(object):
             side = abs(-delta.x * forward.y + delta.y * forward.x)
             if 0.0 < ahead < 150.0 and side < 1.9 and abs(delta.z) < 3.0:
                 if best is None or ahead < best[0]:
-                    best = (ahead, other)
+                    best = (ahead, npc)
         if best is None:
             return None, None, None
-        ahead, other = best
-        gap = max(ahead - player.bounding_box.extent.x - other.bounding_box.extent.x, 0.0)
+        ahead, npc = best
+        other = npc.actor
+        gap = max(ahead - self._half_length - npc.half_length, 0.0)
         velocity = other.get_velocity()
         lead_speed = velocity.x * forward.x + velocity.y * forward.y
         closing = speed - lead_speed
@@ -956,6 +1440,8 @@ class Scenario(object):
     `event_index` (a route index; None while there is no event yet).
     """
 
+    manual_only = False  # True: the driver drives from the start, no autonomous mode
+
     def __init__(self, number, args):
         self.number = number
         self.name, self.message, lead = SCENARIOS[number]
@@ -987,6 +1473,16 @@ class Scenario(object):
 
     def cleanup(self, client):
         pass
+
+
+class PracticeScenario(Scenario):
+    """0: practice drive, manual from the start. No event point, so no pre-alert and nothing logged."""
+
+    manual_only = True
+
+    def __init__(self, args):
+        super(PracticeScenario, self).__init__(0, args)
+        logging.info('Scenario 0, practice drive: manual driving, no takeover requests')
 
 
 class ExitScenario(Scenario):
@@ -1151,6 +1647,8 @@ class FogScenario(Scenario):
 
 
 def make_scenario(args, sim_world, routes, route):
+    if args.scenario == 0:
+        return PracticeScenario(args)
     if args.scenario == 2:
         return WorkzoneScenario(args, sim_world, route, routes[3])
     if args.scenario == 3:
@@ -1249,7 +1747,9 @@ class AudioEngine(object):
         for process in self._processes:
             if process.poll() is None:
                 # /T: the venv python.exe is a launcher, the interpreter runs as its child
-                subprocess.call(['taskkill', '/T', '/F', '/PID', str(process.pid)],
+                # full path: System32 is not on this PC's PATH
+                taskkill = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'taskkill.exe')
+                subprocess.call([taskkill, '/T', '/F', '/PID', str(process.pid)],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._processes = []
 
@@ -1284,7 +1784,13 @@ class TakeoverExperiment(object):
         self._alert_time = 0.0
         self._tor_time = 0.0
         self.mode = AUTO
-        self._engage_autonomous()
+        if scenario.manual_only:
+            self.mode = MANUAL
+            self._input.reset()
+            self._world.hud.notification('Practice drive: manual driving', seconds=4.0)
+            logging.info('Manual driving (practice)')
+        else:
+            self._engage_autonomous()
 
     # -- mode changes ----------------------------------------------------------
 
@@ -1328,6 +1834,8 @@ class TakeoverExperiment(object):
     # -- per frame -------------------------------------------------------------
 
     def handle_event(self, event, now):
+        if self._input.horn_event(event):
+            return
         light = self._input.light_event(event)
         if light is not None:
             self._switch_light(light)
@@ -1342,7 +1850,7 @@ class TakeoverExperiment(object):
             return
         if event.key == K_p and self.mode == AUTO:
             self._start_alert(now)
-        elif event.key == K_e and self.mode == MANUAL:
+        elif event.key == K_e and self.mode == MANUAL and not self._scenario.manual_only:
             self._engage_autonomous()
         elif event.key == K_q and self.mode == MANUAL:
             self._toggle_reverse()
@@ -1473,6 +1981,7 @@ class TakeoverExperiment(object):
             self._parse_manual_keys(keys, clock.get_time())
             control = self._control
         self._world.player.apply_control(control)
+        self._input.force_feedback(self._world.player.get_velocity().length() * 3.6)
         self._update_lights(control)
         self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
 
@@ -1491,6 +2000,8 @@ class TakeoverExperiment(object):
             label, color = 'AUTONOMOUS - LOCKED', (40, 160, 70)
         elif self.mode in ALERT_MODES:
             label, color = 'AUTONOMOUS', (40, 160, 70)
+        elif self._scenario.manual_only:
+            label, color = 'PRACTICE - MANUAL', (40, 110, 200)
         else:
             label, color = 'MANUAL', (40, 110, 200)
         box_width = small.size(label)[0] + 36
@@ -1549,6 +2060,7 @@ def game_loop(args):
     recorder = None
     client = None
     audio = None
+    driver_input = None
 
     try:
         driver_input = WheelInput(args) if args.input == 'wheel' else KeyboardInput()
@@ -1563,13 +2075,18 @@ def game_loop(args):
 
         remove_stale_actors(client, sim_world)
 
-        display = pygame.display.set_mode((args.width, args.height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+        flags = pygame.HWSURFACE | pygame.DOUBLEBUF
+        if args.window_pos:
+            # borderless window over the monitors, its top-left corner at --window-pos
+            os.environ['SDL_VIDEO_WINDOW_POS'] = args.window_pos
+            flags |= pygame.NOFRAME
+        display = pygame.display.set_mode((args.width, args.height), flags)
         display.fill((0, 0, 0))
         pygame.display.flip()
 
         hud = HUD(args.width, args.height)
         world = World(sim_world, hud, args)
-        add_driver_view(world, args.view == 'driver')
+        add_driver_view(world, args)
 
         # Put the vehicle on the figure-8 highway.
         carla_map = world.map
@@ -1627,6 +2144,8 @@ def game_loop(args):
             pygame.display.flip()
 
     finally:
+        if driver_input is not None:
+            driver_input.close()  # releases the wheel's force feedback
         if audio is not None:
             audio.stop()
         if recorder is not None:
@@ -1636,6 +2155,8 @@ def game_loop(args):
         if scenario is not None:
             scenario.cleanup(client)
         if world is not None:
+            if getattr(world.camera_manager, 'side_views', None):
+                destroy_side_views(world.camera_manager)
             world.destroy()
         pygame.quit()
         if recorder is not None:
@@ -1651,7 +2172,21 @@ def main():
     argparser = argparse.ArgumentParser(description='Takeover (TOR) experiment on the Town04 figure-8 highway')
     argparser.add_argument('--host', metavar='H', default='127.0.0.1', help='IP of the host server (default: 127.0.0.1)')
     argparser.add_argument('-p', '--port', metavar='P', default=2000, type=int, help='TCP port (default: 2000)')
-    argparser.add_argument('--res', metavar='WIDTHxHEIGHT', default='1280x720', help='window resolution (default: 1280x720)')
+    argparser.add_argument('--res', metavar='WIDTHxHEIGHT', default='7680x1440',
+                           help='window resolution (default: 7680x1440, three 2560x1440 monitors)')
+    argparser.add_argument('--window-pos', metavar='X,Y', default='-2560,0',
+                           help='top-left corner of a borderless window on the desktop, "" for a normal window '
+                                '(default: -2560,0, the left edge of the left monitor)')
+    argparser.add_argument('--screens', metavar='N', type=int, default=3,
+                           help='monitors side by side in the window, one camera each (default: 3)')
+    argparser.add_argument('--screen-fov', metavar='DEG', type=float, default=60.0,
+                           help='horizontal field of view per monitor in the driver views; the side cameras '
+                                'are turned by this much (default: 60)')
+    argparser.add_argument('--no-mirrors', action='store_true',
+                           help='do not show the camera images in the car\'s side and rear-view mirrors')
+    argparser.add_argument('--render-scale', metavar='F', type=float, default=1.0,
+                           help='cameras render at F x the monitor resolution and are scaled up, '
+                                'e.g. 0.5 for more FPS (default: 1.0)')
     argparser.add_argument('--filter', metavar='PATTERN', default=DEFAULT_VEHICLE,
                            help='vehicle blueprint (default: "%s")' % DEFAULT_VEHICLE)
     argparser.add_argument('--view', choices=['driver', 'chase'], default='driver',
@@ -1666,7 +2201,8 @@ def main():
     argparser.add_argument('--npc-speed', metavar='KMH', type=float, default=70.0,
                            help='traffic vehicle speed in km/h (default: 70)')
     argparser.add_argument('--scenario', type=int, choices=sorted(SCENARIOS), default=1,
-                           help='1 highway exit, 2 work zone after the first lap, 3 sudden fog (default: 1)')
+                           help='0 practice (manual driving only), 1 highway exit, 2 work zone after the '
+                                'first lap, 3 sudden fog (default: 1)')
     argparser.add_argument('--alert-lead', metavar='SEC', type=float, default=None,
                            help='seconds before the event point at which the pre-alert starts '
                                 '(default: 10 / 20 / 0 for scenario 1 / 2 / 3)')
@@ -1698,38 +2234,57 @@ def main():
     argparser.add_argument('--post-window', metavar='SEC', type=float, default=POST_WINDOW,
                            help='seconds after the takeover that are scored as the takeover period (default: %g)' % POST_WINDOW)
     argparser.add_argument('--no-log', action='store_true', help='do not write the Data/*.csv log')
-    argparser.add_argument('--input', choices=['keyboard', 'wheel'], default='keyboard',
-                           help='driver input device (default: keyboard)')
+    argparser.add_argument('--input', choices=['auto', 'keyboard', 'wheel'], default='auto',
+                           help='driver input device; auto: the wheel if one is connected, else the keyboard '
+                                '(default: auto)')
+    argparser.add_argument('--wheel-force', metavar='PERCENT', default=80.0, type=float,
+                           help='force feedback: how hard the wheel pulls back to the center, 0 = off '
+                                '(default: 80)')
     argparser.add_argument('--joystick', metavar='N', default=0, type=int,
                            help='wheel device index, see --wheel-test (default: 0)')
     argparser.add_argument('--steer-axis', metavar='N', default=0, type=int,
                            help='steering wheel axis number (default: 0)')
     argparser.add_argument('--throttle-axis', metavar='N', default=2, type=int,
                            help='throttle pedal axis number (default: 2)')
-    argparser.add_argument('--brake-axis', metavar='N', default=3, type=int,
-                           help='brake pedal axis number (default: 3)')
+    argparser.add_argument('--brake-axis', metavar='N', default=1, type=int,
+                           help='brake pedal axis number (default: 1, Thrustmaster T300 RS; 3 on a Logitech G29)')
     argparser.add_argument('--pedal-rest', metavar='1|-1', default=1, type=int, choices=[1, -1],
                            help='axis value of a released pedal (default: 1, pressed = -1)')
-    argparser.add_argument('--handbrake-button', metavar='N', default=-1, type=int,
-                           help='wheel button for the hand-brake (default: none)')
-    argparser.add_argument('--reverse-button', metavar='N', default=-1, type=int,
-                           help='wheel button that toggles reverse (default: none)')
-    argparser.add_argument('--left-blinker-button', metavar='N', default=-1, type=int,
-                           help='wheel button for the left turn signal (default: none, Z key always works)')
-    argparser.add_argument('--right-blinker-button', metavar='N', default=-1, type=int,
-                           help='wheel button for the right turn signal (default: none, X key always works)')
-    argparser.add_argument('--light-button', metavar='N', default=-1, type=int,
+    # Wheel buttons: --wheel-setup saves them to wheel_buttons.json; these options override the file.
+    argparser.add_argument('--handbrake-button', metavar='N', type=int,
+                           help='wheel button for the hand-brake (default: from --wheel-setup)')
+    argparser.add_argument('--reverse-button', metavar='N', type=int,
+                           help='wheel button that toggles reverse (default: from --wheel-setup)')
+    argparser.add_argument('--left-blinker-button', metavar='N', type=int,
+                           help='wheel button for the left turn signal (default: from --wheel-setup, Z key always works)')
+    argparser.add_argument('--right-blinker-button', metavar='N', type=int,
+                           help='wheel button for the right turn signal (default: from --wheel-setup, X key always works)')
+    argparser.add_argument('--light-button', metavar='N', type=int,
                            help='wheel button that switches the lights, position -> low beam -> fog -> off '
-                                '(default: none, L key always works)')
-    argparser.add_argument('--high-beam-button', metavar='N', default=-1, type=int,
-                           help='wheel button for the high beam (default: none, SHIFT+L always works)')
+                                '(default: from --wheel-setup, L key always works)')
+    argparser.add_argument('--high-beam-button', metavar='N', type=int,
+                           help='wheel button for the high beam (default: from --wheel-setup, SHIFT+L always works)')
+    argparser.add_argument('--interior-button', metavar='N', type=int,
+                           help='wheel button for the interior light (default: from --wheel-setup, I key always works)')
+    argparser.add_argument('--horn-button', metavar='N', type=int,
+                           help='wheel button for the horn (default: from --wheel-setup, H key always works)')
     argparser.add_argument('--wheel-test', action='store_true',
                            help='print live wheel axis and button values, then exit')
+    argparser.add_argument('--wheel-setup', action='store_true',
+                           help='press the wheel buttons one by one when asked (reverse, turn signals, horn, ...); '
+                                'saves them to wheel_buttons.json next to this script, then exits')
     args = argparser.parse_args()
     if args.pre_alert <= 0:
         argparser.error('--pre-alert must be greater than 0')
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
+    if os.name == 'nt':
+        try:
+            # real pixels: without this, Windows display scaling would enlarge the window past the monitors
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            pass
     # Options the stock World class expects.
     args.sync = False
     args.generation = 'All'
@@ -1738,10 +2293,18 @@ def main():
     if args.wheel_test:
         wheel_test(args)
         return
+    if args.wheel_setup:
+        wheel_setup(args)
+        return
 
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
     logging.info('listening to server %s:%s', args.host, args.port)
     print(__doc__)
+
+    if args.input == 'auto':
+        pygame.joystick.init()
+        args.input = 'wheel' if pygame.joystick.get_count() > 0 else 'keyboard'
+    logging.info('Driver input: %s', args.input)
 
     try:
         game_loop(args)
