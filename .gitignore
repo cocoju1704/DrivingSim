@@ -1,10 +1,12 @@
 # Only our own files are tracked; the CARLA release itself is not.
 /*
 !/.gitignore
+!/README.md
 !/requirements.txt
 !/CarlaUE4_nosound.bat
 !/carla-audio-engine/
 /carla-audio-engine/logs/
+!/TORApp/
 
 !/PythonAPI/
 /PythonAPI/*
