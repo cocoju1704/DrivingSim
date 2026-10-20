@@ -5,6 +5,7 @@
 !/CarlaUE4_nosound.bat
 !/carla-audio-engine/
 /carla-audio-engine/logs/
+!/TORApp/
 
 !/PythonAPI/
 /PythonAPI/*

@@ -66,11 +66,16 @@ while it runs). Use --no-log to turn the log off.
 The car is a Lincoln MKZ 2020 (--filter), seen from the driver's seat so the
 dashboard is in view (--view chase: from behind the car).
 
+--glasses PHONE_IP shows the pre-alert and the TOR on Meta Ray-Ban Display glasses
+instead of the screen: TORApp on the phone (TORApp folder) receives the state over
+Wi-Fi and puts it on the glasses. The sounds stay as they are.
+
 Run from the CARLA_0.9.16 root folder:
 
     python PythonAPI\\examples\\takeover_experiment.py
     python PythonAPI\\examples\\takeover_experiment.py --input wheel
     python PythonAPI\\examples\\takeover_experiment.py --lane 1 --vehicles 15
+    python PythonAPI\\examples\\takeover_experiment.py --glasses 192.168.0.23
     python PythonAPI\\examples\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
 
@@ -161,6 +166,11 @@ MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
 REAR_MIRROR = (0.60, 0.0, 0.11)    # rear-view mirror glass, m from the driver's eyes (forward, right, up)
 REAR_MIRROR_SIZE = (0.26, 0.055)   # m
 REAR_MIRROR_FOV = 45.0             # degrees
+# --screens 1: the side mirrors are out of the single monitor's view, so they are drawn as
+# insets at its lower left and right edges instead (height and center as shares of the monitor).
+SIDE_INSET_HEIGHT = 0.18
+SIDE_INSET_Y = 0.70
+SIDE_INSET_MARGIN = 20             # px from the monitor edge
 WHEEL_SETUP_WAIT = 10         # seconds --wheel-setup waits for each button
 PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals are not exactly at rest)
 WHEEL_SPRING_STANDSTILL = 0.45  # force feedback: centering force when standing, share of --wheel-force
@@ -172,6 +182,7 @@ LANES = (1, 2, 3)
 NPC_SLOT_SPACING = 40.0   # meters between possible traffic positions in a lane
 NPC_CLEARANCE = 60.0      # no traffic closer than this to the start position
 NPC_NEAR_RANGE = 300.0    # traffic fills this stretch around the start first
+NPC_EXCLUDED = ('vehicle.micro.microlino',)  # base_type car, but drives badly in Traffic Manager traffic
 WORKZONE_AT = 1990.0          # scenario 2: taper start, m from the start (straight, 4 lanes)
 WORKZONE_AFTER_LAPS = 1       # scenario 2: the work zone appears after this many laps
 WORKZONE_TAPER = 60.0         # length of the taper that closes lanes 3 and 4
@@ -195,6 +206,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 LOG_DIR = os.path.join(ROOT, 'Data')
 AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, --no-audio-engine
 AUDIO_ENGINE_PYTHON = os.path.join(ROOT, 'venv_carla', 'Scripts', 'python.exe')     # has pyfmodex installed
+GLASSES_DIR = os.path.join(ROOT, 'TORApp', 'pc')  # tor_glasses.py, --glasses
 POST_WINDOW = 10.0  # seconds after the takeover that count as the takeover period
 FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no overpass
 FOG_AT = 700.0          # scenario 3: where the fog starts to thicken, m from the start
@@ -394,6 +406,16 @@ def _mirror_rect(manager, eye, center, size):
     return pygame.Rect(int(x - width / 2), int(y - height / 2), int(width), int(height))
 
 
+def _side_inset_rect(manager, center, size):
+    """--screens 1: window rectangle of a side mirror drawn as an inset at the lower left (left
+    mirror) or right edge of the monitor, with the glass's proportions."""
+    width, height = manager.screen_size
+    inset_height = int(height * SIDE_INSET_HEIGHT)
+    inset_width = int(inset_height * size[0] / size[1])
+    x = SIDE_INSET_MARGIN if center.y < 0 else width - SIDE_INSET_MARGIN - inset_width
+    return pygame.Rect(x, int(height * SIDE_INSET_Y - inset_height / 2), inset_width, inset_height)
+
+
 def add_driver_view(world, args):
     """Add the experiment's camera positions in front of manual_control's; start in the driver's
     seat unless --view chase. TAB (next_view) cycles through all of them and shows the name.
@@ -528,7 +550,10 @@ def _respawn_view(manager):
         eye = manager._camera_transforms[manager.transform_index][0]
         library = manager._parent.get_world().get_blueprint_library()
         for center, size, outline, transform, fov in manager.mirrors:
-            rect = _mirror_rect(manager, eye, center, size)
+            if manager.screens == 1 and outline is not None:  # side mirror (the rear one has no outline)
+                rect = _side_inset_rect(manager, center, size)
+            else:
+                rect = _mirror_rect(manager, eye, center, size)
             if rect is None:
                 continue
             blueprint = library.find('sensor.camera.rgb')
@@ -734,7 +759,8 @@ def spawn_traffic(sim_world, routes, args, traffic_manager, lanes):
     chosen += random.sample(far, count - len(chosen))
     # Passenger cars only: they handle the highway curves at traffic speed.
     blueprints = [bp for bp in sim_world.get_blueprint_library().filter('vehicle.*')
-                  if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car']
+                  if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car'
+                  and bp.id not in NPC_EXCLUDED]
     traffic = []
     for lane, index in chosen:
         blueprint = random.choice(blueprints)
@@ -1761,8 +1787,9 @@ class AudioEngine(object):
 
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
-                 pre_alert=PRE_ALERT_SECONDS):
+                 pre_alert=PRE_ALERT_SECONDS, glasses=None):
         self._world = world
+        self._glasses = glasses             # GlassesLink: alerts on the glasses instead of the screen
         self._pre_alert = pre_alert         # seconds from the pre-alert to the TOR
         # Lights the driver switched (int VehicleLightState flags), kept here because the state read
         # back from the server can lag behind quick presses. Brake/reverse lights are added per frame.
@@ -1984,6 +2011,20 @@ class TakeoverExperiment(object):
         self._input.force_feedback(self._world.player.get_velocity().length() * 3.6)
         self._update_lights(control)
         self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
+        if self._glasses is not None:
+            self._update_glasses(now)
+
+    def _update_glasses(self, now):
+        """The overlay of render() on the glasses: the mode box label and the PRE-ALERT / TOR banner."""
+        label = self._mode_label()[0]
+        if self.mode == PRE_ALERT:
+            self._glasses.update(PRE_ALERT, self._scenario.message,
+                                 self._pre_alert - (now - self._alert_time), self._pre_alert, label)
+        elif self.mode == TOR:
+            self._glasses.update(TOR, self._scenario.message, TOR_SECONDS - (now - self._tor_time), TOR_SECONDS,
+                                 label)
+        else:
+            self._glasses.update(self.mode, label=label)
 
     def _parse_manual_keys(self, keys, milliseconds):
         self._input.update(self._control, keys, milliseconds)
@@ -1992,22 +2033,27 @@ class TakeoverExperiment(object):
 
     # -- overlay ---------------------------------------------------------------
 
+    def _mode_label(self):
+        """Text and color of the mode box at the top of the screen."""
+        if self.mode == AUTO:
+            return 'AUTONOMOUS - LOCKED', (40, 160, 70)
+        if self.mode in ALERT_MODES:
+            return 'AUTONOMOUS', (40, 160, 70)
+        if self._scenario.manual_only:
+            return 'PRACTICE - MANUAL', (40, 110, 200)
+        return 'MANUAL', (40, 110, 200)
+
     def render(self, display, fonts, now):
         big, small = fonts
         width = display.get_width()
 
-        if self.mode == AUTO:
-            label, color = 'AUTONOMOUS - LOCKED', (40, 160, 70)
-        elif self.mode in ALERT_MODES:
-            label, color = 'AUTONOMOUS', (40, 160, 70)
-        elif self._scenario.manual_only:
-            label, color = 'PRACTICE - MANUAL', (40, 110, 200)
-        else:
-            label, color = 'MANUAL', (40, 110, 200)
+        label, color = self._mode_label()
         box_width = small.size(label)[0] + 36
         self._draw_box(display, small, label, (width // 2 - box_width // 2, 10, box_width, 34), color,
                        (255, 255, 255))
 
+        if self._glasses is not None:
+            return  # the pre-alert and the TOR are on the glasses
         if self.mode == PRE_ALERT:
             remaining = self._pre_alert - (now - self._alert_time)
             self._draw_banner(display, big, small, width, 'PRE-ALERT',
@@ -2061,8 +2107,13 @@ def game_loop(args):
     client = None
     audio = None
     driver_input = None
+    glasses = None
 
     try:
+        if args.glasses:
+            sys.path.append(GLASSES_DIR)
+            from tor_glasses import GlassesLink  # pylint: disable=import-error
+            glasses = GlassesLink(args.glasses, args.glasses_port)
         driver_input = WheelInput(args) if args.input == 'wheel' else KeyboardInput()
         client = carla.Client(args.host, args.port)
         client.set_timeout(60.0)
@@ -2112,7 +2163,8 @@ def game_loop(args):
         scenario = make_scenario(args, sim_world, routes, route)
         sound = AlertSound(not args.no_sound)
         experiment = TakeoverExperiment(world, follower, driver_input, recorder, route, scenario, sound,
-                                        auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert)
+                                        auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
+                                        glasses=glasses)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
@@ -2148,6 +2200,8 @@ def game_loop(args):
             driver_input.close()  # releases the wheel's force feedback
         if audio is not None:
             audio.stop()
+        if glasses is not None:
+            glasses.close()
         if recorder is not None:
             recorder.close()
         if traffic:
@@ -2229,6 +2283,11 @@ def main():
     argparser.add_argument('--no-sound', action='store_true', help='no alert sounds')
     argparser.add_argument('--no-audio-engine', action='store_true',
                            help='do not start the vehicle sounds of carla-audio-engine')
+    argparser.add_argument('--glasses', metavar='PHONE_IP',
+                           help='show the pre-alert and the TOR on Meta Ray-Ban Display glasses instead of the '
+                                'screen, through TORApp on the phone at this IP (shown in the app)')
+    argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
+                           help='UDP port of TORApp (default: 5007)')
     argparser.add_argument('--no-auto-alert', action='store_true',
                            help='do not start the pre-alert automatically, only with the P key')
     argparser.add_argument('--post-window', metavar='SEC', type=float, default=POST_WINDOW,
