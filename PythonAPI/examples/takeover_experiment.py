@@ -43,7 +43,7 @@ Scenarios (--scenario N). Each has an event point on the loop; the pre-alert sta
 automatically --alert-lead seconds before the car reaches it, once per pass:
     0  practice       manual driving from the start, for getting used to the wheel and
                       pedals: no autonomous mode, no pre-alert (P and E do nothing),
-                      nothing logged
+                      nothing logged; clear noon weather
     1  highway exit   event: the exit point (end of the overpass, --exit-at)
                       pre-alert 10 s before it
     2  work zone      after the first lap, lanes 3 and 4 are closed further ahead
@@ -195,6 +195,12 @@ PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals 
 # The MKZ's engine brakes with the throttle released (damping_rate_zero_throttle_clutch_engaged
 # 2.0: from 80 km/h to a stop in 10 s). With this it rolls on at about 0.5 m/s^2 from 85 km/h.
 ENGINE_DAMPING = 0.35
+# Without that engine braking the brake pedal stops the car less (full brake 5.7 instead of 7.5
+# m/s^2 from 80 km/h). Stronger brakes and BRAKE_CURVE give back the MKZ's default braking.
+BRAKE_TORQUE_SCALE = 1.35
+# brake pedal travel -> CARLA brake, (travel, brake): the default MKZ's deceleration from 80 km/h,
+# measured (2.9 m/s^2 at 5 % travel, 3.8 at 20 %, 6.0 at 50 %, 7.5 fully pressed)
+BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.33), (0.1, 0.38), (0.2, 0.47), (0.3, 0.57), (0.5, 0.77), (1.0, 0.90)]
 # CARLA's throttle is a share of the engine torque at any speed: a slightly pressed pedal would keep
 # accelerating to well past 100 km/h. The wheel's throttle pedal instead asks for an acceleration
 # that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
@@ -249,6 +255,8 @@ FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no over
 FOG_AT = 700.0          # scenario 3: where the fog starts to thicken, m from the start
 FOG_THRESHOLD = 45.0    # fog density at which the pre-alert starts
 FOG_MAX = 90.0          # densest fog
+PRACTICE_WEATHER = 'ClearNoon'  # scenario 0: a carla.WeatherParameters preset
+PRACTICE_ISO = 400              # scenario 0: manual exposure of the driver view cameras (brighter than automatic)
 FOG_RISE = 20.0         # seconds from the start of the fog to the threshold
 FOG_PEAK_AFTER = 10.0   # the fog is densest this many seconds after the takeover
 FOG_CLEAR = 5.0         # seconds for the fog to clear when autonomous driving is re-engaged
@@ -489,6 +497,10 @@ def add_driver_view(world, args):
         if sensor[0].startswith('sensor.camera'):
             sensor[-1].set_attribute('image_size_x', str(manager.render_size[0]))
             sensor[-1].set_attribute('image_size_y', str(manager.render_size[1]))
+        if sensor[0] == 'sensor.camera.rgb' and args.scenario == 0:
+            # practice drive in bright daylight: the automatic exposure keeps the view dim
+            sensor[-1].set_attribute('exposure_mode', 'manual')
+            sensor[-1].set_attribute('iso', str(PRACTICE_ISO))
 
     def render(display):
         _, mirrored = manager.view_options.get(manager.transform_index, (None, False))
@@ -637,9 +649,14 @@ class _FixedBoundingBox(object):
 
 def soften_engine_braking(vehicle):
     """With the pedal released the MKZ's engine brakes like a brake pedal (80 km/h to a stop in
-    10 s, it shifts down to first gear); ENGINE_DAMPING lets it roll on like a real car."""
+    10 s, it shifts down to first gear); ENGINE_DAMPING lets it roll on like a real car, and
+    BRAKE_TORQUE_SCALE keeps its full braking."""
     physics = vehicle.get_physics_control()
     physics.damping_rate_zero_throttle_clutch_engaged = ENGINE_DAMPING
+    wheels = physics.wheels
+    for wheel in wheels:
+        wheel.max_brake_torque *= BRAKE_TORQUE_SCALE
+    physics.wheels = wheels
     vehicle.apply_physics_control(physics)
 
 
@@ -1234,7 +1251,7 @@ class WheelInput(object):
 
     def update(self, control, keys, milliseconds, speed_kmh, incline):
         control.steer = self._steer()
-        control.brake = self._pedal(self._brake_axis)
+        control.brake = _interpolate(BRAKE_CURVE, self._pedal(self._brake_axis))
         control.throttle = self._throttle.step(self._pedal(self._throttle_axis), control.brake, speed_kmh, incline,
                                                milliseconds / 1000.0)
 
@@ -1711,13 +1728,20 @@ class Scenario(object):
 
 
 class PracticeScenario(Scenario):
-    """0: practice drive, manual from the start. No event point, so no pre-alert and nothing logged."""
+    """0: practice drive, manual from the start. No event point, so no pre-alert and nothing logged.
+    In bright daylight (PRACTICE_WEATHER); the server's weather comes back afterwards."""
 
     manual_only = True
 
-    def __init__(self, args):
+    def __init__(self, args, sim_world):
         super(PracticeScenario, self).__init__(0, args)
-        logging.info('Scenario 0, practice drive: manual driving, no takeover requests')
+        self._world = sim_world
+        self._original = sim_world.get_weather()
+        sim_world.set_weather(getattr(carla.WeatherParameters, PRACTICE_WEATHER))
+        logging.info('Scenario 0, practice drive: manual driving, no takeover requests, %s', PRACTICE_WEATHER)
+
+    def cleanup(self, client):
+        self._world.set_weather(self._original)
 
 
 class ExitScenario(Scenario):
@@ -1883,7 +1907,7 @@ class FogScenario(Scenario):
 
 def make_scenario(args, sim_world, routes, route):
     if args.scenario == 0:
-        return PracticeScenario(args)
+        return PracticeScenario(args, sim_world)
     if args.scenario == 2:
         return WorkzoneScenario(args, sim_world, route, routes[3])
     if args.scenario == 3:

@@ -169,6 +169,8 @@ class CarlaClient:
                 v = self.vehicle.get_velocity()
                 kmh = self._MS_IN_KMH * math.sqrt(v.x**2 + v.y**2 + v.z**2)
                 control = self.vehicle.get_control()
+                lights = self.vehicle.get_light_state()
+                blinker = bool(lights & (carla.VehicleLightState.LeftBlinker | carla.VehicleLightState.RightBlinker))
                 gear = control.gear
                 handbrake = control.hand_brake
                 steer = control.steer
@@ -194,7 +196,9 @@ class CarlaClient:
                         "wind_intensity" : wind_intensity,
                         "acceleration" : acceleration.y,
                         "honk" : honk,
-                        "handbrake" : self.handbrake_trigger
+                        "handbrake" : self.handbrake_trigger,
+                        "blinker" : blinker,
+                        "reverse" : bool(control.reverse)
                     }
                 self.crash_impulse = False
                 self.handbrake_trigger = False

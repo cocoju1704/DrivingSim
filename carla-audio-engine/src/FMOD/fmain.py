@@ -55,9 +55,11 @@ def main():
 
     # Recorded loops from the Sounds folder (plus the synthesized motor if EVSampleEngine.SYNTH_MOTOR)
     ev = EVSampleEngine()
-    layers = {"motor": ev.motor_sound, "road": ev.road_sound, "cabin": ev.cabin_sound, "synth motor": ev.synth}
+    layers = {"motor": ev.motor_sound, "road": ev.road_sound, "cabin": ev.cabin_sound, "blinker": ev.blinker_sound,
+              "reverse": ev.reverse_sound, "synth motor": ev.synth}
     print("EV sound layers: " + (", ".join(name for name, layer in layers.items() if layer is not None) or "none"))
-    rev_beep = ReverseBeep()
+    # the reverse loop of the sample engine replaces the synthesized reverse beep
+    rev_beep = None if ev.reverse_sound is not None else ReverseBeep()
 
     engine_adapter = EngineAdapter(bus, ev)
     trigger_adapter = TriggerAdapter(bus, rev_beep, trigger_bank)

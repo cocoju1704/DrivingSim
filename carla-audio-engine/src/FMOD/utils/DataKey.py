@@ -54,6 +54,10 @@ class DataKey(str, Enum):
 
     HANDBRAKE = "handbrake"
     """str: Key for state of the manual parking brake engagement."""
+    BLINKER = "blinker"
+    """str: Key for the turn signals: True while the left or right one is on."""
+    REVERSE = "reverse"
+    """str: Key for reverse: True while the vehicle is in reverse."""
 
     ACTIVE = "active"
     """str: Key set by the :class:`SoundModel`: False while there is no vehicle or no data from the CARLA side."""
