@@ -185,6 +185,18 @@ REAR_MIRROR_OUTLINE = [(0.01, 0.48), (0.04, 0.14), (0.06, 0.05), (0.12, 0.0), (0
                        (1.0, 0.9), (1.0, 0.95), (0.95, 1.0), (0.33, 0.76), (0.15, 0.76), (0.04, 0.73), (0.0, 0.62)]
 REAR_MIRROR_FOV = 45.0             # degrees
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
+# The MKZ 2020's instrument cluster as seen between the steering wheel's rim and hub in the driver's
+# seat view, measured on the middle monitor at 3 x 60 degrees (2560 x 1440 px): the panel covering it
+# (its lower edge follows the hub) and the area its speed and pedal bar are laid out in, as shares
+CLUSTER_OUTLINE = [(1160, 1135), (1385, 1135), (1470, 1170), (1522, 1220), (1525, 1322), (1475, 1312),
+                   (1425, 1300), (1350, 1290), (1275, 1286), (1200, 1288), (1100, 1297), (985, 1322),
+                   (990, 1225), (1065, 1170)]
+CLUSTER_OUTLINE = [(x / 2560.0, y / 1440.0) for x, y in CLUSTER_OUTLINE]
+CLUSTER_RECT = (1000 / 2560.0, 1145 / 1440.0, 520 / 2560.0, 140 / 1440.0)
+CLUSTER_BACKGROUND = (12, 14, 18)
+CLUSTER_TEXT = (235, 240, 245)
+CLUSTER_DIM = (120, 130, 140)
+CLUSTER_ACCEL = (60, 200, 110)
 # --screens 1: the side mirrors are out of the single monitor's view, so they are drawn as
 # insets at its lower left and right edges instead (height and center as shares of the monitor).
 SIDE_INSET_HEIGHT = 0.18
@@ -205,7 +217,7 @@ BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.33), (0.1, 0.38), (0.2, 0.47), (0.3, 0.57), 
 # accelerating to well past 100 km/h. The wheel's throttle pedal instead asks for an acceleration
 # that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
 # controller finds the CARLA throttle for it (see PedalThrottle).
-PEDAL_ACCEL_MAX = 3.5        # m/s^2 asked for with the pedal fully pressed, at standstill
+PEDAL_ACCEL_MAX = 4.0        # m/s^2 asked for with the pedal fully pressed, at standstill
 PEDAL_ACCEL_CURVE = 1.2      # acceleration asked for grows with travel ** this: gentle at small travel
 PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pressed, proportionally less with less
 # CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle), measured
@@ -216,9 +228,10 @@ CREEP_ACCEL = 0.5            # m/s^2 creeping off from standstill
 PEDAL_GAIN_P = 0.10         # throttle per m/s^2 of acceleration missing
 PEDAL_GAIN_I = 0.30          # throttle per m/s^2 per second (makes up for hills and HOLD_THROTTLE's error)
 PEDAL_ACCEL_FILTER = 0.3     # seconds, smoothing of the measured acceleration
-WHEEL_SPRING_STANDSTILL = 0.45  # force feedback: centering force when standing, share of --wheel-force
+WHEEL_SPRING_STANDSTILL = 0.6  # force feedback: centering force when standing, share of --wheel-force
 WHEEL_SPRING_FULL_SPEED = 80.0  # km/h at which the centering force reaches --wheel-force
-WHEEL_DAMPING = 0.3            # damping (wheel weight), share of --wheel-force
+WHEEL_DAMPING = 0.7            # damping: resists turning the wheel quickly, share of --wheel-force
+WHEEL_FRICTION = 0.5           # friction: resists turning the wheel at all, share of --wheel-force
 # manual_control's camera positions, in its order (they come after the experiment's views)
 STOCK_VIEW_NAMES = ['Behind the car', 'Hood', 'Front side', 'Far behind', 'Low side']
 LANES = (1, 2, 3)
@@ -1032,14 +1045,15 @@ class _HapticEffect(ctypes.Union):
 
 class WheelForceFeedback(object):
     """Resistance in the steering wheel: a centering spring that gets stiffer with speed, like the
-    self-aligning torque of a real car, plus some damping so the wheel does not feel weightless.
+    self-aligning torque of a real car, plus damping and friction so the wheel does not turn as
+    lightly as a bare game wheel (WHEEL_DAMPING, WHEEL_FRICTION).
 
     pygame has no force feedback, so this calls the haptic functions of the SDL2 library pygame
     ships with (the same library instance, so the joystick and haptic parts share their state).
     """
 
     INIT_HAPTIC = 0x1000
-    SPRING, DAMPER, GAIN = 1 << 7, 1 << 8, 1 << 12
+    SPRING, DAMPER, FRICTION, GAIN = 1 << 7, 1 << 8, 1 << 10, 1 << 12
     INFINITY = 0xFFFFFFFF
     CARTESIAN, STEERING_AXIS = 1, 3  # SDL_HapticDirection types
     RAMP_SECONDS = 1.5      # the force fades in, so the wheel does not jerk to the center at the start
@@ -1091,18 +1105,23 @@ class WheelForceFeedback(object):
             self._spring_id = sdl.SDL_HapticNewEffect(haptic, ctypes.byref(self._spring))
             if self._spring_id >= 0:
                 break
-        self._damper_id = -1
+        self._damper_id = self._friction_id = -1
         if self._spring_id >= 0 and supported & self.DAMPER:
             self._damper = self._effect(self.DAMPER, int(0x7FFF * WHEEL_DAMPING * self._strength))
             self._damper_id = sdl.SDL_HapticNewEffect(haptic, ctypes.byref(self._damper))
+        if self._spring_id >= 0 and supported & self.FRICTION:
+            self._friction = self._effect(self.FRICTION, int(0x7FFF * WHEEL_FRICTION * self._strength))
+            self._friction_id = sdl.SDL_HapticNewEffect(haptic, ctypes.byref(self._friction))
         if self._spring_id < 0:
             logging.warning('No force feedback: %s', sdl.SDL_GetError().decode(errors='replace'))
             self.close()
             return
-        for effect_id in (self._spring_id, self._damper_id):
+        for effect_id in (self._spring_id, self._damper_id, self._friction_id):
             if effect_id >= 0:
                 sdl.SDL_HapticRunEffect(haptic, effect_id, self.INFINITY)
-        logging.info('Force feedback on %s, strength %.0f%% (--wheel-force)', name, self._strength * 100)
+        logging.info('Force feedback on %s, strength %.0f%% (--wheel-force): spring, %s, %s', name,
+                     self._strength * 100, 'damper' if self._damper_id >= 0 else 'no damper',
+                     'friction' if self._friction_id >= 0 else 'no friction')
 
     def _effect(self, kind, coeff):
         effect = _HapticEffect()
@@ -2023,6 +2042,9 @@ class TakeoverExperiment(object):
                  pre_alert=PRE_ALERT_SECONDS, glasses=None):
         self._world = world
         self._glasses = glasses             # GlassesLink: alerts on the glasses instead of the screen
+        self._speed_kmh = 0.0               # shown on the instrument cluster (_draw_cluster)
+        self._pedal = 0.0                   # throttle pedal travel the driver gives, 0..1
+        self._cluster_fonts = None
         self._pre_alert = pre_alert         # seconds from the pre-alert to the TOR
         # Lights the driver switched (int VehicleLightState flags), kept here because the state read
         # back from the server can lag behind quick presses. Brake/reverse lights are added per frame.
@@ -2236,6 +2258,7 @@ class TakeoverExperiment(object):
                 self._take_over(now, forced=True)
 
         speed_kmh = self._world.player.get_velocity().length() * 3.6
+        self._speed_kmh, self._pedal = speed_kmh, self._input.peek(keys)[1]
         if self.mode in AUTONOMOUS_MODES:
             control = self._follower.run_step()
         else:
@@ -2282,6 +2305,7 @@ class TakeoverExperiment(object):
         big, small = fonts
         width = display.get_width()
 
+        self._draw_cluster(display)
         label, color = self._mode_label()
         box_width = small.size(label)[0] + 36
         self._draw_box(display, small, label, (width // 2 - box_width // 2, 10, box_width, 34), color,
@@ -2301,6 +2325,42 @@ class TakeoverExperiment(object):
                               'Manual driving in %.1f s' % max(remaining, 0.0),
                               (220, 30, 30) if flash else (150, 20, 20), (255, 255, 255),
                               remaining / TOR_SECONDS)
+
+    def _draw_cluster(self, display):
+        """Driver's seat view on the monitors: a panel over the car's instrument cluster (its
+        gauges are fixed in the model) with the speed and the throttle pedal travel."""
+        manager = self._world.camera_manager
+        if manager.transform_index != 0 or manager.screens < 2:
+            return
+        screen_width, screen_height = manager.screen_size
+        x, y, w, h = (int(share * size) for share, size in
+                      zip(CLUSTER_RECT, (screen_width, screen_height, screen_width, screen_height)))
+        x += manager.screens // 2 * screen_width
+        if self._cluster_fonts is None:
+            default = pygame.font.get_default_font()
+            self._cluster_fonts = (pygame.font.Font(default, int(h * 0.62)), pygame.font.Font(default, int(h * 0.16)))
+        number, label = self._cluster_fonts
+        left = manager.screens // 2 * screen_width
+        pygame.draw.polygon(display, CLUSTER_BACKGROUND,
+                            [(left + px * screen_width, py * screen_height) for px, py in CLUSTER_OUTLINE])
+
+        # speed, left 55 %
+        speed = number.render('%d' % round(self._speed_kmh), True, CLUSTER_TEXT)
+        display.blit(speed, speed.get_rect(midright=(x + int(w * 0.40), y + int(h * 0.50))))
+        unit = label.render('km/h', True, CLUSTER_DIM)
+        display.blit(unit, unit.get_rect(midleft=(x + int(w * 0.42), y + int(h * 0.62))))
+
+        # throttle pedal, right: label, bar, percent
+        bar = pygame.Rect(x + int(w * 0.60), y + int(h * 0.42), int(w * 0.34), int(h * 0.20))
+        title = label.render('ACCEL', True, CLUSTER_DIM)
+        display.blit(title, title.get_rect(bottomleft=(bar.left, bar.top - int(h * 0.05))))
+        pygame.draw.rect(display, CLUSTER_DIM, bar, 2)
+        fill = bar.inflate(-6, -6)
+        fill.width = int(fill.width * min(max(self._pedal, 0.0), 1.0))
+        if fill.width > 0:
+            pygame.draw.rect(display, CLUSTER_ACCEL, fill)
+        percent = label.render('%d %%' % round(self._pedal * 100), True, CLUSTER_TEXT)
+        display.blit(percent, percent.get_rect(topright=(bar.right, bar.bottom + int(h * 0.05))))
 
     @staticmethod
     def _draw_box(display, font, text, rect, background, foreground):
