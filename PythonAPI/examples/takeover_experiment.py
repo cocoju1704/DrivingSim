@@ -68,7 +68,9 @@ dashboard is in view (--view chase: from behind the car).
 
 --glasses PHONE_IP shows the pre-alert and the TOR on Meta Ray-Ban Display glasses
 instead of the screen: TORApp on the phone (TORApp folder) receives the state over
-Wi-Fi and puts it on the glasses. The sounds stay as they are.
+Wi-Fi and puts it on the glasses. Its alert sounds (chime, beeps, click) then come
+from the glasses' speakers instead of the PC (--pc-sound: from both). The vehicle
+sounds of the audio engine stay on the PC.
 
 Run from the CARLA_0.9.16 root folder:
 
@@ -2161,7 +2163,7 @@ def game_loop(args):
         if args.scenario == 2 and args.lane in WORKZONE_LANES:
             logging.warning('The car drives in lane %d, which the work zone closes', args.lane)
         scenario = make_scenario(args, sim_world, routes, route)
-        sound = AlertSound(not args.no_sound)
+        sound = AlertSound(not args.no_sound and (not args.glasses or args.pc_sound))  # --glasses: TORApp plays them
         experiment = TakeoverExperiment(world, follower, driver_input, recorder, route, scenario, sound,
                                         auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
                                         glasses=glasses)
@@ -2288,6 +2290,8 @@ def main():
                                 'screen, through TORApp on the phone at this IP (shown in the app)')
     argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
                            help='UDP port of TORApp (default: 5007)')
+    argparser.add_argument('--pc-sound', action='store_true',
+                           help='with --glasses: play the alert sounds on the PC too (default: only on the glasses)')
     argparser.add_argument('--no-auto-alert', action='store_true',
                            help='do not start the pre-alert automatically, only with the P key')
     argparser.add_argument('--post-window', metavar='SEC', type=float, default=POST_WINDOW,

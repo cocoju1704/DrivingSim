@@ -54,6 +54,8 @@ data class UiState(
     val keepAwake: Boolean = true,
     val lastSendMs: Long? = null, // duration of the last sendContent (Bluetooth)
     val blinking: Boolean = false,
+    val alertSounds: Boolean = true,
+    val audioOutput: String? = null, // where the sounds play: the glasses when they are connected
 )
 
 class TorViewModel(application: Application) : AndroidViewModel(application) {
@@ -63,6 +65,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   private val glasses = GlassesDisplay(viewModelScope)
   private val receiver = TorReceiver(TOR_PORT)
   private val wanted = MutableStateFlow(GlassesView.WAITING) // what the glasses should show
+  private val sounds = AlertSounds { output -> _uiState.update { it.copy(audioOutput = output) } }
   private val sendLock = Mutex()
   @Volatile private var lastSentAt = 0L
   @Volatile private var shownSeq = -1
@@ -103,6 +106,8 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
         onError = { message -> _uiState.update { it.copy(receiveError = message) } },
     )
     viewModelScope.launch { glasses.state.collect { state -> _uiState.update { it.copy(glasses = state) } } }
+    // The alert sounds follow the mode right away, independent of the display's Bluetooth sends.
+    viewModelScope.launch(Dispatchers.Default) { wanted.collect { sounds.onMode(it.mode) } }
 
     // Send the wanted view when it changes, and again when the display (re)starts.
     viewModelScope.launch(Dispatchers.IO) {
@@ -196,6 +201,11 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
 
   fun setKeepAwake(enabled: Boolean) = _uiState.update { it.copy(keepAwake = enabled) }
 
+  fun setAlertSounds(enabled: Boolean) {
+    sounds.enabled = enabled
+    _uiState.update { it.copy(alertSounds = enabled) }
+  }
+
   /** Test buttons: show a mode without the PC (the PC's next packet replaces it). */
   fun test(mode: TorMode) {
     wanted.value =
@@ -260,6 +270,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   override fun onCleared() {
     glasses.stop()
     receiver.stop()
+    sounds.release()
     connectivity.unregisterNetworkCallback(networkCallback)
     wifiLock.release()
     super.onCleared()

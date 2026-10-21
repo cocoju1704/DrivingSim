@@ -24,6 +24,15 @@ takeover_experiment.py ──UDP (Wi-Fi)──▶ TORApp (Galaxy S22) ──Blue
 
 The display is 600×600, right lens only, and additive (black is see-through). The SDK has no text or background colors (only PRIMARY/SECONDARY), so the phone draws the colored banners as bitmaps and sends them as images ([TorContent.kt](android/app/src/main/java/com/drivingsim/torapp/TorContent.kt)). Every view change is a full Bluetooth resend, so the countdown updates once per second.
 
+## Alert sounds (glasses speakers)
+
+The app plays the simulator's alert sounds ([AlertSounds.kt](android/app/src/main/java/com/drivingsim/torapp/AlertSounds.kt)): PRE-ALERT chime, TOR repeating beeps, takeover click. The glasses are the phone's Bluetooth audio device, so the sounds come from the glasses speakers.
+
+- With `--glasses`, the PC's alert sounds turn off (`--pc-sound` plays them on both). The vehicle sounds (audio engine) stay on the PC.
+- The app's **Alert sounds → Output** line shows where the sounds play. If it reads `phone speaker`, the glasses are not connected as a Bluetooth audio device.
+- Volume is the phone's **media volume**.
+- The app keeps playing silence so the Bluetooth audio link stays open (otherwise the start of a sound gets cut off). Bluetooth audio itself adds about 0.1–0.3 s of delay.
+
 ## 1. One-time setup
 
 ### Glasses / Meta AI app

@@ -110,6 +110,24 @@ fun MainScreen(
       }
     }
 
+    Section("Alert sounds") {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text("Play alert sounds")
+          Text(
+              "Chime (pre-alert), beeps (TOR), click (takeover), as on the simulator",
+              style = MaterialTheme.typography.bodySmall,
+          )
+        }
+        Switch(checked = state.alertSounds, onCheckedChange = viewModel::setAlertSounds)
+      }
+      Line("Output", state.audioOutput ?: "-")
+      Text(
+          "Volume: the phone's media volume. The glasses must be the phone's Bluetooth audio device.",
+          style = MaterialTheme.typography.bodySmall,
+      )
+    }
+
     Section("3. Simulator PC") {
       Line("This phone", state.phoneAddress?.let { "$it : $TOR_PORT (UDP)" } ?: "no network")
       state.receiveError?.let { ErrorText(it) }
