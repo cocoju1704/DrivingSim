@@ -47,6 +47,22 @@ class EngineAdapter:
         bus.subscribe(DataKey.SPEED, self.on_speed)
         bus.subscribe(DataKey.THROTTLE, self.on_throttle)
         bus.subscribe(DataKey.ACTIVE, self.on_active)
+        bus.subscribe(DataKey.BLINKER, self.on_blinker)
+        bus.subscribe(DataKey.REVERSE, self.on_reverse)
+
+    def on_blinker(self, on):
+        """Turn signal ticking while a turn signal is on (sample engine only)."""
+        if hasattr(self.ev, 'set_blinker'):
+            if self.ev.is_running is False:
+                self.ev.start()
+            self.ev.set_blinker(bool(on))
+
+    def on_reverse(self, on):
+        """Reverse warning sound while in reverse (sample engine only)."""
+        if hasattr(self.ev, 'set_reverse'):
+            if self.ev.is_running is False:
+                self.ev.start()
+            self.ev.set_reverse(bool(on))
 
     def on_active(self, active):
         """
@@ -85,12 +101,9 @@ class EngineAdapter:
             throttle (float): Current throttle position.
 
         Returns:
-            int: Returns 1 if throttle is active, 0 otherwise.
+            float: The throttle, 0..1: the motor gets louder the more it is pressed.
         """
-        if throttle <= 0:
-            return 0
-        elif throttle > 0:
-            return 1
+        return min(max(throttle, 0.0), 1.0)
 
     def update(self):
         """

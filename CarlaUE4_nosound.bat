@@ -7,6 +7,8 @@ rem
 rem With no window of its own, a minimized console "CARLA server - running" stays in the
 rem taskbar while the server runs and closes when it exits. If the server is already
 rem running, only that console is opened.
+rem Town04, the experiment's map, right away. Epic quality (the default): -quality-level=Low
+rem would give 30 instead of about 26 frames per second, but it renders no fog.
 
 setlocal
 rem full paths: System32 is not on this PC's PATH
@@ -21,8 +23,8 @@ exit /b
 title CARLA server - starting
 "%SYS%\tasklist.exe" /fi "imagename eq CarlaUE4-Win64-Shipping.exe" | "%SYS%\find.exe" /i "CarlaUE4" >nul
 if errorlevel 1 (
-    echo Starting CARLA: -nosound -RenderOffScreen %*
-    start "" "%~dp0CarlaUE4.exe" -nosound -RenderOffScreen %*
+    echo Starting CARLA: Town04 -nosound -RenderOffScreen %*
+    start "" "%~dp0CarlaUE4.exe" /Game/Carla/Maps/Town04 -nosound -RenderOffScreen %*
 ) else (
     echo CARLA is already running.
 )

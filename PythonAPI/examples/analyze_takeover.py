@@ -43,7 +43,7 @@ DATA_DIR = os.path.join(ROOT, 'Data')
 
 NUMERIC = ['t_prealert_s', 't_tor_s', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',
            'driver_steer', 'driver_throttle', 'driver_brake', 'lane_offset_m', 'lead_gap_m',
-           'lead_speed_kmh', 'ttc_s', 'first_input_s', 'tot_s', 'tor_reaction_s']
+           'lead_speed_kmh', 'ttc_s', 'first_input_s', 'tot_s', 'tor_reaction_s', 'frame_ms', 'latency_ms']
 COLLISION_BEFORE = 0.1  # seconds excluded before a collision
 COLLISION_AFTER = 1.0   # seconds excluded after a collision
 
@@ -103,6 +103,25 @@ def _window_stats(rows, prefix=''):
     return stats
 
 
+def _p95(values):
+    return sorted(values)[int(0.95 * (len(values) - 1))]
+
+
+def _display_stats(frames):
+    """Frame rate and control-to-display latency over the trial, for reporting the simulator setup
+    (logs from before these columns existed give none)."""
+    stats = {}
+    frame_ms = [r['frame_ms'] for r in frames if r.get('frame_ms') is not None]
+    if frame_ms:
+        stats['fps'] = 1000.0 * len(frame_ms) / sum(frame_ms)
+        stats['frame_ms_p95'] = _p95(frame_ms)
+    latency = [r['latency_ms'] for r in frames if r.get('latency_ms') is not None]
+    if latency:
+        stats['latency_ms'] = sum(latency) / len(latency)
+        stats['latency_ms_p95'] = _p95(latency)
+    return stats
+
+
 def analyze_trial(rows, window):
     frames = [r for r in rows if r['event'] != 'TRIAL_END']
     end = next((r for r in rows if r['event'] == 'TRIAL_END'), None)
@@ -120,6 +139,7 @@ def analyze_trial(rows, window):
     result['first_input'] = end['first_input_s'] if end else None
     result['speed_prealert'] = frames[0]['speed_kmh'] if frames else None
     result['collisions_total'] = frames[-1]['collisions'] if frames else 0
+    result.update(_display_stats(frames))
     if not takeover:
         return result
 
@@ -180,6 +200,11 @@ def print_trials(name, results):
             notes.append('takeover period shorter than the window')
         if notes:
             print('  trial %s: %s' % (trial, '; '.join(notes)))
+    for trial, r in sorted(results.items()):
+        if r.get('fps') is not None:
+            print('  trial %s: %.1f frames/s (95%% of frames under %.0f ms), control-to-display latency %s ms '
+                  '(95%% under %s ms; plus the monitor\'s own delay)' % (
+                      trial, r['fps'], r['frame_ms_p95'], _f(r.get('latency_ms'), 0), _f(r.get('latency_ms_p95'), 0)))
 
 
 def print_groups(all_results):
@@ -210,7 +235,7 @@ EXPORT_COLUMNS = ['run', 'trial', 'scenario', 'input', 'lane', 'vehicles', 'take
                   'first_input', 'input_type', 'speed_prealert', 'speed_takeover', 'window_s',
                   'window_complete', 'malat', 'malon', 'clean_malat', 'clean_malon', 'sdlp',
                   'max_offset', 'lane_changes', 'speed_min', 'speed_mean', 'min_ttc', 'min_gap',
-                  'collisions', 'collisions_total']
+                  'collisions', 'collisions_total', 'fps', 'frame_ms_p95', 'latency_ms', 'latency_ms_p95']
 
 
 def export_summary(path, name, results):

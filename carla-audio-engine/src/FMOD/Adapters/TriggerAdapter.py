@@ -36,7 +36,8 @@ class TriggerAdapter:
     from the EventBus.
 
     Attributes:
-        reverse_beep (ReverseBeep): Engine for the rhythmic reverse warning sound.
+        reverse_beep (ReverseBeep): Engine for the rhythmic reverse warning sound, or None when
+            the sample engine plays the reverse sound (ev_reverse_loop.wav).
         bank (TriggerBank): FMOD bank containing one-shot sound events.
         honk_counter (int): Counter used to debounce horn events, ensuring the 
             sound only plays once per key press.
@@ -88,14 +89,15 @@ class TriggerAdapter:
         elif current_gear == self.GEAR_REVERSE and self.past_gear == self.GEAR_REVERSE:
             val = False
         self.past_gear = current_gear
-        if val == True:
+        if val == True and self.reverse_beep is not None:
             self.reverse_beep.play()
 
     def on_tick(self):
         """
         Updates the internal sound engine and FMOD system.
         """
-        self.reverse_beep.update()
+        if self.reverse_beep is not None:
+            self.reverse_beep.update()
         self.bank.update_studio_system()
 
     def on_speed(self, speed=0):
@@ -108,7 +110,8 @@ class TriggerAdapter:
             speed (float): Current vehicle speed.
         """
         self.speed = speed
-        self.reverse_beep.update()
+        if self.reverse_beep is not None:
+            self.reverse_beep.update()
         if speed > self.SPEED_LIMIT and self.speed_trigger is False:
             self.bank.play_warning()
             self.speed_trigger = True
