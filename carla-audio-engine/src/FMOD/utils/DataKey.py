@@ -22,6 +22,9 @@ class DataKey(str, Enum):
     ACCELERATION = "acceleration"
     """str: Key for vehicle acceleration."""
 
+    ACCEL_FORWARD = "accel_forward"
+    """str: Key for the vehicle's acceleration along its heading (m/s^2, < 0 when slowing down)."""
+
     BRAKE = "brake"
     """str: Key for brake pedal input state."""
 

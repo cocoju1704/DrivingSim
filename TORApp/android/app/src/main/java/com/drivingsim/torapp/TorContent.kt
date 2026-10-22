@@ -6,6 +6,12 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.text.Layout
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.style.StyleSpan
 import com.meta.wearable.dat.display.views.ContentScope
 import com.meta.wearable.dat.display.views.Direction
 import com.meta.wearable.dat.display.views.ImageSize
@@ -22,6 +28,7 @@ private val ORANGE = Color.rgb(255, 140, 0)
 private val RED = Color.rgb(255, 0, 0) // TOR: the brightest red the display can show
 private val DARK_RED = Color.rgb(150, 0, 0) // blink test: the dark half of the flash
 private val BLUE = Color.rgb(40, 110, 200)
+private const val TEXT_HEIGHT = 360 // intervention text: what is left below the mode box and the compact banner
 
 /**
  * The overlay of takeover_experiment.py (TakeoverExperiment.render) on the glasses: the mode box
@@ -54,19 +61,28 @@ fun ContentScope.torContent(view: GlassesView) {
     val fraction = view.seconds?.let { seconds -> view.total?.let { (seconds / it).toFloat() } }
     when (view.mode) {
       TorMode.PRE_ALERT ->
-          image(
-              bitmap =
-                  banner(
-                      ORANGE,
-                      "PRE-ALERT",
-                      listOf(view.message, "takeover request in ${view.seconds ?: 0} s")
-                          .filter { it.isNotEmpty() }
-                          .joinToString(" - ")
-                          .replaceFirstChar { it.uppercase() },
-                      fraction,
-                  ),
-              sizePreset = ImageSize.FILL,
-          )
+          if (view.text.isNotEmpty()) {
+            // intervention: a compact banner, so the text below gets most of the display
+            image(
+                bitmap = compactBanner(ORANGE, "PRE-ALERT  ${view.seconds ?: 0} s", fraction),
+                sizePreset = ImageSize.FILL,
+            )
+            image(bitmap = textPanel(view.text), sizePreset = ImageSize.FILL)
+          } else {
+            image(
+                bitmap =
+                    banner(
+                        ORANGE,
+                        "PRE-ALERT",
+                        listOf(view.message, "takeover request in ${view.seconds ?: 0} s")
+                            .filter { it.isNotEmpty() }
+                            .joinToString(" - ")
+                            .replaceFirstChar { it.uppercase() },
+                        fraction,
+                    ),
+                sizePreset = ImageSize.FILL,
+            )
+          }
       else -> Unit
     }
   }
@@ -125,6 +141,55 @@ private fun banner(color: Int, title: String, subtitle: String, fraction: Float?
     canvas.drawRoundRect(
         RectF(PADDING, 176f, PADDING + barWidth, 188f), 6f, 6f, fillPaint(Color.WHITE))
   }
+  return bitmap
+}
+
+/** One-line banner: title with the countdown, and the countdown bar under it. */
+private fun compactBanner(color: Int, title: String, fraction: Float?): Bitmap {
+  val titlePaint = textPaint(44f, bold = true).apply { textAlign = Paint.Align.CENTER }
+  val height = 100
+  val (bitmap, canvas) = blank(height)
+  canvas.drawRoundRect(RectF(0f, 0f, WIDTH.toFloat(), height.toFloat()), 30f, 30f, fillPaint(color))
+  canvas.drawText(title, WIDTH / 2f, 58f, fit(titlePaint, title))
+  if (fraction != null) {
+    val barWidth = (WIDTH - 2 * PADDING) * fraction.coerceIn(0f, 1f)
+    canvas.drawRoundRect(RectF(PADDING, 74f, PADDING + barWidth, 84f), 5f, 5f, fillPaint(Color.WHITE))
+  }
+  return bitmap
+}
+
+/**
+ * Intervention lines in white, wrapped to the display width, a gap between lines. The part of a
+ * line up to its first ':' (the label, e.g. "전방 상황:") is bold. The font shrinks until all of it
+ * fits in TEXT_HEIGHT. Drawn at full resolution: small Korean text is unreadable at IMAGE_SCALE.
+ */
+private fun textPanel(lines: List<String>): Bitmap {
+  val text = SpannableStringBuilder()
+  for ((i, line) in lines.withIndex()) {
+    if (i > 0) text.append('\n')
+    val start = text.length
+    text.append(line)
+    val colon = line.indexOf(':')
+    if (colon > 0) {
+      text.setSpan(StyleSpan(Typeface.BOLD), start, start + colon + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+  }
+  val width = (WIDTH - 2 * PADDING).toInt()
+  var size = 40f
+  var layout: StaticLayout
+  while (true) {
+    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = size }
+    layout =
+        StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(size * 0.25f, 1f)
+            .build()
+    if (layout.height <= TEXT_HEIGHT || size <= 24f) break
+    size -= 2f
+  }
+  val (bitmap, canvas) = blank(TEXT_HEIGHT, scale = 1f)
+  canvas.translate(PADDING, 0f)
+  layout.draw(canvas)
   return bitmap
 }
 

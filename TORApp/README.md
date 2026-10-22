@@ -3,7 +3,7 @@
 Shows the takeover experiment's pre-alert and TOR on the **Meta Ray-Ban Display** glasses instead of the PC screen.
 
 ```
-takeover_experiment.py ──UDP (Wi-Fi)──▶ TORApp (Galaxy S22) ──Bluetooth (Meta DAT SDK)──▶ Ray-Ban Display
+_Experiment/takeover_experiment.py ──UDP (Wi-Fi)──▶ TORApp (Galaxy S22) ──Bluetooth (Meta DAT SDK)──▶ Ray-Ban Display
        (PC)            ◀── answer/latency ──
 ```
 
@@ -44,13 +44,18 @@ The app plays the simulator's alert sounds ([AlertSounds.kt](android/app/src/mai
 With Developer Mode on, you don't need to register the app in the Wearables Developer Center (`mwdat_application_id` / `mwdat_client_token` are `0`).
 
 ### Build the app (on any PC)
-This PC (the simulator PC) has no JDK or Android SDK, so build on another PC with Android Studio, or install Android Studio here.
+Android Studio is installed on the simulator PC. Rebuild and reinstall after any change in `TORApp/android` (also when the PC sends something new, such as the intervention `text`).
 
 1. Install Android Studio (Narwhal 2025.1.1 or later, JDK 17, Android SDK 36)
 2. **File → Open** → open the `TORApp/android` folder (Gradle sync downloads the SDK from Maven Central, no token needed)
 3. Turn on USB debugging on the S22 → connect it → **Run ▶**
 
-From the command line: `cd TORApp\android` → `gradlew.bat installDebug`
+From the command line (phone connected with USB debugging on). Gradle needs JDK 17–21: Android Studio's own JDK is 25, which this Gradle version cannot run on, so use JetBrains Runtime 21:
+```powershell
+$env:JAVA_HOME = "$env:USERPROFILE\.jdks\jbr-21.0.11"
+cd TORApp\android
+.\gradlew.bat installDebug
+```
 
 ## 2. Every experiment
 
@@ -61,7 +66,7 @@ From the command line: `cd TORApp\android` → `gradlew.bat installDebug`
 5. Write down the IP shown under **3. Simulator PC** (e.g. `192.168.0.23 : 5007`)
 6. On the PC:
    ```
-   python PythonAPI\examples\takeover_experiment.py --glasses 192.168.0.23
+   python _Experiment\takeover_experiment.py --glasses 192.168.0.23
    ```
    With `--glasses`, the PRE-ALERT/TOR banners are not drawn on the screen (the AUTONOMOUS/MANUAL status box and the sounds stay).
 

@@ -26,6 +26,7 @@ data class TorState(
     val remaining: Double?,
     val total: Double?,
     val label: String, // mode box text of the simulator screen, "" for the default
+    val text: List<String>, // intervention lines under the PRE-ALERT banner
 ) {
   companion object {
     fun parse(text: String): TorState? =
@@ -38,6 +39,10 @@ data class TorState(
               remaining = if (json.isNull("remaining")) null else json.getDouble("remaining"),
               total = if (json.isNull("total")) null else json.getDouble("total"),
               label = json.optString("label", ""),
+              text =
+                  json.optJSONArray("text")?.let { lines ->
+                    List(lines.length()) { lines.optString(it) }.filter { it.isNotBlank() }
+                  } ?: emptyList(),
           )
         } catch (_: JSONException) {
           null
@@ -60,6 +65,7 @@ data class GlassesView(
     val seconds: Int? = null,
     val total: Double? = null,
     val label: String = "",
+    val text: List<String> = emptyList(), // intervention lines under the PRE-ALERT banner
     val dim: Boolean = false, // TOR banner in its dark flash color (blink test)
     val test: DisplayTest? = null,
 ) {
@@ -69,4 +75,5 @@ data class GlassesView(
 }
 
 fun TorState.toView() =
-    GlassesView(seq, mode, message, remaining?.let { ceil(it).toInt().coerceAtLeast(0) }, total, label)
+    GlassesView(
+        seq, mode, message, remaining?.let { ceil(it).toInt().coerceAtLeast(0) }, total, label, text)

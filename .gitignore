@@ -3,7 +3,8 @@
 !/.gitignore
 !/README.md
 !/requirements.txt
-!/CarlaUE4_nosound.bat
+!/_Experiment/
+/_Experiment/wheel_buttons.json
 !/carla-audio-engine/
 /carla-audio-engine/logs/
 !/TORApp/
@@ -12,7 +13,6 @@
 /PythonAPI/*
 !/PythonAPI/examples/
 /PythonAPI/examples/*
-!/PythonAPI/examples/takeover_experiment.py
 !/PythonAPI/examples/analyze_takeover.py
 
 __pycache__/

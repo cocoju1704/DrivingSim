@@ -14,9 +14,11 @@ This repository holds only our own files inside the CARLA 0.9.16 folder. The CAR
 
 | Path | Contents |
 |------|------|
-| [PythonAPI/examples/takeover_experiment.py](PythonAPI/examples/takeover_experiment.py) | Experiment program (scenarios, autonomous driving, TOR, logging) |
+| [_Experiment/takeover_experiment.py](_Experiment/takeover_experiment.py) | Experiment program (scenarios, autonomous driving, TOR, logging) |
+| [_Experiment/CarlaUE4_nosound.bat](_Experiment/CarlaUE4_nosound.bat) | Starts the CARLA server (no sound, no window; shows in the taskbar while running) |
+| [_Experiment/intervention_config.json](_Experiment/intervention_config.json) | Which intervention text the glasses show during the pre-alert |
+| [_Experiment/NDRT_scripts/](_Experiment/NDRT_scripts/) | Intervention texts, `scenario<N>_<driving\|NDRT>_<summary\|question>.txt` (3 × 2 × 2 = 12) |
 | [PythonAPI/examples/analyze_takeover.py](PythonAPI/examples/analyze_takeover.py) | Recompute metrics and figures from the logs |
-| [CarlaUE4_nosound.bat](CarlaUE4_nosound.bat) | Starts the CARLA server (no sound, no window; shows in the taskbar while running) |
 | [carla-audio-engine/](carla-audio-engine/) | Vehicle sounds (FMOD). The experiment starts it automatically |
 | [TORApp/](TORApp/) | Shows alerts on the Meta Ray-Ban Display glasses (Android app + PC sender) |
 | [requirements.txt](requirements.txt) | Python packages |
@@ -45,43 +47,68 @@ This repository holds only our own files inside the CARLA 0.9.16 folder. The CAR
 
 **1. CARLA server**
 ```powershell
-.\CarlaUE4_nosound.bat
+.\_Experiment\CarlaUE4_nosound.bat
 ```
 The server has no window, but a minimized **"CARLA server - running"** console stays in the taskbar while it runs.
 
 **2. Experiment**
 ```powershell
 # 3 monitors (2560x1440 x 3, default)
-.\venv_carla\Scripts\python.exe PythonAPI\examples\takeover_experiment.py
+.\venv_carla\Scripts\python.exe _Experiment\takeover_experiment.py
 
 # 1 monitor (side mirrors are drawn as insets at the lower left and right of the screen)
-.\venv_carla\Scripts\python.exe PythonAPI\examples\takeover_experiment.py --screens 1 --res 1920x1080 --window-pos 0,0
+.\venv_carla\Scripts\python.exe _Experiment\takeover_experiment.py --screens 1 --res 1920x1080 --window-pos 0,0
 
 # Scenario / traffic / input device
-.\venv_carla\Scripts\python.exe PythonAPI\examples\takeover_experiment.py --scenario 2 --vehicles 15 --input wheel
+.\venv_carla\Scripts\python.exe _Experiment\takeover_experiment.py --scenario 2 --vehicles 15 --input wheel
 
 # Alerts on the Meta Ray-Ban Display glasses (phone IP: shown in TORApp)
-.\venv_carla\Scripts\python.exe PythonAPI\examples\takeover_experiment.py --glasses 10.139.72.126
+.\venv_carla\Scripts\python.exe _Experiment\takeover_experiment.py --glasses 10.139.72.126
 ```
 For all options: `--help`. For wheel buttons: `--wheel-setup` (once). For axis numbers: `--wheel-test`.
 
 | Key | Action |
 |----|------|
-| P | Start the takeover sequence (pre-alert → 5 s later TOR → 5 s later forced manual driving) |
+| P | Start the takeover sequence (pre-alert → 60 s later TOR → 5 s later forced manual driving) |
 | E | Re-engage autonomous driving (in manual driving) |
 | W/A/S/D, arrows | Driving (keyboard) |
 | Z / X, L, H | Turn signals, lights, horn |
 | TAB | Change camera position |
 | ESC | Quit (summary.csv and figure.png are written) |
 
-**Scenarios** (`--scenario N`). The pre-alert starts automatically as the car approaches the event point:
+**Scenarios** (`--scenario N`). The car drives autonomously in lane 3 (`--lane`, 1 = next to the median). The pre-alert starts automatically as the car approaches the event point, 60 s (`--pre-alert`) before the TOR:
 
-| N | Scenario | Pre-alert |
+| N | Scenario | TOR |
 |---|---------|-----------|
 | 0 | Practice (manual driving only, no logging) | none |
-| 1 | Highway exit | 10 s before the exit point |
-| 2 | Work zone (lanes 3 and 4 closed after the first lap) | 20 s before the work zone |
-| 3 | Sudden fog | when the fog density reaches the threshold |
+| 1 | Highway exit (exit lane: lane 4; signs EXIT 1 km, 500 m, at the exit) | 5 s before the exit point (pre-alert 65 s before, ~1.4 km at 80 km/h). The exit point is 874 m from the start, closer than that, so the first pre-alert comes on the second lap |
+| 2 | Work zone (lanes 3 and 4 closed after the first lap: the car's own lane; signs ROAD WORK 1 km, 500 m, LANE 3 4 CLOSED 250 m before) | 15 s before the work zone (pre-alert 75 s before, ~1.7 km) |
+| 3 | Sudden fog | 60 s after the fog density reaches the threshold (pre-alert) |
+
+The signs ([_Experiment/road_signs.py](_Experiment/road_signs.py)) are drawn with CARLA debug lines (CARLA has no sign props with text): they glow a little and disappear a few seconds after the program stops.
+
+After the pre-alert the traffic leaves: cars ahead speed up to 60 km/h above the car's speed, cars behind slow down as much (over 10 s), and each is removed 250 m away; the rest are removed 10 s before the TOR, so the takeover happens on an empty road. The traffic stays gone for the rest of the run.
+
+**Intervention** during the pre-alert (glasses only, `--glasses`). Set in [_Experiment/intervention_config.json](_Experiment/intervention_config.json):
+
+```json
+{
+    "intervention": "driving",
+    "format": "summary",
+    "delay_seconds": 5.0,
+    "question_seconds": 15.0
+}
+```
+
+| Key | Values |
+|-----|--------|
+| `intervention` | `none` (control: pre-alert only), `driving` (driving situation, Endsley SA levels 1-3), `NDRT` (ready-to-resume) |
+| `format` | `summary` (all lines at once, read only), `question` (one question at a time, each `question_seconds`) |
+| `delay_seconds` | from the pre-alert to the text |
+
+Glasses timeline with the defaults: 0–5 s pre-alert only → 5–20 s SA level 1 / ready-to-resume step 1 → 20–35 s step 2 → 35–50 s step 3 → 50–60 s pre-alert only → 60 s TOR. `summary` shows all three lines for the same 5–50 s.
+
+The text is `_Experiment/NDRT_scripts/scenario<N>_<intervention>_<format>.txt` for the `--scenario` that runs: one line per displayed line (`Label: sentence`, the label is drawn bold), `#` starts a comment line. While a text is shown, the glasses keep the countdown it had when the text appeared (55, 40, 25 s): each new view with the text takes 1–3 s to send over Bluetooth, so a per-second countdown would skip seconds and could delay the TOR. Without text (the first 5 s, the last 10 s) it counts every second. The intervention name is logged in the `intervention` column of raw.csv and summary.csv.
 
 ## Results
 

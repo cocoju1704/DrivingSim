@@ -165,6 +165,8 @@ class CarlaClient:
                 self.collision_sensor = CollisionSensor(self.vehicle)
             try:
                 acceleration = self.vehicle.get_acceleration()
+                forward = self.vehicle.get_transform().get_forward_vector()
+                accel_forward = acceleration.x * forward.x + acceleration.y * forward.y + acceleration.z * forward.z
                 speed_limit = self.vehicle.get_speed_limit()
                 v = self.vehicle.get_velocity()
                 kmh = self._MS_IN_KMH * math.sqrt(v.x**2 + v.y**2 + v.z**2)
@@ -195,6 +197,7 @@ class CarlaClient:
                         "rain_intensity" : rain_intensity,
                         "wind_intensity" : wind_intensity,
                         "acceleration" : acceleration.y,
+                        "accel_forward" : round(accel_forward, 2),
                         "honk" : honk,
                         "handbrake" : self.handbrake_trigger,
                         "blinker" : blinker,

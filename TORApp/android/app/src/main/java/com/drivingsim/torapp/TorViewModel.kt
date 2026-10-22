@@ -239,7 +239,17 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   private fun onPacket(state: TorState): String {
-    wanted.value = state.toView()
+    val view = state.toView()
+    val previous = wanted.value
+    // While the same intervention text is up, the countdown stays at the seconds it showed when
+    // the text appeared: every new view is a 1-3 s Bluetooth send with the text image, so a
+    // per-second countdown would skip seconds and could hold back the TOR.
+    wanted.value =
+        if (view.text.isNotEmpty() && view.mode == previous.mode && view.text == previous.text) {
+          view.copy(seconds = previous.seconds)
+        } else {
+          view
+        }
     _uiState.update {
       it.copy(lastState = state, lastPacketAt = SystemClock.elapsedRealtime(), packets = it.packets + 1)
     }

@@ -33,6 +33,12 @@ class EngineAdapter:
         speed (float): The current velocity of the vehicle in km/h.
         throttle (float): The current throttle input, ranging from 0.0 to 1.0.
     """
+    # The motor is heard only when the car really speeds up. Holding a speed takes a third to half
+    # throttle with small corrections, but almost no acceleration (|a| < 0.5 m/s^2): silent.
+    QUIET_ACCEL = 0.6   # m/s^2 forward acceleration below which the motor is silent
+    FULL_ACCEL = 2.5    # m/s^2 at which it is as loud as full throttle
+    ACCEL_FILTER = 0.3  # share of the way to a new acceleration per packet (get_acceleration is noisy)
+
     def __init__(self, bus: EventBus, ev: EVSoundEngine):
         """
         Initializes the EngineAdapter and subscribes to relevant data keys.
@@ -44,8 +50,10 @@ class EngineAdapter:
         self.ev = ev
         self.speed = 0
         self.throttle = 0
+        self.accel = 0.0
         bus.subscribe(DataKey.SPEED, self.on_speed)
         bus.subscribe(DataKey.THROTTLE, self.on_throttle)
+        bus.subscribe(DataKey.ACCEL_FORWARD, self.on_accel)
         bus.subscribe(DataKey.ACTIVE, self.on_active)
         bus.subscribe(DataKey.BLINKER, self.on_blinker)
         bus.subscribe(DataKey.REVERSE, self.on_reverse)
@@ -93,6 +101,11 @@ class EngineAdapter:
         self.throttle = throttle
         self.update()
 
+    def on_accel(self, accel):
+        """Forward acceleration (m/s^2), smoothed."""
+        self.accel += self.ACCEL_FILTER * (accel - self.accel)
+        self.update()
+
     def calculate_torque(self, throttle):
         """
         Calculates a simplified torque value used for sound modulation.
@@ -101,9 +114,12 @@ class EngineAdapter:
             throttle (float): Current throttle position.
 
         Returns:
-            float: The throttle, 0..1: the motor gets louder the more it is pressed.
+            float: 0..1, 0 unless the throttle is pressed and the car speeds up by more than
+            QUIET_ACCEL, 1 from FULL_ACCEL on: the motor gets louder the harder it accelerates.
         """
-        return min(max(throttle, 0.0), 1.0)
+        if throttle <= 0.0:
+            return 0.0
+        return min(max((self.accel - self.QUIET_ACCEL) / (self.FULL_ACCEL - self.QUIET_ACCEL), 0.0), 1.0)
 
     def update(self):
         """

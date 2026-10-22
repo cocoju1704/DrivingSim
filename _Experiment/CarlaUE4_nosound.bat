@@ -24,7 +24,8 @@ title CARLA server - starting
 "%SYS%\tasklist.exe" /fi "imagename eq CarlaUE4-Win64-Shipping.exe" | "%SYS%\find.exe" /i "CarlaUE4" >nul
 if errorlevel 1 (
     echo Starting CARLA: Town04 -nosound -RenderOffScreen %*
-    start "" "%~dp0CarlaUE4.exe" /Game/Carla/Maps/Town04 -nosound -RenderOffScreen %*
+    rem CarlaUE4.exe is in the CARLA_0.9.16 folder, one up from _Experiment
+    start "" "%~dp0..\CarlaUE4.exe" /Game/Carla/Maps/Town04 -nosound -RenderOffScreen %*
 ) else (
     echo CARLA is already running.
 )

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Analyze the takeover logs written by takeover_experiment.py.
+Analyze the takeover logs written by _Experiment/takeover_experiment.py.
 
 Every run leaves a folder Data/YYMMDD_HHMMSS/ (the start time of the run) with
 
@@ -125,7 +125,8 @@ def _display_stats(frames):
 def analyze_trial(rows, window):
     frames = [r for r in rows if r['event'] != 'TRIAL_END']
     end = next((r for r in rows if r['event'] == 'TRIAL_END'), None)
-    result = {'frames': len(frames), 'scenario': rows[0].get('scenario', ''), 'input': rows[0]['input'],
+    result = {'frames': len(frames), 'scenario': rows[0].get('scenario', ''),
+              'intervention': rows[0].get('intervention', ''), 'input': rows[0]['input'],
               'lane': rows[0]['lane'], 'vehicles': rows[0]['vehicles']}
 
     tor = next((r for r in frames if r['event'] == 'TOR'), None)
@@ -231,7 +232,7 @@ def print_groups(all_results):
         print('  ' + ' '.join(str(c).rjust(14) for c in cells))
 
 
-EXPORT_COLUMNS = ['run', 'trial', 'scenario', 'input', 'lane', 'vehicles', 'takeover_type', 'tot', 'tor_reaction',
+EXPORT_COLUMNS = ['run', 'trial', 'scenario', 'intervention', 'input', 'lane', 'vehicles', 'takeover_type', 'tot', 'tor_reaction',
                   'first_input', 'input_type', 'speed_prealert', 'speed_takeover', 'window_s',
                   'window_complete', 'malat', 'malon', 'clean_malat', 'clean_malon', 'sdlp',
                   'max_offset', 'lane_changes', 'speed_min', 'speed_mean', 'min_ttc', 'min_gap',

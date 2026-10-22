@@ -6,11 +6,12 @@ Display glasses. PC -> phone over Wi-Fi (UDP), phone -> glasses over Bluetooth (
 
 Message, JSON in one UDP packet to the phone (port 5007):
     {"v": 1, "seq": 12, "mode": "TOR", "message": "Highway exit ahead",
-     "remaining": 3.4, "total": 5.0, "label": "AUTONOMOUS"}
+     "remaining": 3.4, "total": 5.0, "label": "AUTONOMOUS", "text": []}
     mode       AUTO, PRE_ALERT, TOR, MANUAL or OFF
-    seq        goes up by one each time mode, message or label changes
+    seq        goes up by one each time mode, message, label or text changes
     remaining  seconds left in the PRE_ALERT / TOR countdown (null otherwise)
     label      text of the mode box on the simulator screen ("" : the app's default)
+    text       intervention lines shown under the PRE-ALERT banner ([]: none)
 The state is resent every RESEND seconds, so a lost packet only delays it.
 
 The app answers every packet with
@@ -24,6 +25,7 @@ Test without the simulator (phone IP: shown in the app):
 
     python TORApp\\pc\\tor_glasses.py 192.168.0.23 --demo
     python TORApp\\pc\\tor_glasses.py 192.168.0.23 --mode TOR
+    python TORApp\\pc\\tor_glasses.py 192.168.0.23 --mode PRE_ALERT --text _Experiment\\NDRT_scripts\\scenario1_driving_summary.txt
 """
 
 from __future__ import print_function
@@ -53,7 +55,7 @@ class GlassesLink(object):
         self._wake = threading.Event()
         self._running = True
         self._seq = 0
-        self._state = ('OFF', '', None, '')  # mode, message, total, label
+        self._state = ('OFF', '', None, '', ())  # mode, message, total, label, text
         self._deadline = None            # time.monotonic() when the countdown ends
         self._sent_at = {}               # seq -> (time.monotonic() it was first sent, mode)
         self._shown = -1
@@ -68,15 +70,16 @@ class GlassesLink(object):
             thread.start()
         logging.info('Glasses: sending the takeover state to %s:%d', host, port)
 
-    def update(self, mode, message='', remaining=None, total=None, label=''):
+    def update(self, mode, message='', remaining=None, total=None, label='', text=()):
         """mode: AUTO, PRE_ALERT, TOR, MANUAL or OFF. remaining/total: countdown seconds.
-        label: the mode box text of the simulator screen, e.g. 'AUTONOMOUS - LOCKED'."""
+        label: the mode box text of the simulator screen, e.g. 'AUTONOMOUS - LOCKED'.
+        text: intervention lines shown under the PRE-ALERT banner."""
         if mode not in MODES:
             raise ValueError('unknown mode %r' % mode)
         now = time.monotonic()
         with self._lock:
             self._deadline = None if remaining is None else now + remaining
-            state = (mode, message or '', total, label or '')
+            state = (mode, message or '', total, label or '', tuple(text or ()))
             if state == self._state:
                 return
             self._seq += 1
@@ -103,13 +106,14 @@ class GlassesLink(object):
     def _packet(self):
         now = time.monotonic()
         with self._lock:
-            mode, message, total, label = self._state
+            mode, message, total, label, text = self._state
             seq = self._seq
             remaining = None if self._deadline is None else max(self._deadline - now, 0.0)
             self._sent_at.setdefault(seq, (now, mode))
         return json.dumps({'v': 1, 'seq': seq, 'mode': mode, 'message': message,
                            'remaining': None if remaining is None else round(remaining, 2),
-                           'total': total, 'label': label}).encode('utf-8')
+                           'total': total, 'label': label, 'text': list(text)},
+                          ensure_ascii=False).encode('utf-8')
 
     def _send_loop(self):
         while self._running:
@@ -163,10 +167,17 @@ class GlassesLink(object):
                     logging.info('Glasses: %s shown %.0f ms after it was sent', mode, 1000.0 * (now - sent_time))
 
 
-def _countdown(link, mode, message, seconds):
-    end = time.monotonic() + seconds
+def _countdown(link, mode, message, seconds, text=(), delay=0.0, step=15.0, question=False):
+    """text: shown from `delay` s on for len(text) * `step` s, like the experiment's intervention;
+    question: one line at a time, each for `step` s."""
+    start = time.monotonic()
+    end = start + seconds
     while time.monotonic() < end:
-        link.update(mode, message, end - time.monotonic(), seconds)
+        page = int((time.monotonic() - start - delay) // step)
+        shown = ()
+        if 0 <= page < len(text):
+            shown = [text[page]] if question else text
+        link.update(mode, message, end - time.monotonic(), seconds, text=shown)
         time.sleep(0.05)
 
 
@@ -176,23 +187,41 @@ def main():
     argparser.add_argument('--port', type=int, default=DEFAULT_PORT, help='UDP port (default: %d)' % DEFAULT_PORT)
     group = argparser.add_mutually_exclusive_group(required=True)
     group.add_argument('--demo', action='store_true',
-                       help='AUTO 5 s -> PRE_ALERT 5 s -> TOR 5 s -> MANUAL 5 s, repeated until Ctrl+C')
+                       help='AUTO 5 s -> PRE_ALERT --pre-alert s -> TOR 5 s -> MANUAL 5 s, repeated until Ctrl+C')
     group.add_argument('--mode', choices=MODES, help='hold this mode until Ctrl+C')
     argparser.add_argument('--message', default='Highway exit ahead', help='pre-alert message')
+    argparser.add_argument('--text', metavar='FILE',
+                           help='intervention text shown under the pre-alert, e.g. '
+                                '_Experiment\\NDRT_scripts\\scenario1_driving_summary.txt')
+    argparser.add_argument('--question', action='store_true',
+                           help='show --text one line at a time, like the question format')
+    argparser.add_argument('--delay', metavar='SEC', type=float, default=5.0,
+                           help='seconds from the pre-alert to the text (default: 5)')
+    argparser.add_argument('--question-seconds', metavar='SEC', type=float, default=15.0,
+                           help='seconds per line; the text shows for lines x this (default: 15)')
+    argparser.add_argument('--pre-alert', metavar='SEC', type=float, default=60.0,
+                           help='PRE_ALERT countdown, as in the experiment (default: 60)')
     args = argparser.parse_args()
     logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
+    text = ()
+    if args.text:
+        with open(args.text, encoding='utf-8-sig') as handle:
+            text = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith('#')]
+    window = dict(delay=args.delay, step=args.question_seconds, question=args.question)
     link = GlassesLink(args.host, args.port)
     try:
         while True:
             if args.demo:
                 link.update('AUTO')
                 time.sleep(5.0)
-                _countdown(link, 'PRE_ALERT', args.message, 5.0)
+                _countdown(link, 'PRE_ALERT', args.message, args.pre_alert, text, **window)
                 _countdown(link, 'TOR', args.message, 5.0)
                 link.update('MANUAL')
                 time.sleep(5.0)
-            elif args.mode in ('PRE_ALERT', 'TOR'):
+            elif args.mode == 'PRE_ALERT':
+                _countdown(link, args.mode, args.message, args.pre_alert, text, **window)
+            elif args.mode == 'TOR':
                 _countdown(link, args.mode, args.message, 5.0)
             else:
                 link.update(args.mode)
