@@ -8,7 +8,7 @@ import pyfmodex
 from pyfmodex.enums import TIMEUNIT
 from pyfmodex.flags import MODE
 
-#: Motor/drive loop. Its pitch follows the speed; heard only under throttle (louder with more). Made
+#: Motor/drive loop. Its pitch and volume follow the throttle (and a little the speed). Made
 #: from ev_drive.mp3: its steady stretch, crossfaded into a loop.
 MOTOR_FILE = SOUNDS_DIR / "ev_motor.wav"
 #: Tire/road noise loop. Its volume follows the speed.
@@ -40,12 +40,16 @@ class EVSampleEngine:
     Tune the class constants below to change how the sound reacts.
     """
     TOP_SPEED = 120.0           # km/h at which pitch and volume reach their maximum
-    MOTOR_PITCH_MIN = 0.5       # playback speed at standstill (1.0 = as recorded)
-    MOTOR_PITCH_MAX = 1.8       # playback speed at TOP_SPEED
-    # The motor is heard only under throttle, louder the more it is pressed: full throttle gives
-    # MOTOR_VOLUME_LOW at standstill up to MOTOR_VOLUME_HIGH at TOP_SPEED. Released, it is silent.
+    MOTOR_PITCH_MIN = 0.5       # playback speed released at standstill (1.0 = as recorded)
+    MOTOR_PITCH_MAX = 1.8       # playback speed at full throttle and TOP_SPEED
+    MOTOR_PITCH_SPEED = 0.3     # share of the pitch range that follows the speed; the rest follows the throttle
+    MOTOR_PITCH_GLIDE = 0.15    # share of the way to the new throttle pitch per update: it rises, not jumps
+    # The motor gets louder the more the throttle is pressed: full throttle gives MOTOR_VOLUME_LOW
+    # at standstill up to MOTOR_VOLUME_HIGH at TOP_SPEED. Released, it fades down to
+    # MOTOR_VOLUME_RELEASED of that, never quite silent (0: silent).
     MOTOR_VOLUME_LOW = 0.3
     MOTOR_VOLUME_HIGH = 0.65
+    MOTOR_VOLUME_RELEASED = 0.15
     MOTOR_FADE = 0.3            # share of the way to the new volume per update (20 per second): no clicks
     BLINKER_VOLUME = 0.6
     REVERSE_VOLUME = 0.6
@@ -69,6 +73,7 @@ class EVSampleEngine:
         self.reverse_sound = self._load(REVERSE_FILE)
         self.reverse_ch = None
         self.motor_volume = 0.0
+        self.motor_throttle = 0.0   # the throttle the pitch follows, glided
         # No motor loop: optionally fall back to the synthesized motor
         self.synth = None
         if self.motor_sound is None and self.SYNTH_MOTOR:
@@ -144,8 +149,11 @@ class EVSampleEngine:
         ratio = min(max(speed_kmh, 0.0) / self.TOP_SPEED, 1.0)
 
         if self.motor_ch is not None:
-            self.motor_ch.pitch = self.MOTOR_PITCH_MIN + ratio * (self.MOTOR_PITCH_MAX - self.MOTOR_PITCH_MIN)
-            target = min(abs(torque), 1.0) * (self.MOTOR_VOLUME_LOW + ratio * (self.MOTOR_VOLUME_HIGH - self.MOTOR_VOLUME_LOW))
+            self.motor_throttle += self.MOTOR_PITCH_GLIDE * (min(abs(torque), 1.0) - self.motor_throttle)
+            rise = self.MOTOR_PITCH_SPEED * ratio + (1.0 - self.MOTOR_PITCH_SPEED) * self.motor_throttle
+            self.motor_ch.pitch = self.MOTOR_PITCH_MIN + rise * (self.MOTOR_PITCH_MAX - self.MOTOR_PITCH_MIN)
+            share = self.MOTOR_VOLUME_RELEASED + (1.0 - self.MOTOR_VOLUME_RELEASED) * min(abs(torque), 1.0)
+            target = share * (self.MOTOR_VOLUME_LOW + ratio * (self.MOTOR_VOLUME_HIGH - self.MOTOR_VOLUME_LOW))
             self.motor_volume += self.MOTOR_FADE * (target - self.motor_volume)
             self.motor_ch.volume = self.motor_volume * self.MASTER_VOLUME
         if self.synth is not None:

@@ -54,6 +54,12 @@ Scenarios (--scenario N). Each has an event point on the loop; the TOR comes
                       pre-alert when it reaches --fog-threshold (45, after --fog-rise
                       20 s); it keeps thickening and reaches --fog-max (90)
                       --fog-peak-after (10) s after the takeover
+    4  accident       a crash closes lanes 3 and 4 (crashed cars, police car, ambulance,
+                      cones, signs, --accident-at); it appears on the second pass;
+                      TOR 15 s before the crash
+
+After the takeover cars drive beside the car in the lanes next to it for 30 s, so the
+driver keeps the lane (scenarios 2 and 4: once past the closed lanes; scenario 1: left only).
 
 Every takeover sequence (P key) is logged. The run leaves the folder
 Data/YYMMDD_HHMMSS/ (start time, inside the CARLA_0.9.16 folder) with
@@ -218,7 +224,13 @@ CLUSTER_RECT = (1000 / 2560.0, 1145 / 1440.0, 520 / 2560.0, 140 / 1440.0)
 CLUSTER_BACKGROUND = (12, 14, 18)
 CLUSTER_TEXT = (235, 240, 245)
 CLUSTER_DIM = (120, 130, 140)
-CLUSTER_ACCEL = (60, 200, 110)
+CLUSTER_NEEDLE = (235, 60, 40)
+# Round gauges: throttle pedal (left, %) and speed (right, km/h); 0 at the lower left, full scale
+# GAUGE_SWEEP degrees clockwise. The needles follow the value like real ones, a share per frame.
+GAUGE_START = 210.0
+GAUGE_SWEEP = 240.0
+GAUGE_MAX_SPEED = 200.0
+GAUGE_FOLLOW = 0.25
 # --screens 1: the side mirrors are out of the single monitor's view, so they are drawn as
 # insets at its lower left and right edges instead (height and center as shares of the monitor).
 SIDE_INSET_HEIGHT = 0.18
@@ -277,6 +289,25 @@ SIGN_HEIGHT = 2.5                       # m from the road to the bottom of the b
 EXIT_SIGNS = ((1000.0, ['EXIT', '1 km'], None), (500.0, ['EXIT', '500 m'], None), (0.0, ['EXIT'], 'up_right'))
 WORKZONE_SIGNS = ((1000.0, ['ROAD WORK', '1 km'], None), (500.0, ['ROAD WORK', '500 m'], None),
                   (250.0, ['LANE 3 4', 'CLOSED'], 'left'))
+ACCIDENT_AT = 590.0           # scenario 4: the crashed cars, m from the start (straight, 4 lanes)
+ACCIDENT_SPAWN_AHEAD = 2300.0  # m ahead of the ego car at which the scene appears: beyond view, and
+                               # farther than the pre-alert comes (~1.7 km at 80 km/h)
+ACCIDENT_MAX_WAIT = 15.0      # s it waits for traffic to pass the scene, as WORKZONE_MAX_WAIT
+ACCIDENT_START = -120.0       # m: the scene from the warning sign before the crash ...
+ACCIDENT_END = 60.0           # ... to the last cone after it
+ACCIDENT_LANES = (3, 4)
+ACCIDENT_SIGNS = ((1000.0, ['ACCIDENT', '1 km'], None), (500.0, ['ACCIDENT', '500 m'], None),
+                  (250.0, ['LANE 3 4', 'CLOSED'], 'left'))
+# After the takeover cars drive level with the ego car in the lanes next to it, so the driver keeps
+# the lane and the takeover period measures steady driving (EscortCars). Scenarios 2 and 4: from
+# when the car is past the closed lanes; scenario 1: on the left only, the exit is on the right.
+ESCORT_SECONDS = 30.0         # s they stay beside the ego car
+ESCORT_APPROACH = 6.0         # s to come up from behind, and to drop back again at the end
+ESCORT_BEHIND = -45.0         # m behind the ego car where they come from and go back to
+ESCORT_OFFSET = {'left': 1.0, 'right': -1.5}  # m ahead of the ego car while beside it
+ESCORT_GAP_GAIN = 0.5         # m/s faster than the ego car per m behind their place (they drive, not snap)
+ESCORT_CATCH_UP = 8.0         # m/s at most faster or slower than the ego car
+ESCORT_SPEED_STEP = 0.12      # m/s their speed changes by at most per frame (about 3.5 m/s^2 at 30 FPS)
 # After the pre-alert the traffic leaves (TrafficClearance)
 TRAFFIC_CLEAR_RAMP = 10.0        # s over which the traffic cars change speed
 TRAFFIC_CLEAR_SPEED = 60.0       # km/h faster (cars ahead) or slower (cars behind, at least 20 km/h) than the ego car
@@ -317,7 +348,9 @@ SCENARIOS = {
     1: ('exit', 'Highway exit ahead', 5.0),
     2: ('workzone', 'Work zone ahead', 15.0),
     3: ('fog', 'Low visibility', None),  # the fog starts at the fog point; the pre-alert follows its density
+    4: ('accident', 'Accident ahead', 15.0),
 }
+CLOSED_LANES = {2: WORKZONE_LANES, 4: ACCIDENT_LANES}  # scenario -> lanes its obstacle closes (no traffic there)
 INTERVENTION_CONFIG = os.path.join(EXPERIMENT_DIR, 'intervention_config.json')
 INTERVENTION_DIR = os.path.join(EXPERIMENT_DIR, 'NDRT_scripts')
 INTERVENTIONS = ('none', 'driving', 'NDRT')
@@ -380,7 +413,8 @@ def remove_stale_actors(client, sim_world):
     """Destroy hero/npc cars (and their sensors) that an earlier run left in the server, and sensors
     whose car is gone (the audio engine's collision sensor: its process is killed, not closed)."""
     actors = sim_world.get_actors()
-    stale = [a for a in actors.filter('vehicle.*') if a.attributes.get('role_name') in ('hero', 'npc', 'workzone')]
+    stale = [a for a in actors.filter('vehicle.*')
+             if a.attributes.get('role_name') in ('hero', 'npc', 'workzone', 'escort')]
     stale += [a for a in actors.filter('static.prop.*') if a.attributes.get('role_name') == 'workzone']
     ids = set(a.id for a in stale)
     sensors = [a for a in actors.filter('sensor.*') if a.parent is None or a.parent.id in ids]
@@ -770,19 +804,12 @@ class LoopFollower(object):
         return self._agent.run_step()
 
 
-def spawn_workzone(sim_world, route, start_index):
-    """Close lanes 3 and 4 from `start_index` on. `route` is the lane 3 route of the loop.
-
-    Layout, along the route: two warning signs, a taper of cones that leads from the outer
-    edge of lane 4 to the edge of lane 2, a row of barriers across both lanes, cones along
-    the closed lanes with a work truck in lane 3 and a work van in lane 4, and a short
-    taper that opens the lanes again.
-    """
+def _route_placer(sim_world, route, start_index, actors):
+    """put(name, distance, offset, ...): spawn `name` at route `distance` m from start_index,
+    `offset` m right of lane 3's center (`route` is lane 3), and add it to `actors`."""
     library = sim_world.get_blueprint_library()
-    actors = []
 
-    def put(name, distance, offset, yaw_add=0.0, lift=0.05, hold=False):
-        """Spawn `name` at route `distance` m from start_index, `offset` m right of lane 3's center."""
+    def put(name, distance, offset, yaw_add=0.0, lift=0.05, hold=False, lights=None):
         waypoint = route[(start_index + int(round(distance / ROUTE_RESOLUTION))) % len(route)]
         right = waypoint.transform.get_right_vector()
         location = waypoint.transform.location
@@ -796,8 +823,68 @@ def spawn_workzone(sim_world, route, start_index):
             return None
         if hold:
             actor.apply_control(carla.VehicleControl(hand_brake=True, brake=1.0))
+        if lights is not None:
+            actor.set_light_state(carla.VehicleLightState(lights))
         actors.append(actor)
         return actor
+    return put
+
+
+def spawn_accident(sim_world, route, start_index):
+    """Scenario 4: a crash closes lanes 3 and 4 around `start_index` (the crashed cars). `route` is
+    the lane 3 route of the loop.
+
+    Layout, along the route: an accident warning sign on the shoulder, a police car with its
+    emergency lights in lane 4, a taper of cones from the outer edge of lane 4 to the edge of
+    lane 2, the two crashed cars (one askew in lane 3, one spun round across lanes 3 and 4, hazard
+    lights on) with debris, an ambulance with its emergency lights in lane 4 behind them, and cones
+    along lane 3's left edge past the scene.
+    """
+    actors = []
+    put = _route_placer(sim_world, route, start_index, actors)
+    inner = -0.5 * LANE_WIDTH + 0.55        # just inside lane 3, next to the lane 2 edge
+    outer = 1.5 * LANE_WIDTH                # outer edge of lane 4 (offset from lane 3's center)
+    emergency = int(carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2 |
+                    carla.VehicleLightState.Position | carla.VehicleLightState.LowBeam)
+    hazards = int(carla.VehicleLightState.LeftBlinker | carla.VehicleLightState.RightBlinker |
+                  carla.VehicleLightState.Position)
+
+    put('static.prop.warningaccident', ACCIDENT_START, outer + 1.2, yaw_add=180.0)
+    put('vehicle.dodge.charger_police_2020', -60.0, LANE_WIDTH, lift=0.3, hold=True, lights=emergency)
+    # taper: from the outer edge of lane 4 (behind the police car) to the edge of lane 2
+    taper_start, taper_end = -50.0, -10.0
+    count = 6
+    for k in range(count + 1):
+        put('static.prop.trafficcone01', taper_start + (taper_end - taper_start) * k / count,
+            outer + (inner - outer) * k / count)
+    # the crash
+    put('vehicle.tesla.model3', 0.0, 0.4, yaw_add=32.0, lift=0.3, hold=True, lights=hazards)
+    put('vehicle.toyota.prius', 7.0, 2.3, yaw_add=-145.0, lift=0.3, hold=True, lights=hazards)
+    for distance, offset, name in ((-3.0, 1.4, 'static.prop.dirtdebris01'), (3.0, -0.6, 'static.prop.dirtdebris02'),
+                                   (5.0, 1.8, 'static.prop.dirtdebris03'), (11.0, 0.8, 'static.prop.dirtdebris01')):
+        put(name, distance, offset, lift=0.0)
+    put('vehicle.ford.ambulance', 28.0, LANE_WIDTH, lift=0.3, hold=True, lights=emergency)
+    # cones along lane 3's left edge from the crash to the end of the scene
+    distance = 0.0
+    while distance <= ACCIDENT_END:
+        put('static.prop.trafficcone01', distance, inner)
+        distance += CONE_SPACING
+
+    logging.info('Accident: %d objects close lanes 3 and 4 around %.0f m', len(actors),
+                 start_index * ROUTE_RESOLUTION)
+    return actors
+
+
+def spawn_workzone(sim_world, route, start_index):
+    """Close lanes 3 and 4 from `start_index` on. `route` is the lane 3 route of the loop.
+
+    Layout, along the route: two warning signs, a taper of cones that leads from the outer
+    edge of lane 4 to the edge of lane 2, a row of barriers across both lanes, cones along
+    the closed lanes with a work truck in lane 3 and a work van in lane 4, and a short
+    taper that opens the lanes again.
+    """
+    actors = []
+    put = _route_placer(sim_world, route, start_index, actors)
 
     inner = -0.5 * LANE_WIDTH + 0.55        # just inside lane 3, next to the lane 2 edge
     outer = 1.5 * LANE_WIDTH                # outer edge of lane 4 (offset from lane 3's center)
@@ -936,6 +1023,137 @@ class TrafficClearance(object):
                 self._traffic.remove(npc)
             destroy_actors(self._client, [npc.actor for npc in gone])
             logging.info('Traffic: %d car(s) removed, %d left', len(gone), len(self._traffic))
+
+
+class EscortCars(object):
+    """Cars level with the ego car in the lanes next to it after the takeover, so the driver keeps
+    the lane and the takeover period measures steady driving, not a lane change.
+
+    They come up from ESCORT_BEHIND m behind over ESCORT_APPROACH s, stay ESCORT_SECONDS beside the
+    ego car (ESCORT_OFFSET ahead of it), drop back again and are removed. They move with physics:
+    a speed close to the ego car's, corrected by ESCORT_GAP_GAIN for the gap to their place and
+    changing gradually, along the lane next to the ego car (their own lane where that does not
+    exist). So they follow the driver smoothly, a little late, instead of jumping each frame.
+    """
+
+    CENTERING = 0.8         # m/s sideways per m off the middle of the lane
+    TURNING = 3.0           # deg/s turn rate per deg the car points away from the lane ahead
+
+    def __init__(self, client, sim_world, carla_map):
+        self._client = client
+        self._world = sim_world
+        self._map = carla_map
+        self._blueprints = [bp for bp in sim_world.get_blueprint_library().filter('vehicle.*')
+                            if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car'
+                            and bp.id not in NPC_EXCLUDED
+                            and not any(word in bp.id for word in ('police', 'ambulance', 'firetruck'))]
+        self._cars = {}       # side -> actor
+        self._speed = {}      # side -> m/s it drives at
+        self._sides = ()
+        self._start = None    # time they set off; None while there are none
+
+    def start(self, now, sides):
+        if self._start is not None or not sides:
+            return
+        self._start = now
+        self._sides = tuple(sides)
+        logging.info('Escort cars come up beside the car (%s) for %.0f s', ' and '.join(self._sides), ESCORT_SECONDS)
+
+    def _offset(self, now, side):
+        """m ahead of the ego car (< 0: behind) for `side` at `now`."""
+        target = ESCORT_OFFSET[side]
+        elapsed = now - self._start
+        leave = ESCORT_APPROACH + ESCORT_SECONDS
+        if elapsed < ESCORT_APPROACH:
+            share = elapsed / ESCORT_APPROACH
+        elif elapsed < leave:
+            share = 1.0
+        else:
+            share = 1.0 - min((elapsed - leave) / ESCORT_APPROACH, 1.0)
+        share = share * share * (3.0 - 2.0 * share)  # smooth start and stop
+        return ESCORT_BEHIND + (target - ESCORT_BEHIND) * share
+
+    def tick(self, now, ego):
+        if self._start is None:
+            return
+        if now - self._start >= ESCORT_SECONDS + 2 * ESCORT_APPROACH:
+            self.remove()
+            return
+        ego_location = ego.get_location()
+        ego_forward = ego.get_transform().get_forward_vector()
+        ego_velocity = ego.get_velocity()
+        ego_speed = ego_velocity.length()
+        ego_waypoint = self._map.get_waypoint(ego_location)
+        for side in self._sides:
+            lane = ego_waypoint.get_left_lane() if side == 'left' else ego_waypoint.get_right_lane()
+            if (lane is None or lane.lane_type != carla.LaneType.Driving
+                    or lane.lane_id * ego_waypoint.lane_id <= 0):
+                lane = None
+            offset = self._offset(now, side)
+            car = self._cars.get(side)
+            if car is None:
+                if lane is None:
+                    continue
+                waypoints = lane.next(offset) if offset > 0.1 else lane.previous(max(-offset, 0.1))
+                if not waypoints:
+                    continue
+                transform = waypoints[0].transform
+                transform = carla.Transform(transform.location + carla.Location(z=0.3), transform.rotation)
+                blueprint = random.choice(self._blueprints)
+                blueprint.set_attribute('role_name', 'escort')
+                if blueprint.has_attribute('color'):
+                    blueprint.set_attribute('color', random.choice(blueprint.get_attribute('color').recommended_values))
+                car = self._world.try_spawn_actor(blueprint, transform)
+                if car is None:
+                    continue  # the place is taken: next frame
+                car.set_target_velocity(ego_velocity)
+                self._cars[side] = car
+                self._speed[side] = ego_speed
+                continue
+            self._drive(side, car, lane, offset, ego_location, ego_forward, ego_speed)
+
+    def _drive(self, side, car, lane, offset, ego_location, ego_forward, ego_speed):
+        """One frame of driving for the car on `side`: keep `offset` m ahead of the ego car."""
+        transform = car.get_transform()
+        location = transform.location
+        gap = ((location.x - ego_location.x) * ego_forward.x
+               + (location.y - ego_location.y) * ego_forward.y)  # m ahead of the ego car
+        catch_up = min(max(ESCORT_GAP_GAIN * (offset - gap), -ESCORT_CATCH_UP), ESCORT_CATCH_UP)
+        # the speed changes gradually towards the ego car's plus the catch-up
+        wanted = self._speed[side]
+        wanted += min(max(ego_speed + catch_up - wanted, -ESCORT_SPEED_STEP), ESCORT_SPEED_STEP)
+        self._speed[side] = wanted
+        # where it should be: the lane next to the ego car, else its own lane
+        if lane is not None:
+            points = lane.next(gap) if gap > 0.1 else lane.previous(max(-gap, 0.1))
+            here = points[0] if points else None
+        else:
+            here = self._map.get_waypoint(location)
+        if here is None:
+            return
+        # velocity and turn rate are set directly (tyres and gear shifts would let it wander):
+        # along the lane, drawn back to its middle, turning towards a point ahead in it
+        lane_forward = here.transform.get_forward_vector()
+        lane_right = here.transform.get_right_vector()
+        middle = here.transform.location
+        drift = (middle.x - location.x) * lane_right.x + (middle.y - location.y) * lane_right.y
+        sideways = min(max(self.CENTERING * drift, -1.5), 1.5)
+        ahead = here.next(max(8.0, wanted * 0.8))
+        target = ahead[0].transform.location if ahead else middle + lane_forward * 10.0
+        heading = math.degrees(math.atan2(target.y - location.y, target.x - location.x))
+        turn = (heading - transform.rotation.yaw + 180.0) % 360.0 - 180.0
+        car.set_target_velocity(carla.Vector3D(lane_forward.x * wanted + lane_right.x * sideways,
+                                               lane_forward.y * wanted + lane_right.y * sideways,
+                                               car.get_velocity().z))
+        car.set_target_angular_velocity(carla.Vector3D(0.0, 0.0, self.TURNING * turn))
+
+    def remove(self):
+        """Gone at once (the end, autonomous driving re-engaged, the program quits)."""
+        if self._cars:
+            destroy_actors(self._client, list(self._cars.values()))
+            logging.info('Escort cars removed')
+        self._cars = {}
+        self._start = None
 
 
 def prune_traffic(traffic, sim_world):
@@ -1812,6 +2030,9 @@ class Scenario(object):
     """
 
     manual_only = False  # True: the driver drives from the start, no autonomous mode
+    escort_sides = ('left', 'right')  # EscortCars after the takeover: lanes next to the car to fill
+    escort_after_index = None         # ... from when the car passes this route index (None: right away)
+    ego_index = None                  # the car's route index, set by TakeoverExperiment every frame
 
     def __init__(self, number, args):
         self.number = number
@@ -1868,6 +2089,7 @@ class PracticeScenario(Scenario):
     In bright daylight (PRACTICE_WEATHER); the server's weather comes back afterwards."""
 
     manual_only = True
+    escort_sides = ()
 
     def __init__(self, args, sim_world):
         super(PracticeScenario, self).__init__(0, args)
@@ -1883,6 +2105,8 @@ class PracticeScenario(Scenario):
 class ExitScenario(Scenario):
     """1: the car reaches the end of its autonomous stretch (an exit point). Signs 1 km and 500 m
     before it and at it; the exit lane is lane 4, the ramp leaves at the junction after it."""
+
+    escort_sides = ('left',)  # the driver moves right to the exit lane
 
     def __init__(self, args, route, lane3_route):
         super(ExitScenario, self).__init__(1, args)
@@ -1916,20 +2140,11 @@ class WorkzoneScenario(Scenario):
         logging.info('Scenario 2, work zone: appears after lap %d, %.0f m from the start',
                      WORKZONE_AFTER_LAPS, self._index * ROUTE_RESOLUTION)
 
-    def _blocking_car(self):
-        """A car within WORKZONE_CLEARANCE m of lane 3's centerline along the zone (lanes 2-4), or None.
-        Spawning ~60 objects next to a passing car can clip it and throw it off the road."""
-        for vehicle in self._world.get_actors().filter('vehicle.*'):
-            location = vehicle.get_location()
-            if any(location.distance(point) < WORKZONE_CLEARANCE for point in self._zone_points):
-                return vehicle
-        return None
-
     def tick(self, now, laps):
         if self.event_index is None and laps >= WORKZONE_AFTER_LAPS:
             if self._due is None:
                 self._due = now
-            blocking = self._blocking_car()
+            blocking = _car_near(self._world, self._zone_points)
             if blocking is not None and now - self._due < WORKZONE_MAX_WAIT:
                 return
             if blocking is not None:
@@ -1940,6 +2155,66 @@ class WorkzoneScenario(Scenario):
             self._actors = spawn_workzone(self._world, self._lane3, self._index)
             self._place_signs(self._lane3, self._index, WORKZONE_SIGNS, ORANGE)
             self.event_index = self._index
+            zone = WORKZONE_TAPER + WORKZONE_LENGTH + WORKZONE_END_TAPER
+            self.escort_after_index = (self._index + int(zone / ROUTE_RESOLUTION)) % len(self._lane3)
+
+    def cleanup(self, client):
+        if self._actors:
+            destroy_actors(client, self._actors)
+            self._actors = []
+
+
+def _car_near(sim_world, points, clearance=WORKZONE_CLEARANCE):
+    """A car within `clearance` m of any of `points` (lane 3's centerline along an obstacle, so lanes
+    2-4), or None. Spawning dozens of objects next to a passing car can clip it off the road."""
+    for vehicle in sim_world.get_actors().filter('vehicle.*'):
+        location = vehicle.get_location()
+        if any(location.distance(point) < clearance for point in points):
+            return vehicle
+    return None
+
+
+class AccidentScenario(Scenario):
+    """4: a crash closes lanes 3 and 4 ahead (spawn_accident), on a straight 590 m from the start.
+
+    The scene appears once the car is ACCIDENT_SPAWN_AHEAD m from it (so on its second pass, out of
+    view and before the pre-alert is due), as soon as no car is next to it or after ACCIDENT_MAX_WAIT s.
+    From then on the pre-alert and the TOR come like the work zone's."""
+
+    def __init__(self, args, sim_world, route, lane3_route):
+        super(AccidentScenario, self).__init__(4, args)
+        self._world = sim_world
+        self._lane3 = lane3_route
+        at = args.accident_at if args.accident_at is not None else ACCIDENT_AT
+        self._index = int(at / ROUTE_RESOLUTION) % len(route)
+        self._actors = []
+        first = self._index + int((ACCIDENT_START - 10.0) / ROUTE_RESOLUTION)
+        last = self._index + int((ACCIDENT_END + 20.0) / ROUTE_RESOLUTION)
+        self._zone_points = [lane3_route[i % len(lane3_route)].transform.location for i in range(first, last + 1)]
+        self._due = None
+        logging.info('Scenario 4, accident: lanes 3 and 4 closed %.0f m from the start; the scene appears '
+                     '%.0f m ahead of the car', self._index * ROUTE_RESOLUTION, ACCIDENT_SPAWN_AHEAD)
+
+    def tick(self, now, laps):
+        if self.event_index is not None or self.ego_index is None:
+            return
+        ahead = ((self._index - self.ego_index) % len(self._lane3)) * ROUTE_RESOLUTION
+        # a window that the car crosses once per lap (the scene is closer than this at the start)
+        if not ACCIDENT_SPAWN_AHEAD - 400.0 < ahead <= ACCIDENT_SPAWN_AHEAD:
+            self._due = None
+            return
+        if self._due is None:
+            self._due = now
+        blocking = _car_near(self._world, self._zone_points)
+        if blocking is not None and now - self._due < ACCIDENT_MAX_WAIT:
+            return
+        if blocking is not None:
+            logging.warning('Accident: car %d still next to the scene after %.0f s, spawning anyway',
+                            blocking.id, ACCIDENT_MAX_WAIT)
+        self._actors = spawn_accident(self._world, self._lane3, self._index)
+        self._place_signs(self._lane3, self._index, ACCIDENT_SIGNS, ORANGE)
+        self.event_index = self._index
+        self.escort_after_index = (self._index + int(ACCIDENT_END / ROUTE_RESOLUTION)) % len(self._lane3)
 
     def cleanup(self, client):
         if self._actors:
@@ -2051,6 +2326,8 @@ def make_scenario(args, sim_world, routes, route):
         return WorkzoneScenario(args, sim_world, route, routes[3])
     if args.scenario == 3:
         return FogScenario(args, sim_world, route)
+    if args.scenario == 4:
+        return AccidentScenario(args, sim_world, route, routes[3])
     return ExitScenario(args, route, routes[3])
 
 
@@ -2204,16 +2481,20 @@ class AudioEngine(object):
 
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
-                 pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None):
+                 pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
+                 escort=None):
         self._world = world
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
+        self._escort = escort               # EscortCars: cars beside the car after the takeover
+        self._escort_due = False            # the takeover happened, the escort cars still have to come
         self._cruise_kmh = cruise_kmh       # autonomous driving speed
         self._glasses = glasses             # GlassesLink: alerts on the glasses instead of the screen
         self._intervention = intervention   # Intervention: text on the glasses during the pre-alert
         self._shown_text = []
         self._speed_kmh = 0.0               # shown on the instrument cluster (_draw_cluster)
         self._pedal = 0.0                   # throttle pedal travel the driver gives, 0..1
-        self._cluster_fonts = None
+        self._cluster = None                # the gauges' face, made for the monitor size (_cluster_face)
+        self._needles = [0.0, 0.0]          # what the needles show: pedal %, km/h
         self._pre_alert = pre_alert         # seconds from the pre-alert to the TOR
         # Lights the driver switched (int VehicleLightState flags), kept here because the state read
         # back from the server can lag behind quick presses. Brake/reverse lights are added per frame.
@@ -2251,6 +2532,9 @@ class TakeoverExperiment(object):
         self._sound.stop()
         self._scenario.on_engage(now)
         self._follower.engage()
+        self._escort_due = False
+        if self._escort is not None:
+            self._escort.remove()
         self.mode = AUTO
         self._input.reset()
         self._world.hud.notification('Autonomous driving')
@@ -2278,6 +2562,7 @@ class TakeoverExperiment(object):
         self._recorder.mark_takeover(now, 'forced' if forced else 'after_tor' if self.mode == TOR else 'before_tor')
         self._scenario.on_takeover(now)
         self.mode = MANUAL
+        self._escort_due = self._escort is not None and bool(self._scenario.escort_sides)
         self._sound.stop(confirm=True)
         self._control = carla.VehicleControl()
         self._input.reset()
@@ -2382,6 +2667,16 @@ class TakeoverExperiment(object):
             return self._nearest_index()  # lost the route, search all of it
         return best
 
+    def _escort_tick(self, now):
+        """Start the escort cars once the car is past the scenario's obstacle (or right after the
+        takeover), and move them."""
+        if self._escort_due and self.mode == MANUAL:
+            after = self._scenario.escort_after_index
+            if after is None or (self._index - after) % len(self._route) <= int(200.0 / ROUTE_RESOLUTION):
+                self._escort_due = False
+                self._escort.start(now, self._scenario.escort_sides)
+        self._escort.tick(now, self._world.player)
+
     def _track_event(self, now):
         """Laps, distance to the scenario's event point, and the automatic pre-alert."""
         previous = self._index
@@ -2391,6 +2686,7 @@ class TakeoverExperiment(object):
         if self._progress // count > self.laps:
             self.laps = self._progress // count
             logging.info('Lap %d completed', self.laps)
+        self._scenario.ego_index = self._index
         self._scenario.tick(now, self.laps)
         if self._auto_alert and self.mode == AUTO and self._scenario.alert_due():
             logging.info('%s: automatic pre-alert', self._scenario.message)
@@ -2425,6 +2721,8 @@ class TakeoverExperiment(object):
         self._track_event(now)
         if self._clearance is not None:
             self._clearance.tick(now, self._world.player)
+        if self._escort is not None:
+            self._escort_tick(now)
         if self.mode in AUTONOMOUS_MODES:
             if self.mode in ALERT_MODES and self._input.driver_active(keys):
                 self._take_over(now)
@@ -2441,6 +2739,7 @@ class TakeoverExperiment(object):
         self._speed_kmh, self._pedal = speed_kmh, self._input.peek(keys)[1]
         if self.mode in AUTONOMOUS_MODES:
             control = self._follower.run_step()
+            self._pedal = control.throttle  # the cluster shows what the autopilot gives
         else:
             incline = self._world.player.get_transform().get_forward_vector().z  # sine of the road's slope, uphill > 0
             self._parse_manual_keys(keys, clock.get_time(), speed_kmh, incline)
@@ -2514,40 +2813,74 @@ class TakeoverExperiment(object):
                               remaining / TOR_SECONDS)
 
     def _draw_cluster(self, display):
-        """Driver's seat view on the monitors: a panel over the car's instrument cluster (its
-        gauges are fixed in the model) with the speed and the throttle pedal travel."""
+        """Driver's seat view on the monitors: a panel over the car's instrument cluster (its gauges
+        are fixed in the model) with two round gauges whose needles turn, the throttle pedal travel
+        (left) and the speed (right), and the speed in digits between them."""
         manager = self._world.camera_manager
         if manager.transform_index != 0 or manager.screens < 2:
             return
-        screen_width, screen_height = manager.screen_size
-        x, y, w, h = (int(share * size) for share, size in
-                      zip(CLUSTER_RECT, (screen_width, screen_height, screen_width, screen_height)))
-        x += manager.screens // 2 * screen_width
-        if self._cluster_fonts is None:
-            default = pygame.font.get_default_font()
-            self._cluster_fonts = (pygame.font.Font(default, int(h * 0.62)), pygame.font.Font(default, int(h * 0.16)))
-        number, label = self._cluster_fonts
-        left = manager.screens // 2 * screen_width
-        pygame.draw.polygon(display, CLUSTER_BACKGROUND,
-                            [(left + px * screen_width, py * screen_height) for px, py in CLUSTER_OUTLINE])
+        if self._cluster is None or self._cluster['size'] != manager.screen_size:
+            self._cluster = self._cluster_face(manager.screen_size)
+        cluster = self._cluster
+        for k, value in enumerate((min(max(self._pedal, 0.0), 1.0) * 100.0, self._speed_kmh)):
+            self._needles[k] += GAUGE_FOLLOW * (value - self._needles[k])
+        surface = cluster['face'].copy()
+        for (center, radius, maximum), value in zip(cluster['dials'], self._needles):
+            angle = math.radians(GAUGE_START - GAUGE_SWEEP * min(max(value / maximum, 0.0), 1.0))
+            dx, dy = math.cos(angle), -math.sin(angle)
+            tip = (center[0] + dx * radius * 0.84, center[1] + dy * radius * 0.84)
+            tail = (center[0] - dx * radius * 0.14, center[1] - dy * radius * 0.14)
+            pygame.draw.line(surface, CLUSTER_NEEDLE, tail, tip, max(2, int(radius * 0.045)))
+            pygame.draw.circle(surface, CLUSTER_DIM, center, max(3, int(radius * 0.09)))
+        digits = cluster['digits'].render('%d' % round(self._speed_kmh), True, CLUSTER_TEXT)
+        surface.blit(digits, digits.get_rect(center=cluster['readout']))
+        surface.blit(cluster['mask'], (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        display.blit(surface, (manager.screens // 2 * manager.screen_size[0] + cluster['origin'][0],
+                               cluster['origin'][1]))
 
-        # speed, left 55 %
-        speed = number.render('%d' % round(self._speed_kmh), True, CLUSTER_TEXT)
-        display.blit(speed, speed.get_rect(midright=(x + int(w * 0.40), y + int(h * 0.50))))
-        unit = label.render('km/h', True, CLUSTER_DIM)
-        display.blit(unit, unit.get_rect(midleft=(x + int(w * 0.42), y + int(h * 0.62))))
+    @staticmethod
+    def _cluster_face(size):
+        """The gauges without needles on the panel (the shape of CLUSTER_OUTLINE), for one monitor size:
+        face, mask (the panel's shape, cuts the gauges where the steering wheel hides them),
+        origin on the monitor, dials [(center, radius, full scale)], digits font, readout center."""
+        width, height = size
+        points = [(px * width, py * height) for px, py in CLUSTER_OUTLINE]
+        x0, y0 = int(min(p[0] for p in points)), int(min(p[1] for p in points))
+        x1, y1 = int(max(p[0] for p in points)) + 1, int(max(p[1] for p in points)) + 1
+        mask = pygame.Surface((x1 - x0, y1 - y0), pygame.SRCALPHA)
+        mask.fill((0, 0, 0, 0))
+        pygame.draw.polygon(mask, (255, 255, 255, 255), [(px - x0, py - y0) for px, py in points])
+        face = pygame.Surface((x1 - x0, y1 - y0), pygame.SRCALPHA)
+        face.fill(CLUSTER_BACKGROUND + (255,))
 
-        # throttle pedal, right: label, bar, percent
-        bar = pygame.Rect(x + int(w * 0.60), y + int(h * 0.42), int(w * 0.34), int(h * 0.20))
-        title = label.render('ACCEL', True, CLUSTER_DIM)
-        display.blit(title, title.get_rect(bottomleft=(bar.left, bar.top - int(h * 0.05))))
-        pygame.draw.rect(display, CLUSTER_DIM, bar, 2)
-        fill = bar.inflate(-6, -6)
-        fill.width = int(fill.width * min(max(self._pedal, 0.0), 1.0))
-        if fill.width > 0:
-            pygame.draw.rect(display, CLUSTER_ACCEL, fill)
-        percent = label.render('%d %%' % round(self._pedal * 100), True, CLUSTER_TEXT)
-        display.blit(percent, percent.get_rect(topright=(bar.right, bar.bottom + int(h * 0.05))))
+        rx, ry = CLUSTER_RECT[0] * width - x0, CLUSTER_RECT[1] * height - y0
+        rw, rh = CLUSTER_RECT[2] * width, CLUSTER_RECT[3] * height
+        radius = int(rh * 0.56)
+        cy = int(ry + rh * 0.66)
+        dials = [((int(rx + rw * 0.24), cy), radius, 100.0), ((int(rx + rw * 0.76), cy), radius, GAUGE_MAX_SPEED)]
+        default = pygame.font.get_default_font()
+        small = pygame.font.Font(default, max(9, int(radius * 0.19)))
+        # (minor tick step, labelled every, title)
+        scales = ((10.0, 20.0, 'ACCEL %'), (10.0, 40.0, 'km/h'))
+        for ((cx, cyy), r, maximum), (step, label_every, title) in zip(dials, scales):
+            value = 0.0
+            while value <= maximum + 1e-6:
+                angle = math.radians(GAUGE_START - GAUGE_SWEEP * value / maximum)
+                dx, dy = math.cos(angle), -math.sin(angle)
+                major = abs(value % (2 * step)) < 1e-6
+                inner = r * (0.78 if major else 0.86)
+                pygame.draw.line(face, CLUSTER_TEXT if major else CLUSTER_DIM, (cx + dx * inner, cyy + dy * inner),
+                                 (cx + dx * r * 0.96, cyy + dy * r * 0.96), 2 if major else 1)
+                if abs(value % label_every) < 1e-6:
+                    text = small.render('%d' % value, True, CLUSTER_TEXT)
+                    face.blit(text, text.get_rect(center=(cx + dx * r * 0.6, cyy + dy * r * 0.6)))
+                value += step
+            text = small.render(title, True, CLUSTER_DIM)
+            face.blit(text, text.get_rect(center=(cx, cyy + r * 0.42)))
+        digits = pygame.font.Font(default, int(radius * 0.42))
+        readout = (int(rx + rw * 0.5), int(cy + radius * 0.15))
+        return {'size': size, 'face': face, 'mask': mask, 'origin': (x0, y0), 'dials': dials,
+                'digits': digits, 'readout': readout}
 
     @staticmethod
     def _draw_box(display, font, text, rect, background, foreground):
@@ -2585,6 +2918,7 @@ def game_loop(args):
     world = None
     traffic = []
     scenario = None
+    escort = None
     green_lights = []
     recorder = None
     client = None
@@ -2612,6 +2946,11 @@ def game_loop(args):
         if not sim_world.get_map().name.endswith(MAP_NAME):
             logging.info('Loading %s...', MAP_NAME)
             sim_world = client.load_world(MAP_NAME)
+        # every run, since the server keeps the map (and trees hidden by a run before)
+        trees = {tree.id for tree in sim_world.get_environment_objects(carla.CityObjectLabel.Vegetation)}
+        sim_world.enable_environment_objects(trees, not args.no_trees)
+        if args.no_trees:
+            logging.info('Trees hidden (%d objects): quicker frames', len(trees))
         # A Traffic Manager of our own on a free port: the server still lists the one of the run
         # before (it lived in that process), and a synchronous tick that reaches it waits forever.
         traffic_manager = client.get_trafficmanager(_free_port())
@@ -2660,23 +2999,24 @@ def game_loop(args):
 
         route_planner = GlobalRoutePlanner(carla_map, ROUTE_RESOLUTION)
         follower = LoopFollower(world.player, route, args.speed, carla_map, route_planner)
-        # in scenario 2 cars driving the lane that gets closed would run into the work zone
-        traffic_lanes = tuple(lane for lane in LANES if not (args.scenario == 2 and lane in WORKZONE_LANES))
+        # in scenarios 2 and 4 cars driving a lane that gets closed would run into the obstacle
+        traffic_lanes = tuple(lane for lane in LANES if lane not in CLOSED_LANES.get(args.scenario, ()))
         traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes)
         last_refresh = time.monotonic()
         latency = LatencyMeter()
         recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window, latency)
-        if args.scenario == 2 and args.lane in WORKZONE_LANES:
-            logging.info('The car drives in lane %d, which the work zone closes: the takeover includes '
-                         'a lane change to the left', args.lane)
+        if args.lane in CLOSED_LANES.get(args.scenario, ()):
+            logging.info('The car drives in lane %d, which the %s closes: the takeover includes '
+                         'a lane change to the left', args.lane, SCENARIOS[args.scenario][0])
         scenario = make_scenario(args, sim_world, routes, route)
         road_signs = RoadSigns(sim_world)
         clearance = TrafficClearance(client, traffic, args.npc_speed)
+        escort = EscortCars(client, sim_world, carla_map)
         sound = AlertSound(not args.no_sound and (not args.glasses or args.pc_sound))  # --glasses: TORApp plays them
         experiment = TakeoverExperiment(world, follower, driver_input, recorder, route, scenario, sound,
                                         auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
                                         glasses=glasses, intervention=intervention, clearance=clearance,
-                                        cruise_kmh=args.speed)
+                                        cruise_kmh=args.speed, escort=escort)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
@@ -2736,6 +3076,8 @@ def game_loop(args):
             destroy_actors(client, [npc.actor for npc in traffic])
         if scenario is not None:
             scenario.cleanup(client)
+        if escort is not None:
+            escort.remove()
         release_lights(green_lights)
         if world is not None:
             if getattr(world.camera_manager, 'side_views', None):
@@ -2806,6 +3148,10 @@ def main():
     argparser.add_argument('--workzone-at', metavar='METERS', type=float, default=None,
                            help='scenario 2: where the work zone taper starts, m from the start '
                                 '(default: %d)' % WORKZONE_AT)
+    argparser.add_argument('--no-trees', action='store_true',
+                           help='hide the trees and bushes: about 26 -> 29 FPS, fewer slow frames')
+    argparser.add_argument('--accident-at', metavar='METERS', type=float, default=None,
+                           help='scenario 4: where the crashed cars are, m from the start (default: %d)' % ACCIDENT_AT)
     argparser.add_argument('--fog-at', metavar='METERS', type=float, default=None,
                            help='scenario 3: where the fog starts to thicken, m from the start (default: %d)' % FOG_AT)
     argparser.add_argument('--fog-threshold', metavar='DENSITY', type=float, default=FOG_THRESHOLD,
