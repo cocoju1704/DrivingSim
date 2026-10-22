@@ -1,6 +1,6 @@
 {
-    "intervention": "driving",
+    "intervention": "NDRT",
     "format": "summary",
     "delay_seconds": 5.0,
-    "question_seconds": 15.0
+    "question_seconds": 10.0
 }

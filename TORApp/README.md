@@ -16,13 +16,13 @@ _Experiment/takeover_experiment.py ──UDP (Wi-Fi)──▶ TORApp (Galaxy S22
 
 | Mode | Glasses display |
 |------|------------|
-| `AUTO` | Same as the screen's mode box: **green** "AUTONOMOUS - LOCKED" |
-| `PRE_ALERT` | **Green** "AUTONOMOUS" + **orange** banner: **PRE-ALERT** / "<message> - takeover request in N s" / countdown bar |
-| `TOR` | **Full screen in pure red (255,0,0)**: big white **TAKE / OVER**, countdown digits, countdown bar |
-| `MANUAL` | **Blue** "MANUAL" (practice drive: "PRACTICE - MANUAL") |
+| `AUTO` | Small **green** "AUTO" at the bottom left |
+| `PRE_ALERT` | First 5 s: **PRE-ALERT** and "<message>" in **orange** in the center, no background, no time left. After that: the intervention text at the top (the center of the field of view, bold white; the label in bright cyan on a line of its own, the sentence below it). Small **green** "AUTO" at the bottom left throughout |
+| `TOR` | No background (see-through): red **TAKE OVER** at the top, red countdown digits and bar at the bottom |
+| `MANUAL` | Small **blue** "MANUAL" at the bottom left |
 | `OFF` | "Waiting for the simulator" (before the experiment starts or after it ends) |
 
-The display is 600×600, right lens only, and additive (black is see-through). The SDK has no text or background colors (only PRIMARY/SECONDARY), so the phone draws the colored banners as bitmaps and sends them as images ([TorContent.kt](android/app/src/main/java/com/drivingsim/torapp/TorContent.kt)). Every view change is a full Bluetooth resend, so the countdown updates once per second.
+The display is 600×600, right lens only, and additive (black is see-through). The SDK has no text or background colors (only PRIMARY/SECONDARY), so the phone draws each view as one 600×600 image without backgrounds and sends it ([TorContent.kt](android/app/src/main/java/com/drivingsim/torapp/TorContent.kt)). Every view change is a full Bluetooth resend, so the countdown updates once per second.
 
 ## Alert sounds (glasses speakers)
 
@@ -70,6 +70,14 @@ cd TORApp\android
    ```
    With `--glasses`, the PRE-ALERT/TOR banners are not drawn on the screen (the AUTONOMOUS/MANUAL status box and the sounds stay).
 
+### Over the USB cable instead of Wi-Fi (USB tethering)
+Connect the phone with USB and turn on **Settings → Connections → Mobile Hotspot and Tethering → USB tethering**. The cable is then a network between the PC and the phone, and the phone is the gateway of the PC's USB adapter (Remote NDIS), so the PC finds its address by itself:
+```
+python _Experiment\takeover_experiment.py --glasses usb
+python TORApp\pc\tor_glasses.py usb --demo
+```
+The IP shown in the app is its Wi-Fi address, not the tethering one: with `usb` you don't need it. While tethering is on, Windows may send the PC's internet traffic through the phone too.
+
 Keep the app in the foreground during the experiment. The app keeps the screen on and holds a low-latency Wi-Fi lock.
 
 ### Connection test without the simulator
@@ -93,8 +101,15 @@ PC → phone (resent every 0.2 s, and right away on a change):
 ```
 phone → PC (an answer to every packet, plus one right after a new state is on the glasses):
 ```json
-{"seq": 12, "shown": 12, "display": "STARTED"}
+{"seq": 12, "shown": 12, "display": "STARTED", "rtr_request": 0}
 ```
+
+### NDRT RtR summary
+With `intervention_config.json` set to `NDRT` + `summary`, the PRE-ALERT text is the participant's own ready-to-resume summary: the Gmail extension (`_Experiment/gmail_rtr_extension`) sends the draft to ChatGPT (OpenAI API) and returns three lines through `_Experiment/rtr_bridge.py` (HTTP 5008 on the PC). The PC then also sends the latest request and result in every packet:
+```json
+"rtr": {"id": 3, "state": "done", "source": "auto", "lines": ["완료된 작업: ...", "진행중이던 작업: ...", "앞으로 남은 작업: ..."], "error": ""}
+```
+The app shows it in the **NDRT RtR summary** section. **Make RtR summary now** asks for a summary right away: `rtr_request` counts the presses, and the PC requests one for each increase. The experiment asks by itself 5 s before each pre-alert.
 
 ## Things to check first on the hardware
 

@@ -34,7 +34,7 @@ class TorReceiver(private val port: Int) {
             return@launch
           }
       socket = listening
-      val buffer = ByteArray(2048)
+      val buffer = ByteArray(8192) // the Korean intervention text and RtR summary take a few hundred bytes
       try {
         while (isActive) {
           val packet = DatagramPacket(buffer, buffer.size)

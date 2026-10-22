@@ -12,17 +12,26 @@ Message, JSON in one UDP packet to the phone (port 5007):
     remaining  seconds left in the PRE_ALERT / TOR countdown (null otherwise)
     label      text of the mode box on the simulator screen ("" : the app's default)
     text       intervention lines shown under the PRE-ALERT banner ([]: none)
+    rtr        only with the NDRT RtR summary (set_rtr): the latest summary request, for the app's
+               RtR section: {"id": 3, "state": "pending", "source": "auto", "lines": [], "error": ""}
+               state idle, pending, done, error or timeout (see _Experiment/rtr_bridge.py)
 The state is resent every RESEND seconds, so a lost packet only delays it.
 
 The app answers every packet with
-    {"seq": 12, "shown": 11, "display": "STARTED"}
+    {"seq": 12, "shown": 11, "display": "STARTED", "rtr_request": 0}
     shown      seq of the state now on the glasses (-1: nothing yet)
     display    state of the glasses display (STARTED when it can show content)
+    rtr_request  presses of the app's RtR button since the app started: each increase is a
+               request for an RtR summary (on_rtr_request)
 The first answer with a new "shown" gives the latency: PC send -> on the glasses ->
 answer back on the PC (one extra Wi-Fi hop).
 
-Test without the simulator (phone IP: shown in the app):
+Phone address: its Wi-Fi IP (shown in the app), or "usb" with USB tethering on: the phone is
+then the gateway of the PC's USB network adapter (Remote NDIS), found by usb_tether_address().
 
+Test without the simulator:
+
+    python TORApp\\pc\\tor_glasses.py usb --demo
     python TORApp\\pc\\tor_glasses.py 192.168.0.23 --demo
     python TORApp\\pc\\tor_glasses.py 192.168.0.23 --mode TOR
     python TORApp\\pc\\tor_glasses.py 192.168.0.23 --mode PRE_ALERT --text _Experiment\\NDRT_scripts\\scenario1_driving_summary.txt
@@ -33,7 +42,9 @@ from __future__ import print_function
 import argparse
 import json
 import logging
+import os
 import socket
+import subprocess
 import threading
 import time
 
@@ -43,10 +54,43 @@ ALIVE_TIMEOUT = 2.0   # no answer for this long: the app is not running or not r
 MODES = ('AUTO', 'PRE_ALERT', 'TOR', 'MANUAL', 'OFF')
 
 
+def usb_tether_address():
+    """IP of a phone that shares its connection over USB (USB tethering): the default gateway of
+    the PC's USB network adapter (Windows: "Remote NDIS based Internet Sharing Device"). None if
+    there is none."""
+    if os.name != 'nt':
+        return None
+    powershell = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32',
+                              'WindowsPowerShell', 'v1.0', 'powershell.exe')  # System32 may not be on PATH
+    command = ("Get-NetIPConfiguration | Where-Object { $_.InterfaceDescription -match 'NDIS|Tether' "
+               "-and $_.IPv4DefaultGateway } | ForEach-Object { $_.IPv4DefaultGateway.NextHop }")
+    try:
+        output = subprocess.run([powershell, '-NoProfile', '-Command', command], capture_output=True,
+                                text=True, timeout=15).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        logging.warning('Glasses: could not look for USB tethering: %s', error)
+        return None
+    addresses = output.split()
+    return addresses[0] if addresses else None
+
+
+def resolve_host(host):
+    """The phone's IP for --glasses: the address itself, or "usb" for USB tethering."""
+    if host.lower() != 'usb':
+        return host
+    address = usb_tether_address()
+    if address is None:
+        raise RuntimeError('--glasses usb: no USB tethering found. Connect the phone with USB and turn on '
+                           'Settings > Connections > Mobile Hotspot and Tethering > USB tethering')
+    logging.info('Glasses: phone on USB tethering at %s', address)
+    return address
+
+
 class GlassesLink(object):
     """Keeps the phone up to date with the current state. update() is cheap: call it every frame."""
 
-    def __init__(self, host, port=DEFAULT_PORT):
+    def __init__(self, host, port=DEFAULT_PORT, on_rtr_request=None):
+        """on_rtr_request(): called (on the receive thread) when the app's RtR button is pressed."""
         self._address = (host, port)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.bind(('', 0))  # recvfrom needs a bound socket on Windows
@@ -62,6 +106,9 @@ class GlassesLink(object):
         self._display = None
         self._last_answer = None
         self._warned_silent = False
+        self._rtr = None                 # RtR summary status for the app, None: not sent
+        self._rtr_requests = None        # the app's last rtr_request count
+        self.on_rtr_request = on_rtr_request  # can be set later
         self.latencies = []              # (mode, seconds) from send to shown on the glasses
         self._threads = [threading.Thread(target=self._send_loop, name='glasses-send'),
                          threading.Thread(target=self._receive_loop, name='glasses-receive')]
@@ -85,6 +132,12 @@ class GlassesLink(object):
             self._seq += 1
             self._state = state
         self._wake.set()  # send the change now, not at the next resend
+
+    def set_rtr(self, status):
+        """RtR summary status shown in the app (see rtr in the message above); None: none."""
+        with self._lock:
+            self._rtr = status
+        self._wake.set()
 
     @property
     def alive(self):
@@ -110,10 +163,12 @@ class GlassesLink(object):
             seq = self._seq
             remaining = None if self._deadline is None else max(self._deadline - now, 0.0)
             self._sent_at.setdefault(seq, (now, mode))
-        return json.dumps({'v': 1, 'seq': seq, 'mode': mode, 'message': message,
-                           'remaining': None if remaining is None else round(remaining, 2),
-                           'total': total, 'label': label, 'text': list(text)},
-                          ensure_ascii=False).encode('utf-8')
+            packet = {'v': 1, 'seq': seq, 'mode': mode, 'message': message,
+                      'remaining': None if remaining is None else round(remaining, 2),
+                      'total': total, 'label': label, 'text': list(text)}
+            if self._rtr is not None:
+                packet['rtr'] = self._rtr
+        return json.dumps(packet, ensure_ascii=False).encode('utf-8')
 
     def _send_loop(self):
         while self._running:
@@ -141,6 +196,7 @@ class GlassesLink(object):
                 answer = json.loads(data.decode('utf-8'))
                 shown = int(answer.get('shown', -1))
                 display = answer.get('display')
+                rtr_requests = answer.get('rtr_request')
             except (ValueError, TypeError, AttributeError):
                 continue
             now = time.monotonic()
@@ -148,6 +204,13 @@ class GlassesLink(object):
                 logging.info('Glasses: phone app answering')
             self._last_answer = now
             self._warned_silent = False
+            if isinstance(rtr_requests, int):
+                # presses before this run are not requests: only increases from the first answer on
+                if self._rtr_requests is not None and rtr_requests > self._rtr_requests:
+                    logging.info('Glasses: RtR button pressed in the app')
+                    if self.on_rtr_request is not None:
+                        self.on_rtr_request()
+                self._rtr_requests = rtr_requests
             if display != self._display:
                 self._display = display
                 if display == 'STARTED':
@@ -167,7 +230,7 @@ class GlassesLink(object):
                     logging.info('Glasses: %s shown %.0f ms after it was sent', mode, 1000.0 * (now - sent_time))
 
 
-def _countdown(link, mode, message, seconds, text=(), delay=0.0, step=15.0, question=False):
+def _countdown(link, mode, message, seconds, text=(), delay=0.0, step=10.0, question=False):
     """text: shown from `delay` s on for len(text) * `step` s, like the experiment's intervention;
     question: one line at a time, each for `step` s."""
     start = time.monotonic()
@@ -183,7 +246,7 @@ def _countdown(link, mode, message, seconds, text=(), delay=0.0, step=15.0, ques
 
 def main():
     argparser = argparse.ArgumentParser(description='Send a test takeover state to TORApp on the phone')
-    argparser.add_argument('host', help='IP of the phone (shown in TORApp)')
+    argparser.add_argument('host', help='IP of the phone (shown in TORApp), or usb for USB tethering')
     argparser.add_argument('--port', type=int, default=DEFAULT_PORT, help='UDP port (default: %d)' % DEFAULT_PORT)
     group = argparser.add_mutually_exclusive_group(required=True)
     group.add_argument('--demo', action='store_true',
@@ -197,8 +260,8 @@ def main():
                            help='show --text one line at a time, like the question format')
     argparser.add_argument('--delay', metavar='SEC', type=float, default=5.0,
                            help='seconds from the pre-alert to the text (default: 5)')
-    argparser.add_argument('--question-seconds', metavar='SEC', type=float, default=15.0,
-                           help='seconds per line; the text shows for lines x this (default: 15)')
+    argparser.add_argument('--question-seconds', metavar='SEC', type=float, default=10.0,
+                           help='seconds per line; the text shows for lines x this (default: 10)')
     argparser.add_argument('--pre-alert', metavar='SEC', type=float, default=60.0,
                            help='PRE_ALERT countdown, as in the experiment (default: 60)')
     args = argparser.parse_args()
@@ -209,7 +272,7 @@ def main():
         with open(args.text, encoding='utf-8-sig') as handle:
             text = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith('#')]
     window = dict(delay=args.delay, step=args.question_seconds, question=args.question)
-    link = GlassesLink(args.host, args.port)
+    link = GlassesLink(resolve_host(args.host), args.port)
     try:
         while True:
             if args.demo:

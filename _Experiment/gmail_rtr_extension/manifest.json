@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "NDRT RtR 요약 (Gmail)",
+  "version": "0.1.0",
+  "description": "Gmail 작성 중인 메일 본문을 ChatGPT(OpenAI API)에 보내 Ready-to-Resume 3줄 요약(Notion 3-B 형식)을 만듭니다.",
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://mail.google.com/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mail.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ]
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "RtR 요약 만들기 (Gmail 탭). 설정: 우클릭 → 옵션"
+  },
+  "commands": {
+    "summarize": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "작성 중인 메일로 RtR 요약 생성"
+    }
+  }
+}

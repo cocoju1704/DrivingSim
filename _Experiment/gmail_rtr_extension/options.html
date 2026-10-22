@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>NDRT RtR 요약 설정</title>
+  <style>
+    body { font: 14px/1.5 sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+    label { display: block; margin-top: 14px; font-weight: 600; }
+    input[type=text], input[type=password], select, textarea { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+    textarea { min-height: 220px; }
+    #bannedTerms { min-height: 60px; }
+    .hint { color: #666; font-weight: normal; font-size: 12px; }
+    .row { margin-top: 18px; display: flex; gap: 8px; align-items: center; }
+    pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>NDRT RtR 요약 설정</h2>
+
+  <label>OpenAI API 키 <span class="hint">이 브라우저의 chrome.storage.local에만 저장됩니다</span></label>
+  <input type="password" id="apiKey" autocomplete="off">
+
+  <label>모델</label>
+  <input type="text" id="model">
+
+  <label>reasoning effort <span class="hint">낮을수록 빠름. pre-alert 직전 생성이면 low 권장. 추론 모델이 아니면(gpt-4o 등) "보내지 않음"</span></label>
+  <select id="effort">
+    <option value="low">low</option><option value="medium">medium</option><option value="high">high</option>
+    <option value="">보내지 않음</option>
+  </select>
+
+  <label>시나리오 번호 <span class="hint">로그와 내보낸 파일 이름에 사용 (scenario&lt;N&gt;_NDRT_summary.txt)</span></label>
+  <select id="scenario"><option>1</option><option>2</option><option>3</option></select>
+
+  <label>과제 설명 (반영 항목) <span class="hint">병행 세트 2, 3을 쓰면 여기 항목을 바꿉니다</span></label>
+  <textarea id="taskContext"></textarea>
+
+  <label>금지어 (쉼표 구분) <span class="hint">요약에 들어가면 경고. 남은 항목의 정답 값</span></label>
+  <textarea id="bannedTerms"></textarea>
+
+  <label>실험 PC 브리지 주소 <span class="hint">takeover_experiment.py의 rtr_bridge.py. 같은 PC면 http://127.0.0.1:5008, 비우면 끔</span></label>
+  <input type="text" id="bridgeUrl" placeholder="http://192.168.0.10:5008">
+  <div class="hint" id="bridgeStatus"></div>
+
+  <label><input type="checkbox" id="showButton"> Gmail 화면에 "RtR 요약" 버튼 표시 <span class="hint">끄면 툴바 아이콘·Alt+Shift+S로만 수동 발동</span></label>
+  <label><input type="checkbox" id="showPanel"> 수동 발동 시 요약 3줄도 Gmail 화면 패널에 표시 <span class="hint">끄면 연결 성공/실패 상태만 표시. 실험 PC·TORApp 요청은 화면에 아무것도 표시하지 않음 (툴바 아이콘 배지로 확인)</span></label>
+
+  <div class="row">
+    <button id="save">저장</button>
+    <button id="reset">과제 설명·금지어 기본값으로</button>
+    <span id="status"></span>
+  </div>
+
+  <h3>마지막 결과</h3>
+  <pre id="last">(없음)</pre>
+  <div class="row">
+    <button id="exportTxt">마지막 결과를 NDRT_scripts 형식 .txt로 저장</button>
+    <button id="exportLogs">전체 로그 JSON 저장</button>
+    <button id="clearLogs">로그 지우기</button>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

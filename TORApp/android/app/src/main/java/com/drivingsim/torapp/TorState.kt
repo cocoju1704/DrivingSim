@@ -18,6 +18,31 @@ enum class TorMode {
   OFF,
 }
 
+/**
+ * NDRT ready-to-resume summary written by the Gmail extension (_Experiment/rtr_bridge.py): the
+ * latest request and its result. Only sent while the experiment runs the NDRT summary condition.
+ */
+data class RtrStatus(
+    val id: Int,
+    val state: String, // idle, pending, done, error, timeout
+    val source: String, // auto (5 s before the pre-alert), prealert, glasses, extension, ...
+    val lines: List<String>,
+    val error: String,
+) {
+  companion object {
+    fun parse(json: JSONObject?): RtrStatus? =
+        json?.let {
+          RtrStatus(
+              id = it.optInt("id"),
+              state = it.optString("state", "idle"),
+              source = it.optString("source", ""),
+              lines = it.optJSONArray("lines")?.let { a -> List(a.length()) { i -> a.optString(i) } } ?: emptyList(),
+              error = it.optString("error", ""),
+          )
+        }
+  }
+}
+
 /** One packet from the simulator PC (TORApp/pc/tor_glasses.py). */
 data class TorState(
     val seq: Int,
@@ -27,6 +52,7 @@ data class TorState(
     val total: Double?,
     val label: String, // mode box text of the simulator screen, "" for the default
     val text: List<String>, // intervention lines under the PRE-ALERT banner
+    val rtr: RtrStatus?, // null: the PC does not use the RtR summary
 ) {
   companion object {
     fun parse(text: String): TorState? =
@@ -43,6 +69,7 @@ data class TorState(
                   json.optJSONArray("text")?.let { lines ->
                     List(lines.length()) { lines.optString(it) }.filter { it.isNotBlank() }
                   } ?: emptyList(),
+              rtr = RtrStatus.parse(json.optJSONObject("rtr")),
           )
         } catch (_: JSONException) {
           null

@@ -4,36 +4,40 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.style.StyleSpan
+import android.text.style.ForegroundColorSpan
 import com.meta.wearable.dat.display.views.ContentScope
 import com.meta.wearable.dat.display.views.Direction
 import com.meta.wearable.dat.display.views.ImageSize
 import com.meta.wearable.dat.display.views.TextColor
 import com.meta.wearable.dat.display.views.TextStyle
 
-// The display SDK has no text or background colors (TextColor: PRIMARY / SECONDARY only), so the
-// colored banners are drawn here and sent as images.
-private const val WIDTH = 600 // display width in pixels
+// The display SDK has no text colors or positions (TextColor: PRIMARY / SECONDARY only), so each
+// view is drawn here as one 600x600 image and sent whole.
+private const val WIDTH = 600 // display width and height in pixels
 private const val PADDING = 32f
 private const val IMAGE_SCALE = 0.5f // images are drawn at half the display resolution
-private val GREEN = Color.rgb(40, 160, 70) // the colors of the banners on the simulator screen
-private val ORANGE = Color.rgb(255, 140, 0)
+private val ORANGE = Color.rgb(255, 140, 0) // PRE-ALERT, as on the simulator screen
 private val RED = Color.rgb(255, 0, 0) // TOR: the brightest red the display can show
 private val DARK_RED = Color.rgb(150, 0, 0) // blink test: the dark half of the flash
-private val BLUE = Color.rgb(40, 110, 200)
-private const val TEXT_HEIGHT = 360 // intervention text: what is left below the mode box and the compact banner
+private val MODE_AUTO = Color.rgb(60, 220, 90) // mode text: brighter than the screen's colors, which
+private val MODE_MANUAL = Color.rgb(80, 160, 255) // look dim on the additive display
+private val LABEL = Color.rgb(0, 255, 255) // intervention text: the label before the ':', bright cyan stands out on the additive display
+private const val TEXT_HEIGHT = 480 // intervention text: from the top, above the mode text
 
 /**
- * The overlay of takeover_experiment.py (TakeoverExperiment.render) on the glasses: the mode box
- * at the top and, during the takeover sequence, the PRE-ALERT / TOR banner with its countdown bar.
- * The display is 600x600, additive (black is see-through) and in the right lens only.
+ * The overlay of takeover_experiment.py (TakeoverExperiment.render) on the glasses, without
+ * backgrounds so the road stays visible. The display is 600x600, additive (black is see-through)
+ * and in the right lens only; its top edge is at the center of the field of view.
+ *   AUTO / MANUAL   small mode text at the bottom left
+ *   PRE_ALERT       first seconds (TorViewModel): "PRE-ALERT" and the message in orange in the
+ *                   center, no time left; then the intervention text at the top
+ *   TOR             "TAKE OVER" in red at the top, countdown digits and bar at the bottom
  */
 fun ContentScope.torContent(view: GlassesView) {
   when (view.test) {
@@ -53,157 +57,106 @@ fun ContentScope.torContent(view: GlassesView) {
       text("Waiting for the simulator", style = TextStyle.META, color = TextColor.SECONDARY)
       return@flexBox
     }
-    if (view.mode == TorMode.TOR) { // the whole display, nothing else
-      image(bitmap = torFullScreen(view), sizePreset = ImageSize.FILL)
-      return@flexBox
-    }
-    image(bitmap = modeBox(view), sizePreset = ImageSize.FILL)
-    val fraction = view.seconds?.let { seconds -> view.total?.let { (seconds / it).toFloat() } }
-    when (view.mode) {
-      TorMode.PRE_ALERT ->
-          if (view.text.isNotEmpty()) {
-            // intervention: a compact banner, so the text below gets most of the display
-            image(
-                bitmap = compactBanner(ORANGE, "PRE-ALERT  ${view.seconds ?: 0} s", fraction),
-                sizePreset = ImageSize.FILL,
-            )
-            image(bitmap = textPanel(view.text), sizePreset = ImageSize.FILL)
-          } else {
-            image(
-                bitmap =
-                    banner(
-                        ORANGE,
-                        "PRE-ALERT",
-                        listOf(view.message, "takeover request in ${view.seconds ?: 0} s")
-                            .filter { it.isNotEmpty() }
-                            .joinToString(" - ")
-                            .replaceFirstChar { it.uppercase() },
-                        fraction,
-                    ),
-                sizePreset = ImageSize.FILL,
-            )
-          }
-      else -> Unit
-    }
+    image(bitmap = frame(view), sizePreset = ImageSize.FILL)
   }
 }
 
-/**
- * TOR as large and bright as the display allows: all 600x600 pixels red at full intensity, the
- * largest white text that fits, the countdown in big digits and the countdown bar at the bottom.
- */
-private fun torFullScreen(view: GlassesView): Bitmap {
-  val (bitmap, canvas) = blank(WIDTH)
-  // rounded corners: a few transparent pixels make the SDK send PNG, not JPEG (half the size)
-  canvas.drawRoundRect(
-      RectF(0f, 0f, WIDTH.toFloat(), WIDTH.toFloat()), 24f, 24f, fillPaint(if (view.dim) DARK_RED else RED))
+private fun frame(view: GlassesView): Bitmap {
+  val showText = view.mode == TorMode.PRE_ALERT && view.seconds == null && view.text.isNotEmpty()
+  // full resolution only with the Korean text, which is unreadable at IMAGE_SCALE
+  val (bitmap, canvas) = blank(WIDTH, scale = if (showText) 1f else IMAGE_SCALE)
+  if (view.mode == TorMode.TOR) {
+    drawTor(canvas, view)
+    return bitmap
+  }
+  if (showText) drawText(canvas, view.text)
+  if (view.mode == TorMode.PRE_ALERT && view.seconds != null) drawPreAlert(canvas, view.message)
+  drawMode(canvas, view)
+  return bitmap
+}
+
+/** "TAKE OVER" in red at the top, the countdown digits and bar in red at the bottom. */
+private fun drawTor(canvas: Canvas, view: GlassesView) {
+  val color = if (view.dim) DARK_RED else RED
   val center = WIDTH / 2f
-  val maxWidth = WIDTH - PADDING
-  val words = textPaint(150f, bold = true).apply { textAlign = Paint.Align.CENTER }
-  canvas.drawText("TAKE", center, 150f, fit(words, "OVER", maxWidth))
-  canvas.drawText("OVER", center, 290f, words)
+  val maxWidth = WIDTH - 2 * PADDING
+  val words = textPaint(84f, bold = true).apply { this.color = color; textAlign = Paint.Align.CENTER }
+  canvas.drawText("TAKE OVER", center, 100f, fit(words, "TAKE OVER", maxWidth))
   val seconds = "${view.seconds ?: 0}"
-  val digits = textPaint(170f, bold = true).apply { textAlign = Paint.Align.CENTER }
-  canvas.drawText(seconds, center, 470f, fit(digits, seconds, maxWidth))
+  val digits = textPaint(80f, bold = true).apply { this.color = color; textAlign = Paint.Align.CENTER }
+  canvas.drawText(seconds, center, 520f, fit(digits, seconds, maxWidth))
   val fraction = view.seconds?.let { s -> view.total?.let { (s / it).toFloat() } }
   if (fraction != null) {
     val barWidth = (WIDTH - 2 * PADDING) * fraction.coerceIn(0f, 1f)
-    canvas.drawRect(PADDING, 530f, PADDING + barWidth, 560f, fillPaint(Color.WHITE))
+    canvas.drawRect(PADDING, 556f, PADDING + barWidth, 576f, fillPaint(color))
   }
-  return bitmap
 }
 
-/** The mode box: green while autonomous (also during the alerts), blue in manual driving. */
-private fun modeBox(view: GlassesView): Bitmap {
-  val text =
-      view.label.ifEmpty {
-        when (view.mode) {
-          TorMode.AUTO -> "AUTONOMOUS - LOCKED"
-          TorMode.MANUAL -> "MANUAL"
-          else -> "AUTONOMOUS"
-        }
-      }
-  return label(if (view.mode == TorMode.MANUAL) BLUE else GREEN, text)
-}
-
-/** Full-width banner like the screen's: title, subtitle and the countdown bar, centered, in white. */
-private fun banner(color: Int, title: String, subtitle: String, fraction: Float?): Bitmap {
-  val titlePaint = textPaint(60f, bold = true).apply { textAlign = Paint.Align.CENTER }
-  val subtitlePaint = textPaint(36f, bold = false).apply { textAlign = Paint.Align.CENTER }
-  val height = 220
-  val (bitmap, canvas) = blank(height)
+/** "PRE-ALERT" and the message in orange in the center, like TAKE OVER. No time left. */
+private fun drawPreAlert(canvas: Canvas, message: String) {
   val center = WIDTH / 2f
-  canvas.drawRoundRect(RectF(0f, 0f, WIDTH.toFloat(), height.toFloat()), 36f, 36f, fillPaint(color))
-  canvas.drawText(title, center, 88f, fit(titlePaint, title))
-  canvas.drawText(subtitle, center, 146f, fit(subtitlePaint, subtitle))
-  if (fraction != null) {
-    val barWidth = (WIDTH - 2 * PADDING) * fraction.coerceIn(0f, 1f)
-    canvas.drawRoundRect(
-        RectF(PADDING, 176f, PADDING + barWidth, 188f), 6f, 6f, fillPaint(Color.WHITE))
+  val maxWidth = WIDTH - 2 * PADDING
+  val title = textPaint(84f, bold = true).apply { color = ORANGE; textAlign = Paint.Align.CENTER }
+  canvas.drawText("PRE-ALERT", center, 300f, fit(title, "PRE-ALERT", maxWidth))
+  if (message.isNotEmpty()) {
+    val subtitle = message.replaceFirstChar { it.uppercase() }
+    val small = textPaint(40f, bold = true).apply { color = ORANGE; textAlign = Paint.Align.CENTER }
+    canvas.drawText(subtitle, center, 360f, fit(small, subtitle, maxWidth))
   }
-  return bitmap
-}
-
-/** One-line banner: title with the countdown, and the countdown bar under it. */
-private fun compactBanner(color: Int, title: String, fraction: Float?): Bitmap {
-  val titlePaint = textPaint(44f, bold = true).apply { textAlign = Paint.Align.CENTER }
-  val height = 100
-  val (bitmap, canvas) = blank(height)
-  canvas.drawRoundRect(RectF(0f, 0f, WIDTH.toFloat(), height.toFloat()), 30f, 30f, fillPaint(color))
-  canvas.drawText(title, WIDTH / 2f, 58f, fit(titlePaint, title))
-  if (fraction != null) {
-    val barWidth = (WIDTH - 2 * PADDING) * fraction.coerceIn(0f, 1f)
-    canvas.drawRoundRect(RectF(PADDING, 74f, PADDING + barWidth, 84f), 5f, 5f, fillPaint(Color.WHITE))
-  }
-  return bitmap
 }
 
 /**
- * Intervention lines in white, wrapped to the display width, a gap between lines. The part of a
- * line up to its first ':' (the label, e.g. "전방 상황:") is bold. The font shrinks until all of it
- * fits in TEXT_HEIGHT. Drawn at full resolution: small Korean text is unreadable at IMAGE_SCALE.
+ * Small mode text at the bottom left: AUTO in green while autonomous (also during the alerts),
+ * MANUAL in blue. Short on purpose; the simulator's longer label (view.label) is not used here.
  */
-private fun textPanel(lines: List<String>): Bitmap {
+private fun drawMode(canvas: Canvas, view: GlassesView) {
+  val text = if (view.mode == TorMode.MANUAL) "MANUAL" else "AUTO"
+  val paint = textPaint(28f, bold = true).apply { color = if (view.mode == TorMode.MANUAL) MODE_MANUAL else MODE_AUTO }
+  canvas.drawText(text, PADDING, WIDTH - PADDING, fit(paint, text, WIDTH - 2 * PADDING))
+}
+
+/**
+ * Intervention lines in bold white from the top, wrapped to the display width, a gap between
+ * lines. The part of a line up to its first ':' (the label, e.g. "완료된 작업:") is in bright cyan,
+ * on a line of its own, the rest below it. The font starts large and shrinks until all of it fits
+ * in TEXT_HEIGHT.
+ */
+private fun drawText(canvas: Canvas, lines: List<String>) {
   val text = SpannableStringBuilder()
   for ((i, line) in lines.withIndex()) {
     if (i > 0) text.append('\n')
-    val start = text.length
-    text.append(line)
     val colon = line.indexOf(':')
     if (colon > 0) {
-      text.setSpan(StyleSpan(Typeface.BOLD), start, start + colon + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      val start = text.length
+      text.append(line, 0, colon + 1)
+      text.setSpan(ForegroundColorSpan(LABEL), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      text.append('\n').append(line.substring(colon + 1).trim())
+    } else {
+      text.append(line)
     }
   }
   val width = (WIDTH - 2 * PADDING).toInt()
-  var size = 40f
+  var size = 64f
   var layout: StaticLayout
   while (true) {
-    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = size }
+    val paint =
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+          color = Color.WHITE
+          textSize = size
+          typeface = Typeface.DEFAULT_BOLD
+        }
     layout =
         StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(size * 0.25f, 1f)
             .build()
-    if (layout.height <= TEXT_HEIGHT || size <= 24f) break
+    if (layout.height <= TEXT_HEIGHT || size <= 28f) break
     size -= 2f
   }
-  val (bitmap, canvas) = blank(TEXT_HEIGHT, scale = 1f)
+  canvas.save()
   canvas.translate(PADDING, 0f)
   layout.draw(canvas)
-  return bitmap
-}
-
-/** Small centered pill with a bold white label. */
-private fun label(color: Int, text: String): Bitmap {
-  val paint = fit(textPaint(44f, bold = true), text, WIDTH - 4 * PADDING)
-  val height = 96
-  val (bitmap, canvas) = blank(height)
-  val width = paint.measureText(text) + 2 * PADDING
-  val left = (WIDTH - width) / 2f
-  canvas.drawRoundRect(RectF(left, 8f, left + width, height - 8f), 40f, 40f, fillPaint(color))
-  val metrics = paint.fontMetrics
-  canvas.drawText(text, left + PADDING, height / 2f - (metrics.ascent + metrics.descent) / 2f, paint)
-  return bitmap
+  canvas.restore()
 }
 
 /** 600x600: white border, 100 px grid with labels, center cross. Shows what part is visible. */

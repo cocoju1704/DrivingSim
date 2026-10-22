@@ -63,7 +63,7 @@ class Sign(object):
     `height` m above the road. Lines of text are centered; 'arrow' draws an arrow instead.
     letter: letter height in m."""
 
-    def __init__(self, waypoint, offset, height, lines, color, letter=1.4, arrow=None):
+    def __init__(self, waypoint, offset, height, lines, color, letter=1.05, arrow=None):
         self.segments = []   # (start, end, thickness, color)
         transform = waypoint.transform
         self._origin = transform.location
@@ -94,7 +94,7 @@ class Sign(object):
                 for stroke in FONT[char]:
                     points = [(left + (i * ADVANCE + x) * unit, base + y * unit) for x, y in stroke]
                     for a, b in zip(points, points[1:]):
-                        self._add(a, b, 0.11, WHITE)
+                        self._add(a, b, 0.08, WHITE)
             top = base - gap
         if arrow:
             self._arrow(arrow, top - arrow_height, arrow_height)
@@ -111,9 +111,9 @@ class Sign(object):
         else:  # left
             a, b = (cx + 0.8 * size, bottom + size / 2), (cx - 0.8 * size, bottom + size / 2)
             head = [(b[0] + 0.4 * size, b[1] + 0.4 * size), b, (b[0] + 0.4 * size, b[1] - 0.4 * size)]
-        self._add(a, b, 0.14, WHITE)
-        self._add(head[0], head[1], 0.14, WHITE)
-        self._add(head[1], head[2], 0.14, WHITE)
+        self._add(a, b, 0.105, WHITE)
+        self._add(head[0], head[1], 0.105, WHITE)
+        self._add(head[1], head[2], 0.105, WHITE)
 
     def _add(self, a, b, thickness, color, depth=0.05):
         self.segments.append((self._point(a, depth), self._point(b, depth), thickness, color))

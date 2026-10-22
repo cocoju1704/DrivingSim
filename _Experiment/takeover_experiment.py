@@ -75,7 +75,8 @@ dashboard is in view (--view chase: from behind the car).
 
 --glasses PHONE_IP shows the pre-alert and the TOR on Meta Ray-Ban Display glasses
 instead of the screen: TORApp on the phone (TORApp folder) receives the state over
-Wi-Fi and puts it on the glasses. Its alert sounds (chime, beeps, click) then come
+Wi-Fi and puts it on the glasses. --glasses usb: over the USB cable with USB tethering
+on in the phone, which finds the phone's address by itself. Its alert sounds (chime, beeps, click) then come
 from the glasses' speakers instead of the PC (--pc-sound: from both). The vehicle
 sounds of the audio engine stay on the PC.
 
@@ -83,16 +84,26 @@ During the pre-alert the glasses also show an intervention text, chosen in
 intervention_config.json next to this script (--intervention-config):
     "intervention"      none (control: the pre-alert only), driving (driving situation,
                         Endsley SA levels 1-3) or NDRT (ready-to-resume for the NDRT)
-    "format"            summary (all lines at once, read only) or question (one
-                        question at a time, each for "question_seconds")
+    "format"            summary (statements, read only) or question (questions);
+                        both show one line at a time, each for "question_seconds"
     "delay_seconds"     from the pre-alert to the text
-With the defaults (delay 5, question 15): 0-5 s pre-alert only, 5-20 / 20-35 /
-35-50 s SA level or ready-to-resume step 1 / 2 / 3 (summary: all three lines for
-those 45 s), 50-60 s pre-alert only, 60 s TOR. While a text is up the glasses
-keep the countdown it had when the text appeared: every new view is a 1-3 s
-Bluetooth send with the text, too slow for each second.
+With the defaults (delay 5, question 10): 0-5 s pre-alert only, 5-15 / 15-25 /
+25-35 s SA level or ready-to-resume step 1 / 2 / 3 (NDRT summary: 완료된 작업 ->
+진행중이던 작업 -> 앞으로 남은 작업), 35-60 s nothing, 60 s TOR. The glasses show the PRE-ALERT
+banner for the first 5 s only (TORApp), never the time left; after that only the
+text and the mode box.
 The text is NDRT_scripts/scenario<N>_<intervention>_<format>.txt: one line per
 displayed line, # starts a comment line.
+
+NDRT + summary: the text is the participant's own ready-to-resume summary instead.
+The Gmail extension (gmail_rtr_extension) sends the draft being written to ChatGPT and
+returns the three lines through rtr_bridge.py (HTTP, --rtr-port, default 5008; set
+the extension's bridge address to http://<this PC>:5008). The summary is requested
+RTR_LEAD (5) s before the pre-alert (scenario 1/2: from the distance and speed,
+3: from the fog rate; P key: right away, always a new one), and also by the RtR buttons in the
+extension and in TORApp. When the text is due, the newest summary requested since
+then is shown; if none has arrived, the NDRT_scripts file is shown instead (logged).
+Requests and results go to rtr.jsonl in the log folder.
 
 Run from the CARLA_0.9.16 root folder:
 
@@ -100,6 +111,7 @@ Run from the CARLA_0.9.16 root folder:
     python _Experiment\\takeover_experiment.py --input wheel
     python _Experiment\\takeover_experiment.py --lane 1 --vehicles 15
     python _Experiment\\takeover_experiment.py --glasses 192.168.0.23
+    python _Experiment\\takeover_experiment.py --glasses usb   (USB tethering)
     python _Experiment\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
 
@@ -256,6 +268,10 @@ PEDAL_ACCEL_CURVE = 1.2      # acceleration asked for grows with travel ** this:
 PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pressed, proportionally less with less
 # CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle), measured
 HOLD_THROTTLE = [(0.0, 0.08), (8.0, 0.10), (33.0, 0.15), (53.0, 0.20), (112.0, 0.30), (130.0, 0.45), (190.0, 0.85)]
+# After the takeover the car keeps the speed it had (like the autopilot's engine power) until the driver
+# brakes: throttle = HOLD_THROTTLE + PI on the speed error (SpeedHold). The throttle pedal can add to it.
+SPEED_HOLD_GAIN_P = 0.03     # throttle per km/h below the takeover speed
+SPEED_HOLD_GAIN_I = 0.01     # throttle per km/h per second (hills)
 # Pedal released: like an automatic, the car creeps forward at a walking pace unless the brake is pressed.
 CREEP_SPEED = 7.0            # km/h
 CREEP_ACCEL = 0.5            # m/s^2 creeping off from standstill
@@ -321,6 +337,7 @@ REFILL_BELOW = 200      # extend the agent's plan when fewer waypoints are left
 
 PRE_ALERT_SECONDS = 60.0  # pre-alert -> TOR
 TOR_SECONDS = 5.0        # TOR -> forced manual driving
+RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many seconds before the pre-alert
 
 EXPERIMENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(EXPERIMENT_DIR, '..'))
@@ -1630,6 +1647,21 @@ class PedalThrottle(object):
         return min(1.0, max(0.0, throttle))
 
 
+class SpeedHold(object):
+    """Throttle that keeps `target_kmh` (the speed at the takeover) on any slope."""
+
+    def __init__(self, target_kmh):
+        self.target = target_kmh
+        self._integral = 0.0
+
+    def step(self, speed_kmh, dt):
+        error = self.target - speed_kmh
+        throttle = _interpolate(HOLD_THROTTLE, speed_kmh) + SPEED_HOLD_GAIN_P * error + self._integral
+        if 0.0 < throttle < 1.0:  # no wind-up while the throttle is at a limit
+            self._integral = min(0.3, max(-0.3, self._integral + SPEED_HOLD_GAIN_I * error * dt))
+        return min(1.0, max(0.0, throttle))
+
+
 def _interpolate(table, x):
     """Linear interpolation in a [(x, y)] table sorted by x, clamped at its ends."""
     if x <= table[0][0]:
@@ -1800,6 +1832,11 @@ class TrialRecorder(object):
         self._event_dist = None
         self._fog = None
         self._enabled = not args.no_log
+
+    @property
+    def trial(self):
+        """Number of the current (or last) trial, 0 before the first one."""
+        return self._trial
 
     # -- trial events ----------------------------------------------------------
 
@@ -2068,6 +2105,13 @@ class Scenario(object):
         """True when the scenario wants the pre-alert now (for alerts not tied to a position)."""
         return False
 
+    def seconds_to_alert(self, event_dist, speed):
+        """Estimated seconds until the automatic pre-alert (None: none coming). event_dist: m to
+        the event point while the pre-alert for it is still to come, else None; speed in m/s."""
+        if event_dist is None or speed <= 5.0:
+            return None
+        return event_dist / speed - self.lead
+
     def on_alert(self, now):
         pass
 
@@ -2280,6 +2324,12 @@ class FogScenario(Scenario):
     def alert_due(self):
         return self._state == 'rising' and not self._alerted and self._density >= self._threshold
 
+    def seconds_to_alert(self, event_dist, speed):
+        """The pre-alert follows the fog density, not the position."""
+        if self._state != 'rising' or self._alerted or self._rate <= 0.0:
+            return None
+        return max(self._threshold - self._density, 0.0) / self._rate
+
     def on_alert(self, now):
         self._alerted = True
         if self._state != 'rising':  # P key before the fog point: start the fog too
@@ -2335,10 +2385,10 @@ class Intervention(object):
     """Text the glasses show during the pre-alert, set in intervention_config.json.
 
     Its lines come from NDRT_scripts/scenario<N>_<intervention>_<format>.txt. From delay_seconds
-    after the pre-alert on, question shows one line at a time, each for question_seconds; summary
-    shows them all for as long. Then the text goes away until the TOR. With the defaults:
-        0-5 s pre-alert only, 5-20 / 20-35 / 35-50 s SA level or ready-to-resume step 1 / 2 / 3,
-        50-60 s pre-alert only again, 60 s TOR
+    after the pre-alert on, one line at a time, each for question_seconds (summary and question
+    alike). Then the text goes away until the TOR. With the defaults:
+        0-5 s pre-alert only, 5-15 / 15-25 / 25-35 s SA level or ready-to-resume step 1 / 2 / 3,
+        35-60 s pre-alert only again, 60 s TOR
     """
 
     def __init__(self, path, scenario_number):
@@ -2347,12 +2397,14 @@ class Intervention(object):
         self.kind = config.get('intervention', 'none')
         self.format = config.get('format', 'summary')
         self.delay = float(config.get('delay_seconds', 5.0))
-        self.question_seconds = float(config.get('question_seconds', 15.0))
+        self.question_seconds = float(config.get('question_seconds', 10.0))
         if self.kind not in INTERVENTIONS:
             raise ValueError('%s: "intervention" must be one of %s' % (path, ', '.join(INTERVENTIONS)))
         if self.format not in INTERVENTION_FORMATS:
             raise ValueError('%s: "format" must be one of %s' % (path, ', '.join(INTERVENTION_FORMATS)))
         self.lines = []
+        # the participant's own RtR summary (rtr_bridge.py); self.lines is the fallback
+        self.live = self.kind == 'NDRT' and self.format == 'summary' and scenario_number != 0
         if self.kind == 'none' or scenario_number == 0:
             self.name = 'none'
             logging.info('Intervention: none (pre-alert only)')
@@ -2366,14 +2418,19 @@ class Intervention(object):
         logging.info('Intervention: %s, %s (%d lines, after %.1f s)', self.name, os.path.basename(script),
                      len(self.lines), self.delay)
 
-    def text(self, elapsed):
-        """Lines to show `elapsed` seconds after the pre-alert."""
+    def due(self, elapsed):
+        """True while a text is shown `elapsed` seconds after the pre-alert."""
         page = int((elapsed - self.delay) // self.question_seconds) if self.lines else -1
-        if page < 0 or page >= len(self.lines):
+        return 0 <= page < len(self.lines)
+
+    def text(self, elapsed, lines=None):
+        """Line to show `elapsed` seconds after the pre-alert, as a list ([] for none). lines: the
+        summary to show instead of the file's (the same number of lines)."""
+        if not self.due(elapsed):
             return []
-        if self.format == 'summary':
-            return self.lines
-        return [self.lines[page]]
+        lines = lines or self.lines
+        page = int((elapsed - self.delay) // self.question_seconds)
+        return [lines[page]] if page < len(lines) else []
 
 
 # ==============================================================================
@@ -2482,7 +2539,7 @@ class AudioEngine(object):
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
                  pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
-                 escort=None):
+                 escort=None, rtr=None):
         self._world = world
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
         self._escort = escort               # EscortCars: cars beside the car after the takeover
@@ -2491,6 +2548,10 @@ class TakeoverExperiment(object):
         self._glasses = glasses             # GlassesLink: alerts on the glasses instead of the screen
         self._intervention = intervention   # Intervention: text on the glasses during the pre-alert
         self._shown_text = []
+        self._rtr = rtr                     # RtrBridge: the NDRT summary is the participant's own RtR summary
+        self._rtr_since = None              # time.monotonic() of this trial's summary request (None: not yet)
+        self._rtr_lines = None              # the summary lines shown in this trial, fixed once shown
+        self._speed_hold = None             # SpeedHold: after the takeover, until the driver brakes
         self._speed_kmh = 0.0               # shown on the instrument cluster (_draw_cluster)
         self._pedal = 0.0                   # throttle pedal travel the driver gives, 0..1
         self._cluster = None                # the gauges' face, made for the monitor size (_cluster_face)
@@ -2536,16 +2597,24 @@ class TakeoverExperiment(object):
         if self._escort is not None:
             self._escort.remove()
         self.mode = AUTO
+        self._speed_hold = None
+        self._rtr_since = None  # the next trial requests its own summary
         self._input.reset()
         self._world.hud.notification('Autonomous driving')
         logging.info('Autonomous driving engaged')
 
-    def _start_alert(self, now):
+    def _start_alert(self, now, manual=False):
+        """manual: the P key. It always requests a new RtR summary right away, from the draft as it is
+        now; an automatic pre-alert uses the one requested RTR_LEAD s ahead."""
         self.mode = PRE_ALERT
         self._alert_time = now
         self._recorder.start_trial(now)
         self._sound.pre_alert()
         self._scenario.on_alert(now)
+        self._rtr_lines = None
+        if self._rtr is not None and (manual or self._rtr_since is None):  # none requested ahead
+            self._rtr_since = now
+            self._rtr.request('p_key' if manual else 'prealert')
         if self._clearance is not None:
             self._clearance.start(now, self._world.player, now + self._pre_alert - TRAFFIC_CLEAR_BEFORE_TOR)
         logging.info('Pre-alert issued')
@@ -2566,8 +2635,10 @@ class TakeoverExperiment(object):
         self._sound.stop(confirm=True)
         self._control = carla.VehicleControl()
         self._input.reset()
+        # the engine keeps pulling at the takeover speed until the driver brakes (_parse_manual_keys)
+        self._speed_hold = SpeedHold(self._world.player.get_velocity().length() * 3.6)
         self._world.hud.notification('Manual driving: ' + reason, seconds=4.0)
-        logging.info('Manual driving: %s', reason)
+        logging.info('Manual driving: %s (holding %.0f km/h until the brake)', reason, self._speed_hold.target)
 
     # -- per frame -------------------------------------------------------------
 
@@ -2587,7 +2658,7 @@ class TakeoverExperiment(object):
         if event.type != pygame.KEYDOWN:
             return
         if event.key == K_p and self.mode == AUTO:
-            self._start_alert(now)
+            self._start_alert(now, manual=True)
         elif event.key == K_e and self.mode == MANUAL and not self._scenario.manual_only:
             self._engage_autonomous()
         elif event.key == K_q and self.mode == MANUAL:
@@ -2705,6 +2776,7 @@ class TakeoverExperiment(object):
                          self._event_dist, self._scenario.lead)
         velocity = self._world.player.get_velocity()
         speed = math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2)
+        self._request_rtr_ahead(now, speed)
         threshold = max(speed * self._scenario.lead, 5.0)
         if self._armed:
             if self._auto_alert and self.mode == AUTO and speed > 5.0 and self._event_dist <= threshold:
@@ -2715,6 +2787,29 @@ class TakeoverExperiment(object):
                     self._start_alert(now)
         elif self._event_dist > max(threshold, (self._cruise_kmh or 0.0) / 3.6 * self._scenario.lead) + 100.0:
             self._armed = True  # the event point has been passed (at cruise speed: not while starting off)
+
+    def _request_rtr_ahead(self, now, speed):
+        """NDRT summary: request the participant's RtR summary RTR_LEAD s before the automatic pre-alert."""
+        if self._rtr is None or self._rtr_since is not None or not self._auto_alert or self.mode != AUTO:
+            return
+        eta = self._scenario.seconds_to_alert(self._event_dist if self._armed else None, speed)
+        if eta is not None and eta <= RTR_LEAD:
+            self._rtr_since = now
+            logging.info('Pre-alert expected in %.1f s: requesting the RtR summary', eta)
+            self._rtr.request('auto')
+
+    def _summary_lines(self, now):
+        """The RtR summary to show in this trial: the newest one requested since this trial's request,
+        or the NDRT_scripts text if none has arrived."""
+        result = self._rtr.result_since(self._rtr_since if self._rtr_since is not None else now)
+        trial = self._recorder.trial
+        if result is None:
+            logging.warning('RtR summary not ready: showing the fixed text of NDRT_scripts')
+            self._rtr.log({'event': 'shown', 'trial': trial, 'source': 'fallback', 'lines': self._intervention.lines})
+            return list(self._intervention.lines)
+        self._rtr.log({'event': 'shown', 'trial': trial, 'request_id': result['request_id'],
+                       'source': result['source'], 'lines': result['lines']})
+        return result['lines']
 
     def tick(self, clock, now):
         keys = pygame.key.get_pressed()
@@ -2756,7 +2851,9 @@ class TakeoverExperiment(object):
         label = self._mode_label()[0]
         if self.mode == PRE_ALERT:
             elapsed = now - self._alert_time
-            text = self._intervention.text(elapsed) if self._intervention is not None else []
+            if self._rtr is not None and self._rtr_lines is None and self._intervention.due(elapsed):
+                self._rtr_lines = self._summary_lines(now)
+            text = self._intervention.text(elapsed, self._rtr_lines) if self._intervention is not None else []
             if text != self._shown_text:
                 self._shown_text = text
                 logging.info('Intervention text %.1f s after the pre-alert: %s', elapsed, ' / '.join(text))
@@ -2774,6 +2871,13 @@ class TakeoverExperiment(object):
         self._input.update(self._control, keys, milliseconds, speed_kmh, incline)
         self._control.hand_brake = bool(keys[K_SPACE]) or self._input.hand_brake()
         self._control.reverse = self._control.gear < 0  # also when shifting down with the manual transmission
+        if self._speed_hold is not None:
+            if self._control.brake > 0.0 or self._control.hand_brake or self._control.reverse:
+                self._speed_hold = None
+                logging.info('Brake at %.0f km/h: the speed hold after the takeover is off', speed_kmh)
+            else:
+                self._control.throttle = max(self._control.throttle,
+                                             self._speed_hold.step(speed_kmh, milliseconds / 1000.0))
 
     # -- overlay ---------------------------------------------------------------
 
@@ -2928,12 +3032,13 @@ def game_loop(args):
     async_settings = None
     ticker = None
     glasses = None
+    rtr = None
 
     try:
         if args.glasses:
             sys.path.append(GLASSES_DIR)
-            from tor_glasses import GlassesLink  # pylint: disable=import-error
-            glasses = GlassesLink(args.glasses, args.glasses_port)
+            from tor_glasses import GlassesLink, resolve_host  # pylint: disable=import-error
+            glasses = GlassesLink(resolve_host(args.glasses), args.glasses_port)
         intervention = Intervention(args.intervention_config, args.scenario)
         args.intervention = intervention.name  # logged with every trial
         if intervention.lines and glasses is None:
@@ -3013,10 +3118,17 @@ def game_loop(args):
         clearance = TrafficClearance(client, traffic, args.npc_speed)
         escort = EscortCars(client, sim_world, carla_map)
         sound = AlertSound(not args.no_sound and (not args.glasses or args.pc_sound))  # --glasses: TORApp plays them
+        if intervention.live:
+            from rtr_bridge import RtrBridge  # next to this script
+            rtr = RtrBridge(args.rtr_port, None if args.no_log else recorder.dir,
+                            on_change=glasses.set_rtr if glasses is not None else None)
+            if glasses is not None:
+                glasses.set_rtr(rtr.status())  # TORApp shows its RtR button
+                glasses.on_rtr_request = lambda: rtr.request('glasses')
         experiment = TakeoverExperiment(world, follower, driver_input, recorder, route, scenario, sound,
                                         auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
                                         glasses=glasses, intervention=intervention, clearance=clearance,
-                                        cruise_kmh=args.speed, escort=escort)
+                                        cruise_kmh=args.speed, escort=escort, rtr=rtr)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
@@ -3070,6 +3182,8 @@ def game_loop(args):
             audio.stop()
         if glasses is not None:
             glasses.close()
+        if rtr is not None:
+            rtr.close()
         if recorder is not None:
             recorder.close()
         if traffic:
@@ -3171,9 +3285,13 @@ def main():
                            help='do not start the vehicle sounds of carla-audio-engine')
     argparser.add_argument('--glasses', metavar='PHONE_IP',
                            help='show the pre-alert and the TOR on Meta Ray-Ban Display glasses instead of the '
-                                'screen, through TORApp on the phone at this IP (shown in the app)')
+                                'screen, through TORApp on the phone at this IP (shown in the app); usb: over '
+                                'the USB cable with USB tethering on in the phone')
     argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
                            help='UDP port of TORApp (default: 5007)')
+    argparser.add_argument('--rtr-port', metavar='P', type=int, default=5008,
+                           help='intervention NDRT + summary: HTTP port the Gmail extension gets the RtR summary '
+                                'requests from (rtr_bridge.py, default: 5008)')
     argparser.add_argument('--pc-sound', action='store_true',
                            help='with --glasses: play the alert sounds on the PC too (default: only on the glasses)')
     argparser.add_argument('--no-auto-alert', action='store_true',

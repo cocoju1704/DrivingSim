@@ -152,6 +152,34 @@ fun MainScreen(
       )
     }
 
+    Section("NDRT RtR summary") {
+      val rtr = state.lastState?.rtr
+      val connected = state.lastPacketAt != 0L && (now - state.lastPacketAt) < 2_000
+      Text(
+          "Asks the PC for the participant's ready-to-resume summary now (the Gmail extension " +
+              "writes it with ChatGPT). The experiment also asks 5 s before each pre-alert.",
+          style = MaterialTheme.typography.bodySmall,
+      )
+      Button(onClick = viewModel::requestRtr, enabled = connected && rtr != null) {
+        Text("Make RtR summary now")
+      }
+      when {
+        !connected -> Text("Waiting for the PC", style = MaterialTheme.typography.bodySmall)
+        rtr == null ->
+            Text(
+                "The PC is not running the NDRT summary condition (intervention_config.json)",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        else -> {
+          Line("Request", if (rtr.id == 0) "-" else "#${rtr.id} (${rtr.source})")
+          Line("State", rtr.state)
+          if (rtr.error.isNotEmpty()) ErrorText(rtr.error)
+          for (line in rtr.lines) Text(line, style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+      if (state.rtrPresses > 0) Line("Button presses", "${state.rtrPresses}")
+    }
+
     Section("Test (without the PC)") {
       Text(
           "Shows a mode on the glasses. While the PC sends, its state replaces it.",

@@ -18,6 +18,7 @@ import com.meta.wearable.dat.core.types.LinkState
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.meta.wearable.dat.display.types.DisplayState
 import java.net.Inet4Address
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,6 +39,7 @@ import org.json.JSONObject
 private const val TAG = "TORApp"
 const val TOR_PORT = 5007 // UDP, see TORApp/pc/tor_glasses.py
 private const val KEEP_AWAKE_MS = 15_000L // the glasses display dims after 20 s without activity
+private const val PRE_ALERT_BANNER_SECONDS = 5.0 // the PRE-ALERT banner shows only this long
 
 data class UiState(
     val registrationState: RegistrationState = RegistrationState.UNAVAILABLE,
@@ -56,6 +58,7 @@ data class UiState(
     val blinking: Boolean = false,
     val alertSounds: Boolean = true,
     val audioOutput: String? = null, // where the sounds play: the glasses when they are connected
+    val rtrPresses: Int = 0, // RtR button presses since the app started
 )
 
 class TorViewModel(application: Application) : AndroidViewModel(application) {
@@ -69,6 +72,9 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   private val sendLock = Mutex()
   @Volatile private var lastSentAt = 0L
   @Volatile private var shownSeq = -1
+  @Volatile private var lastSeq = -1 // seq of the PC's last packet
+  // Sent in every answer: the PC requests a summary for each increase (lost answers do not matter).
+  private val rtrPresses = AtomicInteger(0)
 
   private var observing = false
   private val metadataJobs = mutableMapOf<DeviceIdentifier, Job>()
@@ -216,6 +222,13 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
         }
   }
 
+  /** RtR button: ask the PC for the participant's NDRT ready-to-resume summary now. */
+  fun requestRtr() {
+    val presses = rtrPresses.incrementAndGet()
+    _uiState.update { it.copy(rtrPresses = presses) }
+    viewModelScope.launch(Dispatchers.IO) { receiver.reply(answer(lastSeq)) } // right away, not at the next packet
+  }
+
   fun testDisplay(test: DisplayTest) {
     wanted.value = GlassesView(-1, TorMode.OFF, test = test)
   }
@@ -240,13 +253,14 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
 
   private fun onPacket(state: TorState): String {
     val view = state.toView()
-    val previous = wanted.value
-    // While the same intervention text is up, the countdown stays at the seconds it showed when
-    // the text appeared: every new view is a 1-3 s Bluetooth send with the text image, so a
-    // per-second countdown would skip seconds and could hold back the TOR.
+    lastSeq = state.seq
+    // The PRE-ALERT banner and its countdown show for the first PRE_ALERT_BANNER_SECONDS only.
+    // After that the view has no countdown (seconds null), so it changes only with the text and
+    // is not resent over Bluetooth every second.
+    val elapsed = if (state.total != null && state.remaining != null) state.total - state.remaining else null
     wanted.value =
-        if (view.text.isNotEmpty() && view.mode == previous.mode && view.text == previous.text) {
-          view.copy(seconds = previous.seconds)
+        if (view.mode == TorMode.PRE_ALERT && elapsed != null && elapsed >= PRE_ALERT_BANNER_SECONDS) {
+          view.copy(seconds = null)
         } else {
           view
         }
@@ -261,6 +275,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
           .put("seq", seq)
           .put("shown", shownSeq)
           .put("display", glasses.state.value.displayState?.name ?: "NONE")
+          .put("rtr_request", rtrPresses.get())
           .toString()
 
   private suspend fun show(view: GlassesView) {
