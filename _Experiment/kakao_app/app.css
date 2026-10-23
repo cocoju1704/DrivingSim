@@ -1,0 +1,284 @@
+:root {
+  --chat-bg: #b2c7d9;
+  --header-bg: #a9bdce;
+  --bubble: #ffffff;
+  --bubble-me: #fee500;
+  --text: #191919;
+  --muted: #556677;
+  --time: #556677;
+  --line: #d6d6d6;
+  --panel: #ffffff;
+  --kakao: #fee500;
+  --kakao-text: #191919;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #8fa5b8;
+  color: var(--text);
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Noto Sans KR", sans-serif;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+#app {
+  display: flex;
+  height: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  gap: 1px;
+}
+
+/* -- chat ----------------------------------------------------------------- */
+
+#chat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 55%;
+  min-width: 0;
+  background: var(--chat-bg);
+}
+
+#room-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 12px;
+  background: var(--chat-bg);
+}
+
+#room-title { flex: 1; font-size: 16px; font-weight: 700; }
+#room-count { color: var(--muted); font-weight: 400; }
+.header-icons { display: flex; gap: 16px; font-size: 20px; color: #333; }
+.icon { background: none; border: 0; font-size: 26px; line-height: 1; padding: 0 4px; color: #333; }
+#back { pointer-events: none; }
+
+#notice-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  font-size: 14px;
+}
+#notice-banner[hidden] { display: none; }
+#notice-preview { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px 16px;
+  overscroll-behavior: contain;
+}
+
+.date-divider, .system {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0;
+}
+.date-divider span, .system span {
+  background: rgba(0, 0, 0, 0.12);
+  color: #fff;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.msg { display: flex; gap: 8px; margin-top: 10px; }
+.msg.cont { margin-top: 4px; }
+.avatar {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+.msg.cont .avatar { visibility: hidden; height: 0; }
+.msg-body { flex: 1; min-width: 0; }
+.sender { font-size: 13px; color: #333; margin: 0 0 4px 2px; }
+.msg.cont .sender { display: none; }
+.line { display: flex; align-items: flex-end; gap: 5px; }
+.bubble {
+  position: relative;
+  background: var(--bubble);
+  border-radius: 4px 14px 14px 14px;
+  max-width: 78%;
+  min-width: 0;
+  padding: 8px 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.msg.cont .bubble { border-radius: 14px; }
+.time { flex: 0 0 auto; font-size: 11px; color: var(--time); white-space: nowrap; }
+
+#new-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 0;
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+#new-pill[hidden] { display: none; }
+
+#composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid var(--line);
+}
+#composer .plus { font-size: 22px; color: #999; pointer-events: none; }
+#chat-input {
+  flex: 1;
+  min-width: 0;
+  color: #aaa;
+  background: #f4f4f4;
+  border-radius: 18px;
+  padding: 9px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#open-editor {
+  border: 0;
+  background: var(--kakao);
+  color: var(--kakao-text);
+  border-radius: 18px;
+  padding: 8px 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* -- notice editor -------------------------------------------------------- */
+
+#editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 45%;
+  min-width: 0;
+  background: var(--panel);
+}
+
+#editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.editor-title { flex: 1; font-size: 16px; font-weight: 700; }
+#close-editor { display: none; font-size: 15px; }
+#post {
+  border: 0;
+  background: var(--kakao);
+  color: var(--kakao-text);
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-weight: 700;
+}
+#post:disabled { background: #f1f1f1; color: #b5b5b5; cursor: default; }
+
+#editor-body { flex: 1; display: flex; padding: 14px; min-height: 0; }
+#draft {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  background: transparent;
+}
+
+#editor-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: #999;
+}
+
+/* laptop: chat and editor side by side, the chat's button is not needed */
+@media (min-width: 821px) {
+  #open-editor { display: none; }
+}
+
+/* phone: one at a time */
+@media (max-width: 820px) {
+  #app { display: block; }
+  #chat, #editor { position: fixed; inset: 0; }
+  #editor { display: none; z-index: 2; }
+  #app.editing #editor { display: flex; }
+  #close-editor { display: block; }
+}
+
+/* -- name ----------------------------------------------------------------- */
+
+#name-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 16px;
+}
+#name-dialog[hidden] { display: none; }
+#name-form {
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.name-title { font-size: 18px; font-weight: 700; }
+.name-sub { font-size: 13px; color: #777; margin-bottom: 4px; }
+#name-input {
+  font: inherit;
+  font-size: 16px;
+  padding: 11px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  outline: none;
+}
+#name-input:focus { border-color: #c9b400; }
+#name-form button {
+  border: 0;
+  background: var(--kakao);
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 700;
+  font-size: 16px;
+}

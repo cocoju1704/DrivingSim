@@ -105,7 +105,7 @@ phone → PC (an answer to every packet, plus one right after a new state is on 
 ```
 
 ### NDRT RtR summary
-With `intervention_config.json` set to `NDRT` + `summary`, the PRE-ALERT text is the participant's own ready-to-resume summary: the Gmail extension (`_Experiment/gmail_rtr_extension`) sends the draft to ChatGPT (OpenAI API) and returns three lines through `_Experiment/rtr_bridge.py` (HTTP 5008 on the PC). The PC then also sends the latest request and result in every packet:
+With `intervention_config.json` set to `NDRT` + `summary`, the PRE-ALERT text is the participant's own ready-to-resume summary: `_Experiment/kakao_ndrt.py` (the NDRT group chat on the PC, HTTP 5008) sends the notice draft to ChatGPT (OpenAI API) and gets three lines back. The PC then also sends the latest request and result in every packet:
 ```json
 "rtr": {"id": 3, "state": "done", "source": "auto", "lines": ["완료된 작업: ...", "진행중이던 작업: ...", "앞으로 남은 작업: ..."], "error": ""}
 ```

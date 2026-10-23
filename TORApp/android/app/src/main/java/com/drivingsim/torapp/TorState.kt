@@ -19,7 +19,7 @@ enum class TorMode {
 }
 
 /**
- * NDRT ready-to-resume summary written by the Gmail extension (_Experiment/rtr_bridge.py): the
+ * NDRT ready-to-resume summary of the notice draft (_Experiment/kakao_ndrt.py): the
  * latest request and its result. Only sent while the experiment runs the NDRT summary condition.
  */
 data class RtrStatus(

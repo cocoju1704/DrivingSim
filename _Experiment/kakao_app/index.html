@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카카오톡</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <section id="chat">
+    <header id="room-header">
+      <button id="back" class="icon" aria-hidden="true" tabindex="-1">‹</button>
+      <div id="room-title"><span id="room-name">단톡방</span> <span id="room-count"></span></div>
+      <div class="header-icons" aria-hidden="true"><span>⌕</span><span>☰</span></div>
+    </header>
+    <div id="notice-banner" hidden>
+      <span class="megaphone">📢</span>
+      <span id="notice-preview"></span>
+    </div>
+    <div id="messages" aria-live="off"></div>
+    <button id="new-pill" hidden>새 메시지 ↓</button>
+    <footer id="composer">
+      <button class="icon plus" tabindex="-1" aria-hidden="true">＋</button>
+      <div id="chat-input">이 과제에서는 공지만 작성합니다</div>
+      <button id="open-editor">공지 작성</button>
+    </footer>
+  </section>
+
+  <section id="editor">
+    <header id="editor-header">
+      <button id="close-editor" class="icon">‹ 대화</button>
+      <div class="editor-title">공지 작성</div>
+      <button id="post" disabled>등록</button>
+    </header>
+    <div id="editor-body">
+      <textarea id="draft" placeholder="공지 내용을 입력하세요." spellcheck="false"></textarea>
+    </div>
+    <footer id="editor-footer">
+      <span id="post-state"></span>
+      <span id="char-count">0자</span>
+    </footer>
+  </section>
+</div>
+
+<div id="name-dialog" hidden>
+  <form id="name-form">
+    <div class="name-title">이름을 입력해 주세요</div>
+    <div class="name-sub">단톡방에서 이 이름으로 불립니다.</div>
+    <input id="name-input" autocomplete="off" placeholder="예: 김민수" maxlength="10">
+    <button type="submit">시작</button>
+  </form>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

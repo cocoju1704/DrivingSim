@@ -14,7 +14,7 @@ Message, JSON in one UDP packet to the phone (port 5007):
     text       intervention lines shown under the PRE-ALERT banner ([]: none)
     rtr        only with the NDRT RtR summary (set_rtr): the latest summary request, for the app's
                RtR section: {"id": 3, "state": "pending", "source": "auto", "lines": [], "error": ""}
-               state idle, pending, done, error or timeout (see _Experiment/rtr_bridge.py)
+               state idle, pending, done, error or timeout (see _Experiment/kakao_ndrt.py)
 The state is resent every RESEND seconds, so a lost packet only delays it.
 
 The app answers every packet with

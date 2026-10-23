@@ -33,6 +33,7 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
     I                 : interior light on/off
     H                 : horn (played by the audio engine)
     E                 : re-engage autonomous mode (manual driving)
+    K                 : NDRT chat: the team's follow-up messages now (else after the takeover)
 
     TAB               : next camera position: driver's seat, windshield (no steering wheel),
                         left mirror, right mirror, behind the car, hood, ...
@@ -109,15 +110,22 @@ so far before the event point that the TOR still comes the scenario's TOR lead b
 (the work zone and the accident are there from the start):
     python _Experiment\\takeover_experiment.py --scenario 4 --intervention-config _Experiment\\intervention_none.json
 
-NDRT + summary: the text is the participant's own ready-to-resume summary instead.
-The Gmail extension (gmail_rtr_extension) sends the draft being written to ChatGPT and
-returns the three lines through rtr_bridge.py (HTTP, --rtr-port, default 5008; set
-the extension's bridge address to http://<this PC>:5008). The summary is requested
-RTR_LEAD (5) s before the pre-alert (scenario 1/2: from the distance and speed,
-3: from the fog rate; P key: right away, always a new one), and also by the RtR buttons in the
-extension and in TORApp. When the text is due, the newest summary requested since
-then is shown; if none has arrived, the NDRT_scripts file is shown instead (logged).
-Requests and results go to rtr.jsonl in the log folder.
+The NDRT is a team group chat that looks like KakaoTalk, on the NDRT laptop: kakao_ndrt.py runs
+there (started before the drive, with the same --scenario), the participant enters their name and
+writes the room's notice from what the team said (kakao_sets/scenario<N>.json). --ndrt <laptop IP>
+connects this program to it: after the takeover the team adds more messages, silently, which the
+notice has to take in: once the car is past the scene (scenarios 2 and 4; at the latest
+NDRT_FOLLOWUP_LATEST s after the takeover), else NDRT_FOLLOWUP_AFTER s after the takeover; K: now.
+The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl too, on its clock.
+
+NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
+the laptop sends the notice draft to ChatGPT (OpenAI API key there: OPENAI_API_KEY or
+_Experiment/openai_api_key.txt).
+The summary is requested RTR_LEAD (5) s before the pre-alert (scenario 1/2/4: from the distance
+and speed, 3: from the fog rate; P key: right away, always a new one), and also by the RtR button
+in TORApp. When the text is due, the newest summary requested since then is shown; if none has
+arrived, the NDRT_scripts file is shown instead (logged). Requests and results go to rtr.jsonl.
+(The Gmail extension that did this before is in legacy/gmailextension.)
 
 Run from the CARLA_0.9.16 root folder:
 
@@ -171,6 +179,7 @@ try:
     from pygame.locals import K_d
     from pygame.locals import K_e
     from pygame.locals import K_i
+    from pygame.locals import K_k
     from pygame.locals import K_l
     from pygame.locals import K_m
     from pygame.locals import K_p
@@ -192,7 +201,7 @@ from agents.navigation.local_planner import RoadOption  # pylint: disable=import
 # Reuse the world, HUD and camera of the stock manual_control example.
 from manual_control import HUD, CameraManager, World  # pylint: disable=import-error
 
-from road_signs import GREEN, ORANGE, ImageSign, RoadSigns, Sign  # next to this script
+from road_signs import GREEN, ORANGE, ImageSign, RoadSigns, Sign, preload  # next to this script
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------
@@ -205,6 +214,7 @@ MAP_NAME = 'Town04'
 START_SPAWN_INDEX = 15
 DEFAULT_LANE = 3
 DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instrument cluster
+DRIVER_VIEW_PITCH = 6.0    # degrees up, driver seat and windshield views (the car's own cluster is out of view)
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
 MIRROR_FOV = 60.0          # degrees, side mirror views
 DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
@@ -239,14 +249,10 @@ REAR_MIRROR_OUTLINE = [(0.01, 0.48), (0.04, 0.14), (0.06, 0.05), (0.12, 0.0), (0
                        (1.0, 0.9), (1.0, 0.95), (0.95, 1.0), (0.33, 0.76), (0.15, 0.76), (0.04, 0.73), (0.0, 0.62)]
 REAR_MIRROR_FOV = 45.0             # degrees
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
-# The MKZ 2020's instrument cluster as seen between the steering wheel's rim and hub in the driver's
-# seat view, measured on the middle monitor at 3 x 60 degrees (2560 x 1440 px): the panel covering it
-# (its lower edge follows the hub) and the area its speed and pedal bar are laid out in, as shares
-CLUSTER_OUTLINE = [(1160, 1135), (1385, 1135), (1470, 1170), (1522, 1220), (1525, 1322), (1475, 1312),
-                   (1425, 1300), (1350, 1290), (1275, 1286), (1200, 1288), (1100, 1297), (985, 1322),
-                   (990, 1225), (1065, 1170)]
-CLUSTER_OUTLINE = [(x / 2560.0, y / 1440.0) for x, y in CLUSTER_OUTLINE]
-CLUSTER_RECT = (1000 / 2560.0, 1145 / 1440.0, 520 / 2560.0, 140 / 1440.0)
+# The gauges (throttle pedal, speed) on a panel at the lower right of the middle monitor, like a
+# car's center display: the car's own instrument cluster is below the view (DRIVER_VIEW_PITCH).
+CLUSTER_PANEL = (0.22, 0.14)   # width, height: shares of the monitor
+CLUSTER_MARGIN = (0.02, 0.03)  # from the monitor's right and bottom edges, shares of the monitor
 CLUSTER_BACKGROUND = (12, 14, 18)
 CLUSTER_TEXT = (235, 240, 245)
 CLUSTER_DIM = (120, 130, 140)
@@ -365,6 +371,7 @@ LANE2_OBSTACLE = 'vehicle.mercedes.sprinter'  # its front doors open (VehicleDoo
 LANE2_TRIANGLE = 'warning_triangle.png'       # SIGN_IMAGE_DIR: a warning triangle on the road behind it ...
 LANE2_TRIANGLE_BEHIND = 40.0                  # ... this many m behind the van
 LANE2_TRIANGLE_WIDTH = 0.9                    # m (a real one is ~0.45: bigger, so it shows from afar)
+LANE2_TRIANGLE_PIXELS = 24                    # across: thick lines
 LANE2_OBSTACLE_AFTER = 250.0  # m after the end of the scene (scenario 4: on the straight after the curve)
 LANE2_OBSTACLE_SPAWN = 500.0  # m ahead of the ego car (after the takeover) at which it appears ...
 LANE2_OBSTACLE_LATEST = 250.0  # ... as soon as no car is near its place, but at this distance at the latest
@@ -384,6 +391,10 @@ ESCORT_GONE = 70.0            # m behind (or ahead) at which one is out of view 
 # merge plan (scenarios 2 and 4, lanes 3 and 4 closed): cars in lanes 1 and 3 from the takeover on
 MERGE_AHEAD = 3.0             # m ahead of the ego car (center to center): a little in front of the driver
 MERGE_BEHIND = -25.0          # m behind the ego car where they come from
+MERGE_SIDE_CLEAR = 2.6        # m between the ego car's and a lane's centers below which the ego car is
+                              # (partly) in that lane: the escort car there gives way
+MERGE_AHEAD_CLEAR = 5.5       # m ahead of the ego car (center to center) an escort car keeps ahead from;
+                              # one less far ahead falls back behind it instead
 MERGE_LANE3_ROOM = 60.0       # m to the closure at least for the lane 3 car to come up at all
 MERGE_YIELD = -20.0           # m behind the ego car at most while it is in their lane
 MERGE_SLOW = 1.5              # m/s^2 the lane 3 car falls back at (and the lane 1 car pulls away at, at the end)
@@ -407,6 +418,8 @@ RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many secon
 # Test run ("test": true in the intervention config, e.g. intervention_none.json): the pre-alert comes
 # "test_alert_after" s after the start instead of at a place, and lasts "test_pre_alert" s. The car
 # starts so far before the event point that the TOR still comes the scenario's TOR lead before it.
+NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messages start (scenarios 1, 3)
+NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 4 (else: once past the scene)
 TEST_ALERT_AFTER = 10.0
 TEST_PRE_ALERT = 5.0
 
@@ -467,7 +480,7 @@ REVERSE_LIGHT = int(carla.VehicleLightState.Reverse)
 
 # Wheel input counts as a takeover above these deviations (0..1 of full travel).
 PEDAL_TAKEOVER = 0.05
-STEER_TAKEOVER = 0.05
+STEER_TAKEOVER = 0.01  # wheel axis travel: 4.5-5.4 degrees on a 900-1080 degree wheel
 
 # ==============================================================================
 # -- route ---------------------------------------------------------------------
@@ -552,10 +565,12 @@ def experiment_views(extent):
     eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z
     mirror_x, mirror_y, mirror_z = 0.25 * extent.x, extent.y + 0.1, 1.35 * extent.z
     return [
-        ('Driver seat', carla.Transform(carla.Location(x=eye_x, y=-0.36, z=eye_z), carla.Rotation(pitch=-4.0)),
+        ('Driver seat', carla.Transform(carla.Location(x=eye_x, y=-0.36, z=eye_z),
+                                        carla.Rotation(pitch=DRIVER_VIEW_PITCH)),
          None, False),
         ('Windshield (no steering wheel)',
-         carla.Transform(carla.Location(x=eye_x + WINDSHIELD_FORWARD, y=-0.36, z=eye_z), carla.Rotation(pitch=-4.0)),
+         carla.Transform(carla.Location(x=eye_x + WINDSHIELD_FORWARD, y=-0.36, z=eye_z),
+                         carla.Rotation(pitch=DRIVER_VIEW_PITCH)),
          None, False),
         ('Left mirror', carla.Transform(carla.Location(x=mirror_x, y=-mirror_y, z=mirror_z),
                                         carla.Rotation(pitch=-5.0, yaw=-165.0)), MIRROR_FOV, True),
@@ -1233,7 +1248,7 @@ class EscortCars(object):
         self._start = None    # time they set off; None while they have not (merge: waiting for lane 2)
         self._done = set()    # merge: cars that have been removed
         self._slow = None     # merge: time the lane 3 car starts falling back (once it is beside)
-        self._obstacle = None  # merge: carla.Location of the lane 2 obstacle (None: none)
+        self._passed = None   # merge: passed() -> True once the ego car is past the lane 2 obstacle
         self._leave = None    # merge: time the lane 1 car starts driving off
         self._ego_location = self._ego_forward = None
 
@@ -1243,11 +1258,12 @@ class EscortCars(object):
         self._plan, self._start, self._sides = 'beside', now, tuple(sides)
         logging.info('Escort cars come up beside the car (%s) for %.0f s', ' and '.join(self._sides), ESCORT_SECONDS)
 
-    def start_merge(self, now, closure, obstacle=None):
-        """The merge plan."""
+    def start_merge(self, now, closure, passed=None):
+        """The merge plan. passed(): True once the ego car is MERGE_CLEAR_AFTER m past the lane 2
+        obstacle, along the road (None: no obstacle, past the closure instead)."""
         if self._plan is not None:
             return
-        self._plan, self._closure, self._obstacle, self._start = 'merge', closure, obstacle, now
+        self._plan, self._closure, self._passed, self._start = 'merge', closure, passed, now
         self._done, self._slow, self._leave = set(), None, None
         logging.info('Escort cars come up in lanes 1 and 3')
 
@@ -1292,7 +1308,6 @@ class EscortCars(object):
     def _merge_tick(self, now, ego, ego_waypoint):
         closure_start, closure_end = self._closure
         elapsed = now - self._start
-        ego_lane = -ego_waypoint.lane_id
         try:
             lanes = {n: lane_waypoint(ego_waypoint, n) for n in (1, 2, 3)}
         except RuntimeError:
@@ -1315,28 +1330,46 @@ class EscortCars(object):
                 limit = math.sqrt(2.0 * MERGE_BRAKE * max(self._gap(closure_start) - gap - MERGE_STOP_BEFORE, 0.0))
                 if gap < -ESCORT_GONE:
                     self._drop('lane3')
-            if ego_lane == 3:
-                offset = min(offset, MERGE_YIELD)
+            offset, cap = self._give_way('lane3', lanes[3], offset, ego)
+            if cap is not None:
+                limit = cap if limit is None else min(limit, cap)
             if 'lane3' not in self._done:
                 self._place('lane3', self._lane_path('lane3', lanes[3]), offset, ego, max_speed=limit)
         # lane 1: up beside the ego car, level with it past the lane 2 obstacle, then drives off
         if 'lane1' not in self._done:
             car = self._cars.get('lane1')
             offset = self._approach(elapsed, MERGE_AHEAD, MERGE_BEHIND)
-            passed = self._obstacle if self._obstacle is not None else closure_end
-            if self._leave is None and car is not None and self._gap(passed) < -MERGE_CLEAR_AFTER:
+            passed = self._passed() if self._passed is not None else self._gap(closure_end) < -MERGE_CLEAR_AFTER
+            if self._leave is None and car is not None and passed:
                 self._leave = now
                 logging.info('Escort car in lane 1 drives off')
             if self._leave is not None:
                 offset += 0.5 * MERGE_SLOW * (now - self._leave) ** 2
                 if car is not None and self._gap(car.get_location()) > ESCORT_GONE:
                     self._drop('lane1')
-            if ego_lane == 1:
-                offset = min(offset, MERGE_YIELD)
+            offset, cap = self._give_way('lane1', lanes[1], offset, ego)
             if 'lane1' not in self._done:
-                self._place('lane1', self._lane_path('lane1', lanes[1]), offset, ego)
+                self._place('lane1', self._lane_path('lane1', lanes[1]), offset, ego, max_speed=cap)
         if self._done >= {'lane1', 'lane3'}:
             self.remove()
+
+    def _give_way(self, name, lane, offset, ego):
+        """(offset, speed cap or None) for the escort car `name` driving `lane` (a waypoint level with
+        the ego car) while the ego car is in that lane or partly in it (changing lanes): a car well
+        ahead stays ahead, any other falls back MERGE_YIELD m behind, slower than the ego car, so it
+        never runs into it."""
+        right = lane.transform.get_right_vector()
+        middle = lane.transform.location
+        lateral = ((self._ego_location.x - middle.x) * right.x + (self._ego_location.y - middle.y) * right.y)
+        if abs(lateral) >= MERGE_SIDE_CLEAR:
+            return offset, None
+        car = self._cars.get(name)
+        if car is None:
+            return min(offset, MERGE_YIELD), None
+        gap = self._gap(car.get_location())
+        if gap > MERGE_AHEAD_CLEAR:
+            return max(offset, gap), None
+        return min(offset, MERGE_YIELD), max(ego.get_velocity().length() - 2.0, 0.0)
 
     # -- paths: where a car should be at `gap` m ahead of the ego car --------------------------
 
@@ -2355,6 +2388,8 @@ class Scenario(object):
     escort_sides = ('left', 'right')  # EscortCars after the takeover: lanes next to the car to fill
     closure = None                    # (start, end) in lane 3 where lanes 3 and 4 are closed: EscortCars' merge plan
     obstacle = None                   # carla.Location of the lane 2 obstacle after the closure (EscortCars)
+    has_scene = False                 # objects on the road that are removed once passed (SceneScenario)
+    scene_cleared = False             # ... and they have been: the NDRT follow-up messages can come
     ego_index = None                  # the car's route index, set by TakeoverExperiment every frame
 
     def __init__(self, number, args):
@@ -2479,6 +2514,7 @@ class ExitScenario(Scenario):
 
 
 class SceneScenario(Scenario):
+    has_scene = True
     """A scenario with objects on the road (work zone, accident). After the takeover a van stands in
     lane 2 LANE2_OBSTACLE_AFTER m past the end of the scene (_spawn_obstacle). Once the driver has
     driven SCENE_CLEAR_BEHIND m past it, the scene, the van and the signs are removed for good: no
@@ -2497,6 +2533,12 @@ class SceneScenario(Scenario):
         self._obstacle_index = None
         self._obstacle_spawned = False
         self._van = None             # the obstacle, until its doors are opened (the frame after it appears)
+        # the pictures of the image signs, traced now rather than when they appear while driving
+        preload(os.path.join(SIGN_IMAGE_DIR, ARROW_BOARD_IMAGE), ARROW_BOARD_PIXELS)
+        preload(os.path.join(SIGN_IMAGE_DIR, LANE2_TRIANGLE), LANE2_TRIANGLE_PIXELS)
+        for _, _, _, *image in WORKZONE_SIGNS + ACCIDENT_SIGNS:
+            if image:
+                preload(os.path.join(SIGN_IMAGE_DIR, image[0]))
         self._done = False
 
     def _plan_obstacle(self, scene_length):
@@ -2505,6 +2547,17 @@ class SceneScenario(Scenario):
         waypoint = self._lane3[self._obstacle_index % len(self._lane3)].transform
         right = waypoint.get_right_vector()
         self.obstacle = waypoint.location - carla.Location(right.x, right.y, 0.0) * LANE_WIDTH
+
+    @property
+    def scene_cleared(self):
+        return self._done
+
+    def obstacle_passed(self):
+        """True once the car is MERGE_CLEAR_AFTER m past the lane 2 obstacle, along the route."""
+        if self.ego_index is None or self._obstacle_index is None:
+            return False
+        behind = ((self.ego_index - self._obstacle_index) % self._count) * ROUTE_RESOLUTION
+        return MERGE_CLEAR_AFTER <= behind < MERGE_CLEAR_AFTER + 500.0
 
     def test_event_index(self):
         return self._block_index
@@ -2541,7 +2594,7 @@ class SceneScenario(Scenario):
             return
         waypoint = self._lane3[(self._obstacle_index - int(LANE2_TRIANGLE_BEHIND / ROUTE_RESOLUTION)) % len(self._lane3)]
         self._new_signs.append(ImageSign(waypoint, -LANE_WIDTH, 0.02, os.path.join(SIGN_IMAGE_DIR, LANE2_TRIANGLE),
-                                         LANE2_TRIANGLE_WIDTH, post_from=None, pixels=24))
+                                         LANE2_TRIANGLE_WIDTH, post_from=None, pixels=LANE2_TRIANGLE_PIXELS))
         logging.info('Lane 2 obstacle: a van with hazard lights and open doors %.0f m ahead', ahead)
 
     def _clear_when_passed(self):
@@ -2590,7 +2643,7 @@ class WorkzoneScenario(SceneScenario):
         if self.event_index is None and not self._done and (self._test or laps >= WORKZONE_AFTER_LAPS):
             if self._due is None:
                 self._due = now
-            blocking = _car_near(self._world, self._zone_points)
+            blocking = None if self._test else _car_near(self._world, self._zone_points)
             if blocking is not None and now - self._due < WORKZONE_MAX_WAIT:
                 return
             if blocking is not None:
@@ -2651,7 +2704,7 @@ class AccidentScenario(SceneScenario):
             return
         if self._due is None:
             self._due = now
-        blocking = _car_near(self._world, self._zone_points)
+        blocking = None if self._test else _car_near(self._world, self._zone_points)
         if blocking is not None and now - self._due < ACCIDENT_MAX_WAIT:
             return
         if blocking is not None:
@@ -2826,7 +2879,7 @@ class Intervention(object):
         if self.format not in INTERVENTION_FORMATS:
             raise ValueError('%s: "format" must be one of %s' % (path, ', '.join(INTERVENTION_FORMATS)))
         self.lines = []
-        # the participant's own RtR summary (rtr_bridge.py); self.lines is the fallback
+        # the participant's own RtR summary (kakao_ndrt.py); self.lines is the fallback
         self.live = self.kind == 'NDRT' and self.format == 'summary' and scenario_number != 0
         if self.kind == 'none' or scenario_number == 0:
             self.name = 'none'
@@ -2962,8 +3015,10 @@ class AudioEngine(object):
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
                  pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
-                 escort=None, rtr=None, test_alert_after=None):
+                 escort=None, rtr=None, test_alert_after=None, ndrt=None):
         self._world = world
+        self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
+        self._takeover_time = None
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
         self._escort = escort               # EscortCars: cars beside the car after the takeover
         self._escort_due = False            # the takeover happened, the escort cars still have to come
@@ -3039,6 +3094,7 @@ class TakeoverExperiment(object):
         self._recorder.start_trial(now)
         self._sound.pre_alert()
         self._scenario.on_alert(now)
+        self._mark('prealert')
         self._rtr_lines = None
         if self._rtr is not None and (manual or self._rtr_since is None):  # none requested ahead
             self._rtr_since = now
@@ -3057,6 +3113,8 @@ class TakeoverExperiment(object):
         else:
             reason = 'driver input'
         self._recorder.mark_takeover(now, 'forced' if forced else 'after_tor' if self.mode == TOR else 'before_tor')
+        self._takeover_time = now
+        self._mark('takeover', forced=int(forced))
         self._scenario.on_takeover(now)
         self.mode = MANUAL
         self._escort_due = self._escort is not None and bool(self._scenario.escort_sides)
@@ -3085,7 +3143,10 @@ class TakeoverExperiment(object):
             return
         if event.type != pygame.KEYDOWN:
             return
-        if event.key == K_p and self.mode == AUTO:
+        if event.key == K_k and self._ndrt is not None:
+            if self._ndrt.release_followup('k_key'):
+                self._world.hud.notification('NDRT: follow-up messages')
+        elif event.key == K_p and self.mode == AUTO:
             self._start_alert(now, manual=True)
         elif event.key == K_e and self.mode == MANUAL and not self._scenario.manual_only:
             self._engage_autonomous()
@@ -3172,7 +3233,8 @@ class TakeoverExperiment(object):
         if self._escort_due and self.mode == MANUAL:
             self._escort_due = False
             if self._scenario.closure is not None:
-                self._escort.start_merge(now, self._scenario.closure, self._scenario.obstacle)
+                self._escort.start_merge(now, self._scenario.closure,
+                                         self._scenario.obstacle_passed if self._scenario.obstacle else None)
             else:
                 self._escort.start(now, self._scenario.escort_sides)
         self._escort.tick(now, self._world.player)
@@ -3222,6 +3284,25 @@ class TakeoverExperiment(object):
         elif not self._test and self._event_dist > max(threshold, (self._cruise_kmh or 0.0) / 3.6 * self._scenario.lead) + 100.0:
             self._armed = True  # the event point has been passed (at cruise speed: not while starting off)
 
+    def _mark(self, event, **fields):
+        """The experiment's event in the NDRT laptop's log, on its clock."""
+        if self._ndrt is not None:
+            self._ndrt.mark(event, trial=self._recorder.trial, **fields)
+
+    def _ndrt_tick(self, now):
+        """The team's follow-up messages in the NDRT chat, once after the takeover: when the car is
+        past the scene (scenarios 2 and 4), else NDRT_FOLLOWUP_AFTER s after the takeover."""
+        if self._ndrt is None or self._ndrt.followup_released or self._takeover_time is None:
+            return
+        after = now - self._takeover_time
+        if self._scenario.scene_cleared:
+            reason = 'past the scene'
+        elif after >= (NDRT_FOLLOWUP_LATEST if self._scenario.has_scene else NDRT_FOLLOWUP_AFTER):
+            reason = '%.0f s after the takeover' % after
+        else:
+            return
+        self._ndrt.release_followup(reason)
+
     def _request_rtr_ahead(self, now, speed):
         """NDRT summary: request the participant's RtR summary RTR_LEAD s before the automatic pre-alert."""
         if self._rtr is None or self._rtr_since is not None or not self._auto_alert or self.mode != AUTO:
@@ -3252,6 +3333,7 @@ class TakeoverExperiment(object):
             self._clearance.tick(now, self._world.player)
         if self._escort is not None:
             self._escort_tick(now)
+        self._ndrt_tick(now)
         if self.mode in AUTONOMOUS_MODES:
             if self.mode in ALERT_MODES and self._input.driver_active(keys):
                 self._take_over(now)
@@ -3259,6 +3341,7 @@ class TakeoverExperiment(object):
                 self.mode = TOR
                 self._tor_time = now
                 self._recorder.mark_tor(now)
+                self._mark('tor')
                 self._sound.tor()
                 logging.info('TOR issued')
             elif self.mode == TOR and now - self._tor_time >= TOR_SECONDS:
@@ -3353,11 +3436,11 @@ class TakeoverExperiment(object):
                               remaining / TOR_SECONDS)
 
     def _draw_cluster(self, display):
-        """Driver's seat view on the monitors: a panel over the car's instrument cluster (its gauges
-        are fixed in the model) with two round gauges whose needles turn, the throttle pedal travel
-        (left) and the speed (right), and the speed in digits between them."""
+        """Driver's seat view: a panel at the lower right of the middle monitor with two round gauges
+        whose needles turn, the throttle pedal travel (left) and the speed (right), and the speed in
+        digits between them."""
         manager = self._world.camera_manager
-        if manager.transform_index != 0 or manager.screens < 2:
+        if manager.transform_index != 0:
             return
         if self._cluster is None or self._cluster['size'] != manager.screen_size:
             self._cluster = self._cluster_face(manager.screen_size)
@@ -3380,21 +3463,22 @@ class TakeoverExperiment(object):
 
     @staticmethod
     def _cluster_face(size):
-        """The gauges without needles on the panel (the shape of CLUSTER_OUTLINE), for one monitor size:
-        face, mask (the panel's shape, cuts the gauges where the steering wheel hides them),
-        origin on the monitor, dials [(center, radius, full scale)], digits font, readout center."""
+        """The gauges without needles on the panel, for one monitor size: face, mask (the panel's
+        rounded corners), origin on the monitor, dials [(center, radius, full scale)], digits font,
+        readout center."""
         width, height = size
-        points = [(px * width, py * height) for px, py in CLUSTER_OUTLINE]
-        x0, y0 = int(min(p[0] for p in points)), int(min(p[1] for p in points))
-        x1, y1 = int(max(p[0] for p in points)) + 1, int(max(p[1] for p in points)) + 1
-        mask = pygame.Surface((x1 - x0, y1 - y0), pygame.SRCALPHA)
+        panel_w, panel_h = int(CLUSTER_PANEL[0] * width), int(CLUSTER_PANEL[1] * height)
+        x0 = width - panel_w - int(CLUSTER_MARGIN[0] * width)
+        y0 = height - panel_h - int(CLUSTER_MARGIN[1] * height)
+        mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 0))
-        pygame.draw.polygon(mask, (255, 255, 255, 255), [(px - x0, py - y0) for px, py in points])
-        face = pygame.Surface((x1 - x0, y1 - y0), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=max(4, panel_h // 10))
+        face = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         face.fill(CLUSTER_BACKGROUND + (255,))
 
-        rx, ry = CLUSTER_RECT[0] * width - x0, CLUSTER_RECT[1] * height - y0
-        rw, rh = CLUSTER_RECT[2] * width, CLUSTER_RECT[3] * height
+        # the area the gauges are laid out in (the dials reach a little below it)
+        rw, rh = panel_w * 0.96, panel_h / 1.35
+        rx, ry = (panel_w - rw) / 2.0, panel_h * 0.05
         radius = int(rh * 0.56)
         cy = int(ry + rh * 0.66)
         dials = [((int(rx + rw * 0.24), cy), radius, 100.0), ((int(rx + rw * 0.76), cy), radius, GAUGE_MAX_SPEED)]
@@ -3417,7 +3501,7 @@ class TakeoverExperiment(object):
                 value += step
             text = small.render(title, True, CLUSTER_DIM)
             face.blit(text, text.get_rect(center=(cx, cyy + r * 0.42)))
-        digits = pygame.font.Font(default, int(radius * 0.42))
+        digits = pygame.font.Font(default, int(radius * 0.6))
         readout = (int(rx + rw * 0.5), int(cy + radius * 0.15))
         return {'size': size, 'face': face, 'mask': mask, 'origin': (x0, y0), 'dials': dials,
                 'digits': digits, 'readout': readout}
@@ -3469,6 +3553,7 @@ def game_loop(args):
     ticker = None
     glasses = None
     rtr = None
+    ndrt = None
 
     try:
         if args.glasses:
@@ -3562,10 +3647,16 @@ def game_loop(args):
         clearance = TrafficClearance(client, traffic, args.npc_speed)
         escort = EscortCars(client, sim_world, carla_map)
         sound = AlertSound(not args.no_sound and (not args.glasses or args.pc_sound))  # --glasses: TORApp plays them
-        if intervention.live:
-            from rtr_bridge import RtrBridge  # next to this script
-            rtr = RtrBridge(args.rtr_port, None if args.no_log else recorder.dir,
-                            on_change=glasses.set_rtr if glasses is not None else None)
+        if args.ndrt:
+            from kakao_ndrt import KakaoNdrtLink  # next to this script
+            ndrt = KakaoNdrtLink(args.ndrt, args.scenario, args.ndrt_port, None if args.no_log else recorder.dir,
+                                 on_change=glasses.set_rtr if glasses is not None and intervention.live else None)
+        elif args.scenario != 0:
+            logging.warning('No NDRT laptop (--ndrt IP): no follow-up messages, no RtR summaries')
+        if intervention.live and ndrt is None:
+            logging.warning('Intervention NDRT_summary without the NDRT laptop (--ndrt): the fixed text only')
+        elif intervention.live:
+            rtr = ndrt  # the RtR summary of the notice draft
             if glasses is not None:
                 glasses.set_rtr(rtr.status())  # TORApp shows its RtR button
                 glasses.on_rtr_request = lambda: rtr.request('glasses')
@@ -3573,7 +3664,7 @@ def game_loop(args):
                                         auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
                                         glasses=glasses, intervention=intervention, clearance=clearance,
                                         cruise_kmh=args.speed, escort=escort, rtr=rtr,
-                                        test_alert_after=intervention.test[0] if args.test else None)
+                                        test_alert_after=intervention.test[0] if args.test else None, ndrt=ndrt)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
@@ -3629,8 +3720,8 @@ def game_loop(args):
             audio.stop()
         if glasses is not None:
             glasses.close()
-        if rtr is not None:
-            rtr.close()
+        if ndrt is not None:
+            ndrt.close()
         if recorder is not None:
             recorder.close()
         if traffic:
@@ -3737,9 +3828,10 @@ def main():
                                 'the USB cable with USB tethering on in the phone')
     argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
                            help='UDP port of TORApp (default: 5007)')
-    argparser.add_argument('--rtr-port', metavar='P', type=int, default=5008,
-                           help='intervention NDRT + summary: HTTP port the Gmail extension gets the RtR summary '
-                                'requests from (rtr_bridge.py, default: 5008)')
+    argparser.add_argument('--ndrt', metavar='IP[:PORT]', default=None,
+                           help='the NDRT laptop running kakao_ndrt.py (follow-up messages, RtR summaries)')
+    argparser.add_argument('--ndrt-port', '--rtr-port', dest='ndrt_port', metavar='P', type=int, default=5008,
+                           help='kakao_ndrt.py\'s port on the NDRT laptop when --ndrt has none (default: 5008)')
     argparser.add_argument('--pc-sound', action='store_true',
                            help='with --glasses: play the alert sounds on the PC too (default: only on the glasses)')
     argparser.add_argument('--no-auto-alert', action='store_true',

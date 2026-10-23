@@ -166,6 +166,12 @@ class ImageSign(_Board):
                 self._add((start * pixel - width / 2, y), (end * pixel - width / 2, y), pixel * 1.15, colors[color])
 
 
+def preload(path, pixels=IMAGE_PIXELS):
+    """Trace an image sign's picture ahead of time: the first trace of a picture takes ~0.5 s, a
+    visible stop when it happens while driving."""
+    _trace(path, pixels)
+
+
 @functools.lru_cache(maxsize=None)
 def _trace(path, pixels):
     """The image at `path` as rows of runs (start, end, color index) across `pixels` columns,

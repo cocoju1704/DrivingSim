@@ -5,6 +5,8 @@
 !/requirements.txt
 !/_Experiment/
 /_Experiment/wheel_buttons.json
+/_Experiment/openai_api_key.txt
+/_Experiment/Data/
 !/carla-audio-engine/
 /carla-audio-engine/logs/
 !/TORApp/
