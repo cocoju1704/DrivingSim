@@ -7,3 +7,4 @@ matplotlib==3.11.2   # analyze_takeover.py figures
 shapely==2.1.2       # PythonAPI/carla/agents
 networkx==3.7        # PythonAPI/carla/agents
 pyfmodex==0.7.2      # carla-audio-engine (vehicle sounds)
+pillow==13.0.0       # _Experiment/road_signs.py image signs (road-work sign, scenario 2)

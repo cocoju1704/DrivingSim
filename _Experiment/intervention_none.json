@@ -1,0 +1,9 @@
+{
+    "intervention": "none",
+    "format": "summary",
+    "delay_seconds": 5.0,
+    "question_seconds": 10.0,
+    "test": true,
+    "test_alert_after": 10.0,
+    "test_pre_alert": 5.0
+}

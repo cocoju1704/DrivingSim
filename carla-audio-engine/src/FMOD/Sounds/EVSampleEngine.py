@@ -41,16 +41,16 @@ class EVSampleEngine:
     """
     TOP_SPEED = 120.0           # km/h at which pitch and volume reach their maximum
     MOTOR_PITCH_MIN = 0.5       # playback speed released at standstill (1.0 = as recorded)
-    MOTOR_PITCH_MAX = 1.8       # playback speed at full throttle and TOP_SPEED
-    MOTOR_PITCH_SPEED = 0.3     # share of the pitch range that follows the speed; the rest follows the throttle
-    MOTOR_PITCH_GLIDE = 0.15    # share of the way to the new throttle pitch per update: it rises, not jumps
+    MOTOR_PITCH_MAX = 1.62      # playback speed at full throttle and TOP_SPEED
+    MOTOR_PITCH_SPEED = 0.45    # share of the pitch range that follows the speed; the rest follows the throttle
+    MOTOR_PITCH_GLIDE = 0.07    # share of the way to the new throttle pitch per update: it rises, not jumps
     # The motor gets louder the more the throttle is pressed: full throttle gives MOTOR_VOLUME_LOW
     # at standstill up to MOTOR_VOLUME_HIGH at TOP_SPEED. Released, it fades down to
     # MOTOR_VOLUME_RELEASED of that, never quite silent (0: silent).
     MOTOR_VOLUME_LOW = 0.3
     MOTOR_VOLUME_HIGH = 0.65
     MOTOR_VOLUME_RELEASED = 0.15
-    MOTOR_FADE = 0.3            # share of the way to the new volume per update (20 per second): no clicks
+    MOTOR_FADE = 0.12           # share of the way to the new volume per update (20 per second): no clicks
     BLINKER_VOLUME = 0.6
     REVERSE_VOLUME = 0.6
     ROAD_VOLUME_MAX = 0.6       # road noise at TOP_SPEED

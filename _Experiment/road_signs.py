@@ -56,6 +56,7 @@ LINE_BRIGHTNESS = 6  # debug line color for full 255 (WHITE): image colors are s
 # really uses it (IMAGE_COLOR_SHARE of its close matches), so blended edge pixels add no new colors.
 SIGN_PALETTE = [(230, 0, 18), (255, 225, 0), (255, 140, 0), (30, 30, 30), (255, 255, 255), (0, 80, 180),
                 (0, 140, 70)]
+SIGN_ORANGE = (255, 140, 0)   # drawn as ORANGE
 IMAGE_COLOR_SHARE = 0.02
 IMAGE_PIXELS = 72    # image sign: pixels across (rows follow the image's aspect)
 FILL = 0.22          # m between the lines that fill the board
@@ -148,14 +149,17 @@ class ImageSign(_Board):
     """A picture (e.g. a triangular warning sign, PNG) facing the traffic on `waypoint`, `offset`
     m right of its center, `width` m wide, its bottom `height` m above the road, on one post down
     to `post_from` m (the top of a plate under it, or the road). The white around the sign in the
-    image (connected to its corners) is left out, so only the sign's own shape shows."""
+    image (connected to its corners) is left out, so only the sign's own shape shows. `pixels`
+    across: fewer give thicker lines, which still show from farther away. post_from None: no post
+    (e.g. a warning triangle standing on the road)."""
 
-    def __init__(self, waypoint, offset, height, path, width=2.4, post_from=0.0):
+    def __init__(self, waypoint, offset, height, path, width=2.4, post_from=0.0, pixels=IMAGE_PIXELS):
         super(ImageSign, self).__init__(waypoint, offset)
-        rows, colors = _trace(path, IMAGE_PIXELS)
-        pixel = width / IMAGE_PIXELS
+        rows, colors = _trace(path, pixels)
+        pixel = width / pixels
         self.top = height + len(rows) * pixel
-        self._add((0.0, post_from), (0.0, height + 0.5 * len(rows) * pixel), 0.12, POST, depth=-0.05)
+        if post_from is not None:
+            self._add((0.0, post_from), (0.0, height + 0.5 * len(rows) * pixel), 0.12, POST, depth=-0.05)
         for row, runs in enumerate(rows):
             y = self.top - (row + 0.5) * pixel
             for start, end, color in runs:  # one line per run of equal pixels, a little thicker so rows close up
@@ -203,7 +207,8 @@ def _trace(path, pixels):
                     runs.append((start, x, current))
                 current, start = color, x
         rows.append(runs)
-    colors = [carla.Color(*(int(round(v * LINE_BRIGHTNESS / 255.0)) for v in c)) for c in palette]
+    colors = [ORANGE if c == SIGN_ORANGE else carla.Color(*(int(round(v * LINE_BRIGHTNESS / 255.0)) for v in c))
+              for c in palette]  # orange scaled down looks yellow: the text signs' orange instead
     return rows, colors
 
 
@@ -223,6 +228,11 @@ class RoadSigns(object):
     def add(self, sign):
         for segment in sign.segments:
             self._queue.appendleft((0.0, segment))  # due now
+
+    def remove(self, sign):
+        """Stop redrawing `sign`: its lines are gone LIFE s later."""
+        segments = {id(segment) for segment in sign.segments}
+        self._queue = collections.deque(entry for entry in self._queue if id(entry[1]) not in segments)
 
     def tick(self, now):
         drawn = 0
