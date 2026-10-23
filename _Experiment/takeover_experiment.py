@@ -178,7 +178,7 @@ from agents.navigation.local_planner import RoadOption  # pylint: disable=import
 # Reuse the world, HUD and camera of the stock manual_control example.
 from manual_control import HUD, CameraManager, World  # pylint: disable=import-error
 
-from road_signs import GREEN, ORANGE, RoadSigns, Sign  # next to this script
+from road_signs import GREEN, ORANGE, ImageSign, RoadSigns, Sign  # next to this script
 
 # ==============================================================================
 # -- constants -----------------------------------------------------------------
@@ -302,8 +302,12 @@ WORKZONE_LANES = (3, 4)
 # Signs (road_signs.py) on the right shoulder: (m before the event point, text lines, arrow)
 SIGN_SHOULDER = 1.5 * LANE_WIDTH + 2.5  # m right of lane 3's center: past the edge of lane 4
 SIGN_HEIGHT = 2.5                       # m from the road to the bottom of the board
+SIGN_IMAGE_WIDTH = 2.4                  # m: image signs (WORKZONE_SIGNS)
+SIGN_PLATE_LETTER = 0.6                 # m: letters on the plate under an image sign
 EXIT_SIGNS = ((1000.0, ['EXIT', '1 km'], None), (500.0, ['EXIT', '500 m'], None), (0.0, ['EXIT'], 'up_right'))
-WORKZONE_SIGNS = ((1000.0, ['ROAD WORK', '1 km'], None), (500.0, ['ROAD WORK', '500 m'], None),
+# (m before the event point, text lines, arrow[, image]): with an image (in SIGN_IMAGE_DIR) the
+# lines go on a small plate under the picture, e.g. a triangular warning sign above "1 km"
+WORKZONE_SIGNS = ((1000.0, ['1 km'], None, 'roadwork.png'), (500.0, ['500 m'], None, 'roadwork.png'),
                   (250.0, ['LANE 3 4', 'CLOSED'], 'left'))
 ACCIDENT_AT = 590.0           # scenario 4: the crashed cars, m from the start (straight, 4 lanes)
 ACCIDENT_SPAWN_AHEAD = 2300.0  # m ahead of the ego car at which the scene appears: beyond view, and
@@ -340,6 +344,7 @@ TOR_SECONDS = 5.0        # TOR -> forced manual driving
 RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many seconds before the pre-alert
 
 EXPERIMENT_DIR = os.path.dirname(os.path.abspath(__file__))
+SIGN_IMAGE_DIR = os.path.join(EXPERIMENT_DIR, 'sign_images')  # pictures for image signs
 ROOT = os.path.abspath(os.path.join(EXPERIMENT_DIR, '..'))
 LOG_DIR = os.path.join(ROOT, 'Data')
 AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, --no-audio-engine
@@ -2090,9 +2095,16 @@ class Scenario(object):
 
     def _place_signs(self, route, index, signs, color):
         """Signs on the right shoulder before route `index`; route: lane 3."""
-        for distance, lines, arrow in signs:
+        for distance, lines, arrow, *image in signs:
             waypoint = route[(index - int(round(distance / ROUTE_RESOLUTION))) % len(route)]
-            self._new_signs.append(Sign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT, lines, color, arrow=arrow))
+            if not image:
+                self._new_signs.append(Sign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT, lines, color, arrow=arrow))
+                continue
+            plate = Sign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT, lines, color, letter=SIGN_PLATE_LETTER)
+            self._new_signs.append(plate)
+            self._new_signs.append(ImageSign(waypoint, SIGN_SHOULDER, plate.top + 0.2,
+                                             os.path.join(SIGN_IMAGE_DIR, image[0]), SIGN_IMAGE_WIDTH,
+                                             post_from=plate.top))
 
     def tick(self, now, laps):
         pass
