@@ -118,8 +118,9 @@ connects this program to it: after the takeover the team adds more messages, sil
 notice has to take in: once the car is past the scene (scenarios 2 and 4; at the latest
 NDRT_FOLLOWUP_LATEST s after the takeover), else NDRT_FOLLOWUP_AFTER s after the takeover; K: now.
 The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl too, on its clock.
-During the pre-alert and the TOR the team presses for the notice (kakao_sets "nudges", each "after"
-s after the pre-alert): the message goes to the chat and the KakaoTalk sound plays on this PC
+During the pre-alert, from NUDGE_FROM (10) s until the intervention text is over (35 s with the
+defaults), the team presses for the notice (kakao_sets "nudges", each "after" s after the
+pre-alert): the message goes to the chat and the KakaoTalk sound plays on this PC
 (kakao_app/kakao.mp3; the chat page itself stays silent for these).
 
 NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
@@ -442,6 +443,8 @@ RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many secon
 # starts so far before the event point that the TOR still comes the scenario's TOR lead before it.
 NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messages start (scenarios 1, 3)
 NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 4 (else: once past the scene)
+NUDGE_FROM = 10.0    # s after the pre-alert: the NDRT nudges start once the participant has left the NDRT
+NUDGE_UNTIL = 35.0   # ... and end with the intervention text (Intervention.end; this without one)
 TEST_ALERT_AFTER = 10.0
 SERVER_RETRY = 5.0       # s per try while the CARLA server is not ready yet
 COLLISION_LOG_GAP = 2.0  # s: a collision with the same object is logged again only after this
@@ -3037,6 +3040,11 @@ class Intervention(object):
         logging.info('Intervention: %s, %s (%d lines, after %.1f s)', self.name, os.path.basename(script),
                      len(self.lines), self.delay)
 
+    @property
+    def end(self):
+        """Seconds after the pre-alert when the text is over (as if three lines with no text)."""
+        return self.delay + (len(self.lines) or 3) * self.question_seconds
+
     def due(self, elapsed):
         """True while a text is shown `elapsed` seconds after the pre-alert."""
         page = int((elapsed - self.delay) // self.question_seconds) if self.lines else -1
@@ -3475,12 +3483,20 @@ class TakeoverExperiment(object):
         self._ndrt.release_followup(reason)
 
     def _nudge_tick(self, now):
-        """The team pressing for the notice in the NDRT chat during the pre-alert and the TOR
-        (kakao_sets "nudges": s after the pre-alert), each with the KakaoTalk sound on this PC."""
-        if self._ndrt is None or self.mode not in (PRE_ALERT, TOR):
+        """The team pressing for the notice in the NDRT chat (kakao_sets "nudges": s after the
+        pre-alert), each with the KakaoTalk sound on this PC. Only from NUDGE_FROM s after the
+        pre-alert (the participant has left the NDRT) until the intervention text is over."""
+        if self._ndrt is None or self.mode != PRE_ALERT:
             return
+        end = self._intervention.end if self._intervention is not None else NUDGE_UNTIL
         for index, after in enumerate(self._ndrt.nudge_times):
-            if index not in self._nudged and now - self._alert_time >= after:
+            if index in self._nudged:
+                continue
+            if not NUDGE_FROM <= after <= end:
+                self._nudged.add(index)
+                logging.warning('NDRT nudge %d at %.1f s is outside %.0f-%.0f s after the pre-alert: skipped',
+                                index, after, NUDGE_FROM, end)
+            elif now - self._alert_time >= after:
                 self._nudged.add(index)
                 self._ndrt.post_nudge(index, 'prealert')
                 self._sound.kakao()

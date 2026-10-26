@@ -69,6 +69,7 @@ MODEL = 'gpt-5.5'
 REASONING_EFFORT = 'low'
 API_TIMEOUT = 60.0
 NO_NAME = '○○○'            # in the messages until the participant has entered a name
+NOTICE_DEADLINE = 10       # min after the start: {deadline} in the messages ("오후 3시 25분")
 
 LABELS = ['완료된 작업', '진행중이던 작업', '앞으로 남은 작업']
 MAX_SENTENCE_CHARS = 32    # Notion: 줄당 30자 이내 (label excluded, small slack)
@@ -143,6 +144,9 @@ class KakaoNdrt(object):
         self._name = None
         started = datetime.datetime.now()
         self._instance = started.strftime('%y%m%d_%H%M%S_%f')  # a page from an earlier run reloads itself
+        deadline = started + datetime.timedelta(minutes=NOTICE_DEADLINE)
+        self._deadline = '%s %d시%s' % ('오전' if deadline.hour < 12 else '오후', deadline.hour % 12 or 12,
+                                       ' %d분' % deadline.minute if deadline.minute else '')
         self._messages = [{'id': k, 'from': m['from'], 'text': m['text'], 'phase': 1,
                            'time': (started + datetime.timedelta(minutes=m['t'])).isoformat(timespec='seconds')}
                           for k, m in enumerate(self._set['messages'])]
@@ -274,7 +278,7 @@ class KakaoNdrt(object):
         self._seq += 1
 
     def _fill(self, text):
-        return text.replace('{name}', self._name or NO_NAME)
+        return text.replace('{name}', self._name or NO_NAME).replace('{deadline}', self._deadline)
 
     def _state(self, seq):
         with self._lock:
