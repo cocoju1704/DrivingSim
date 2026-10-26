@@ -24,7 +24,8 @@ The laptop's firewall has to let the simulator PC in on the port (5008).
     POST /ndrt/post         {"text": "..."}: the notice is posted to the room
     POST /ndrt/event        {"type": "focus"} etc.: logged only
     GET  /ndrt/followup     release the follow-up messages now (?source=NAME: the experiment, or by hand)
-    GET  /ndrt/nudge        ?index=K: post nudge K (kakao_sets "nudges", during the pre-alert)
+    GET  /ndrt/nudge        ?index=K: post nudge K (kakao_sets "nudges" during the pre-alert, then
+                            "late_nudges" after the lane 2 hazard)
     GET  /ndrt/mark         ?event=prealert etc.: the experiment's events, logged on this clock
     GET  /ndrt/info         scenario and title, for the experiment to check
     GET  /rtr/request       request an RtR summary now (?source=NAME)
@@ -181,7 +182,7 @@ class KakaoNdrt(object):
                     self._json({'ok': True})
                 elif url.path == '/ndrt/info':
                     self._json({'scenario': ndrt._scenario, 'title': ndrt._set['title'],
-                                'followup': ndrt._followup, 'nudges': ndrt.nudge_times})
+                                'followup': ndrt._followup, 'nudges': ndrt.nudge_plan})
                 elif url.path == '/rtr/request':
                     self._json({'id': ndrt.request(query.get('source', ['http'])[0])})
                 elif url.path == '/rtr/status':
@@ -337,16 +338,22 @@ class KakaoNdrt(object):
         thread.start()
         return True
 
+    def _nudges(self):
+        """kakao_sets "nudges" (during the pre-alert) then "late_nudges" (after the lane 2 hazard),
+        each with 'when': 'prealert' or 'hazard'. A nudge's index is its place in this list."""
+        return ([dict(n, when='prealert') for n in self._set.get('nudges', [])] +
+                [dict(n, when='hazard') for n in self._set.get('late_nudges', [])])
+
     @property
-    def nudge_times(self):
-        """Seconds after the pre-alert of each nudge (kakao_sets "nudges"), for the experiment."""
-        return [float(nudge['after']) for nudge in self._set.get('nudges', [])]
+    def nudge_plan(self):
+        """For the experiment: [{'after': s, 'when': 'prealert' or 'hazard'}, ...] by index."""
+        return [{'after': float(n['after']), 'when': n['when']} for n in self._nudges()]
 
     def post_nudge(self, index, source):
-        """Post nudge `index` (a team member pressing for the notice, during the pre-alert) to the
-        room. The experiment plays the KakaoTalk sound on the simulator PC. Once per index per run;
-        False if already posted or no such nudge."""
-        nudges = self._set.get('nudges', [])
+        """Post nudge `index` (a team member pressing for the notice) to the room. The experiment
+        plays the KakaoTalk sound on the simulator PC. Once per index per run; False if already
+        posted or no such nudge."""
+        nudges = self._nudges()
         with self._lock:
             if not 0 <= index < len(nudges) or index in self._nudged:
                 return False
@@ -363,7 +370,7 @@ class KakaoNdrt(object):
     def next_nudge(self):
         """Index of the first nudge not posted yet, or None."""
         with self._lock:
-            return next((k for k in range(len(self.nudge_times)) if k not in self._nudged), None)
+            return next((k for k in range(len(self._nudges())) if k not in self._nudged), None)
 
     def _send_followup(self):
         for k, message in enumerate(self._set['followup']):
@@ -569,7 +576,7 @@ class KakaoNdrtLink(object):
         self._reported = None
         self._online = None
         self._running = True
-        self.nudge_times = []       # s after the pre-alert of each nudge, from the laptop's /ndrt/info
+        self.nudges = []            # [{'after', 'when'}] by index, from the laptop's /ndrt/info
         thread = threading.Thread(target=self._poll, name='kakao-ndrt-link')
         thread.daemon = True
         thread.start()
@@ -697,7 +704,7 @@ class KakaoNdrtLink(object):
             info = self._get('/ndrt/info')
         except (OSError, ValueError):
             return
-        self.nudge_times = [float(after) for after in info.get('nudges', [])]
+        self.nudges = info.get('nudges', [])
         if info.get('scenario') != self._scenario:
             logging.warning('NDRT chat: the laptop runs scenario %s (%s), the drive is scenario %d',
                             info.get('scenario'), info.get('title'), self._scenario)

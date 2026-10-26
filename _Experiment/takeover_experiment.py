@@ -125,7 +125,9 @@ The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl to
 During the pre-alert, from NUDGE_FROM (10) s until the intervention text is over (35 s with the
 defaults), the team presses for the notice (kakao_sets "nudges", each "after" s after the
 pre-alert): the message goes to the chat and the KakaoTalk sound plays on this PC
-(kakao_app/kakao.mp3; the chat page itself stays silent for these).
+(kakao_app/kakao.mp3; the chat page itself stays silent for these). "late_nudges" do the same
+after the takeover, counted from when the car is past the lane 2 hazard (scenarios 2 and 4; in 1
+and 3 from LATE_NUDGE_NO_HAZARD s after the takeover).
 
 NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
 the laptop sends the notice draft to ChatGPT (OpenAI API key there: OPENAI_API_KEY or
@@ -449,6 +451,8 @@ NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messag
 NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 4 (else: once past the scene)
 NUDGE_FROM = 10.0    # s after the pre-alert: the NDRT nudges start once the participant has left the NDRT
 NUDGE_UNTIL = 35.0   # ... and end with the intervention text (Intervention.end; this without one)
+LATE_NUDGE_NO_HAZARD = 5.0   # s after the takeover the late nudges start in scenarios without a lane 2
+                             # hazard (before autonomous driving comes back, REENGAGE_AFTER)
 TEST_ALERT_AFTER = 10.0
 SERVER_RETRY = 5.0       # s per try while the CARLA server is not ready yet
 REENGAGE_AFTER = 10.0    # s of manual driving after the takeover (scenarios 2, 4: after passing the
@@ -3391,6 +3395,7 @@ class TakeoverExperiment(object):
         self._phone_cluster = phone_cluster  # PhoneCluster: the gauges on a phone instead of the monitor
         self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
         self._nudged = set()                # NDRT nudges posted (once each per run, _nudge_tick)
+        self._hazard_passed = None          # time.monotonic() the car got past the lane 2 hazard (_track_hazard)
         self._takeover_time = None
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
         self._escort = escort               # EscortCars: cars beside the car after the takeover
@@ -3734,24 +3739,52 @@ class TakeoverExperiment(object):
         self._ndrt.release_followup(reason)
 
     def _nudge_tick(self, now):
-        """The team pressing for the notice in the NDRT chat (kakao_sets "nudges": s after the
-        pre-alert), each with the KakaoTalk sound on this PC. Only from NUDGE_FROM s after the
-        pre-alert (the participant has left the NDRT) until the intervention text is over."""
-        if self._ndrt is None or self.mode != PRE_ALERT:
+        """The team pressing for the notice in the NDRT chat, each with the KakaoTalk sound on this
+        PC. kakao_sets "nudges": s after the pre-alert, only from NUDGE_FROM s (the participant has
+        left the NDRT) until the intervention text is over. "late_nudges": s after the car has
+        passed the lane 2 hazard (scenarios 2 and 4; else LATE_NUDGE_NO_HAZARD s after the takeover)."""
+        if self._ndrt is None:
             return
+        self._track_hazard(now)
         end = self._intervention.end if self._intervention is not None else NUDGE_UNTIL
-        for index, after in enumerate(self._ndrt.nudge_times):
+        for index, nudge in enumerate(self._ndrt.nudges):
+            after = float(nudge['after'])
             if index in self._nudged:
                 continue
-            if not NUDGE_FROM <= after <= end:
+            if nudge['when'] == 'hazard':
+                if self._hazard_passed is None or now - self._hazard_passed < after:
+                    continue
+                since = 'the lane 2 hazard'
+            elif self.mode != PRE_ALERT:
+                continue
+            elif not NUDGE_FROM <= after <= end:
                 self._nudged.add(index)
                 logging.warning('NDRT nudge %d at %.1f s is outside %.0f-%.0f s after the pre-alert: skipped',
                                 index, after, NUDGE_FROM, end)
-            elif now - self._alert_time >= after:
-                self._nudged.add(index)
-                self._ndrt.post_nudge(index, 'prealert')
-                self._sound.kakao()
-                logging.info('NDRT nudge %d (%.0f s after the pre-alert)', index, now - self._alert_time)
+                continue
+            elif now - self._alert_time < after:
+                continue
+            else:
+                since = 'the pre-alert'
+            self._nudged.add(index)
+            self._ndrt.post_nudge(index, nudge['when'])
+            self._sound.kakao()
+            logging.info('NDRT nudge %d (%.1f s after %s)', index, after, since)
+
+    def _track_hazard(self, now):
+        """The time the car got past the lane 2 hazard after the takeover, for the late nudges."""
+        if self._hazard_passed is not None or self._takeover_time is None:
+            return
+        if self._scenario.has_scene:
+            if self.mode != MANUAL or not (self._scenario.obstacle_passed() or self._scenario.scene_cleared):
+                return
+            logging.info('Past the lane 2 hazard: the late NDRT nudges start')
+        elif now - self._takeover_time >= LATE_NUDGE_NO_HAZARD:
+            logging.info('%.0f s after the takeover (no lane 2 hazard): the late NDRT nudges start',
+                         LATE_NUDGE_NO_HAZARD)
+        else:
+            return
+        self._hazard_passed = now
 
     def _request_rtr_ahead(self, now, speed):
         """NDRT summary: request the participant's RtR summary RTR_LEAD s before the automatic pre-alert."""
