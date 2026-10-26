@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableStringBuilder
@@ -25,8 +26,9 @@ private const val IMAGE_SCALE = 0.5f // images are drawn at half the display res
 private val ORANGE = Color.rgb(255, 140, 0) // PRE-ALERT, as on the simulator screen
 private val RED = Color.rgb(255, 0, 0) // TOR: the brightest red the display can show
 private val DARK_RED = Color.rgb(150, 0, 0) // blink test: the dark half of the flash
-private val MODE_AUTO = Color.rgb(60, 220, 90) // mode text: brighter than the screen's colors, which
-private val MODE_MANUAL = Color.rgb(80, 160, 255) // look dim on the additive display
+private val MODE_AUTO = Color.rgb(0, 190, 70) // mode badge background: saturated, bright on the additive
+private val MODE_MANUAL = Color.rgb(30, 110, 255) // display, dark enough for the white text on it
+private const val MODE_ON_RIGHT = true // mode badge at the bottom right; false: bottom left
 private val LABEL = Color.rgb(0, 255, 255) // intervention text: the label before the ':', bright cyan stands out on the additive display
 private const val TEXT_HEIGHT = 480 // intervention text: from the top, above the mode text
 
@@ -34,7 +36,7 @@ private const val TEXT_HEIGHT = 480 // intervention text: from the top, above th
  * The overlay of takeover_experiment.py (TakeoverExperiment.render) on the glasses, without
  * backgrounds so the road stays visible. The display is 600x600, additive (black is see-through)
  * and in the right lens only; its top edge is at the center of the field of view.
- *   AUTO / MANUAL   small mode text at the bottom left
+ *   AUTO / MANUAL   small oval badge (white text on green / blue) at the bottom right
  *   PRE_ALERT       first seconds (TorViewModel): "PRE-ALERT" and the message in orange in the
  *                   center, no time left; then the intervention text at the top
  *   TOR             "TAKE OVER" in red at the top, countdown digits and bar at the bottom
@@ -106,13 +108,22 @@ private fun drawPreAlert(canvas: Canvas, message: String) {
 }
 
 /**
- * Small mode text at the bottom left: AUTO in green while autonomous (also during the alerts),
- * MANUAL in blue. Short on purpose; the simulator's longer label (view.label) is not used here.
+ * Small oval badge at the bottom right (MODE_ON_RIGHT, else left): AUTO on green while autonomous
+ * (also during the alerts), MANUAL on blue, white text. Short on purpose; the simulator's longer
+ * label (view.label) is not used here.
  */
 private fun drawMode(canvas: Canvas, view: GlassesView) {
   val text = if (view.mode == TorMode.MANUAL) "MANUAL" else "AUTO"
-  val paint = textPaint(28f, bold = true).apply { color = if (view.mode == TorMode.MANUAL) MODE_MANUAL else MODE_AUTO }
-  canvas.drawText(text, PADDING, WIDTH - PADDING, fit(paint, text, WIDTH - 2 * PADDING))
+  val paint = textPaint(45f, bold = true)
+  val height = 78f
+  val width = paint.measureText(text) + height // half the height of padding on each side
+  val left = if (MODE_ON_RIGHT) WIDTH - PADDING - width else PADDING
+  val top = WIDTH - PADDING - height
+  canvas.drawRoundRect(
+      RectF(left, top, left + width, top + height), height / 2, height / 2,
+      fillPaint(if (view.mode == TorMode.MANUAL) MODE_MANUAL else MODE_AUTO))
+  val metrics = paint.fontMetrics
+  canvas.drawText(text, left + height / 2, top + height / 2 - (metrics.ascent + metrics.descent) / 2, paint)
 }
 
 /**

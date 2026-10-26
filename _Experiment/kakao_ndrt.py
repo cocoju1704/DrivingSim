@@ -8,8 +8,9 @@ It runs on the NDRT laptop, apart from the simulator PC: start it there before t
 http://localhost:5008/ in the laptop's browser (a phone works too: the page fits narrow screens).
 The participant enters their name, reads the chat and writes the notice. After the takeover the
 experiment (takeover_experiment.py --ndrt <laptop address>, KakaoNdrtLink) releases the follow-up
-messages: the team adds them one by one, without any sound or popup; the last one asks to finish
-the notice with the additions. The draft stays where it was.
+messages: the team adds them one by one, each with the "카톡" message sound (kakao_app/kakao.mp3 if
+it is there, else two tones the page makes) and no popup; the last one asks to finish the notice
+with the additions. The draft stays where it was.
 
 It also writes the NDRT ready-to-resume (RtR) summary of the draft with the OpenAI API, in place of
 the Gmail extension and rtr_bridge.py (now in legacy/), when the experiment asks for one. API key:

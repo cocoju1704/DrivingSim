@@ -282,3 +282,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
   font-weight: 700;
   font-size: 16px;
 }
+
+/* experimenter only: shown with ?test in the address */
+#sound-test {
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 4px 10px;
+  border: 1px solid #c9b200;
+  border-radius: 14px;
+  background: #fee500;
+  color: #3c1e1e;
+  font-size: 13px;
+  cursor: pointer;
+}
+#sound-test[hidden] { display: none; }

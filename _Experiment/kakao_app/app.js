@@ -20,6 +20,63 @@
   let sentDraft = null;
   let nameAsked = false;
 
+  // -- message sound -------------------------------------------------------------
+  // "카톡" when a message from someone else comes in (not for the chat already there at the start).
+  // kakao.mp3 next to this page if it is there, else two short tones made here. Browsers play
+  // sound only after the participant has clicked or typed on the page once (the name dialog does).
+
+  const SOUND_FILE = 'kakao.mp3';
+  let soundFile = new Audio(SOUND_FILE);
+  soundFile.addEventListener('error', () => { soundFile = null; });
+  let audioCtx = null;
+
+  function unlockSound() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) audioCtx = new Ctx();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  window.addEventListener('pointerdown', unlockSound);
+  window.addEventListener('keydown', unlockSound);
+
+  // Test button for the experimenter, only with ?test in the address (http://localhost:5008/?test)
+  if (new URLSearchParams(location.search).has('test')) {
+    const testBtn = $('sound-test');
+    testBtn.hidden = false;
+    testBtn.addEventListener('click', () => {
+      unlockSound();
+      playMessageSound();
+      testBtn.textContent = soundFile ? '🔔 kakao.mp3 재생' : '🔔 합성음 재생 (kakao.mp3 없음)';
+    });
+  }
+
+  function tone(freq, start, length) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const t = audioCtx.currentTime + start;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + length + 0.02);
+  }
+
+  function playMessageSound() {
+    if (soundFile) {
+      soundFile.currentTime = 0;
+      soundFile.play().catch(() => {});
+      return;
+    }
+    unlockSound();
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    tone(1318.5, 0.0, 0.12); // E6: "카"
+    tone(1046.5, 0.13, 0.22); // C6: "톡"
+  }
+
   // -- server ------------------------------------------------------------------
 
   async function send(path, body) {
@@ -125,6 +182,11 @@
     $('room-count').textContent = data.member_count;
     document.title = data.room;
     render(data.messages);
+    // new messages from the others since the last poll (not at the first load)
+    if (before > 0 && data.messages.slice(before).some((m) => m.from && m.kind !== 'notice' && m.from !== data.name)) {
+      playMessageSound();
+      event('message_sound');
+    }
     shownCount = data.messages.length;
     if (stick) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
