@@ -86,8 +86,8 @@ dashboard is in view (--view chase: from behind the car).
 --glasses PHONE_IP shows the pre-alert and the TOR on Meta Ray-Ban Display glasses
 instead of the screen: TORApp on the phone (TORApp folder) receives the state over
 Wi-Fi and puts it on the glasses. --glasses usb: over the USB cable with USB tethering
-on in the phone, which finds the phone's address by itself. Its alert sounds (chime, beeps, click) then come
-from the glasses' speakers instead of the PC (--pc-sound: from both). The vehicle
+on in the phone, which finds the phone's address by itself. Its alert sounds (chime, beeps, click) come
+from the glasses' speakers and from the simulator PC as well. The vehicle
 sounds of the audio engine stay on the PC.
 
 During the pre-alert the glasses also show an intervention text, chosen in
@@ -239,9 +239,10 @@ LEFT_MIRROR = {
          (0.85, 0.09), (0.91, 0.18), (1.0, 0.53), (1.0, 0.78), (0.94, 1.0), (0.07, 0.63), (0.03, 0.56)]),
 }
 RIGHT_MIRROR = {
-    0: ((0.2786, 0.0535, 1.3983), (0.161, 0.106),
-        [(0.0, 0.23), (0.07, 0.09), (0.12, 0.0), (0.79, 0.0), (0.85, 0.05), (0.92, 0.18), (1.0, 0.51),
-         (0.99, 0.71), (0.96, 0.84), (0.92, 0.89), (0.56, 0.97), (0.12, 1.0), (0.0, 1.0)]),
+    # measured again at DRIVER_VIEW_PITCH 4 from the bare glass in the window
+    0: ((0.2786, 0.0535, 1.3983), (0.168, 0.1185),
+        [(0.0, 0.5), (0.07, 0.19), (0.16, 0.06), (0.22, 0.01), (0.7, 0.03), (0.76, 0.07), (0.86, 0.18),
+         (0.98, 0.42), (1.0, 0.58), (0.97, 0.75), (0.94, 0.81), (0.5, 0.93), (0.28, 0.99), (0.05, 0.99), (0.0, 0.76)]),
     1: ((0.2782, 0.0540, 1.3990), (0.1024, 0.1105),
         [(0.11, 0.05), (0.18, 0.0), (0.76, 0.0), (0.87, 0.07), (0.97, 0.22), (1.0, 0.36), (0.99, 0.57),
          (0.97, 0.77), (0.93, 0.83), (0.59, 0.92), (0.21, 0.99), (0.0, 1.0)]),
@@ -249,19 +250,25 @@ RIGHT_MIRROR = {
 MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
 # Rear-view mirror glass, m from the driver's eyes (forward, right, up). The windshield view is in
 # front of it, so there its image stays where the driver's seat view shows the glass.
-REAR_MIRROR = (0.571, 0.017, 0.110)
-REAR_MIRROR_SIZE = (0.236, 0.081)  # m
-# Its outline bends where the glass crosses from the middle monitor to the right one
-REAR_MIRROR_OUTLINE = [(0.01, 0.48), (0.04, 0.14), (0.06, 0.05), (0.12, 0.0), (0.31, 0.0), (0.91, 0.38), (0.97, 0.49),
-                       (1.0, 0.9), (1.0, 0.95), (0.95, 1.0), (0.33, 0.76), (0.15, 0.76), (0.04, 0.73), (0.0, 0.62)]
+REAR_MIRROR = (0.571, 0.007, 0.1085)
+REAR_MIRROR_SIZE = (0.249, 0.0795)  # m
+# Its outline bends where the glass crosses from the middle monitor to the right one. Measured at
+# DRIVER_VIEW_PITCH 4 from the bare glass in the window (3 x 2560 x 1440, 60 degrees per monitor).
+REAR_MIRROR_OUTLINE = [(0.0, 0.58), (0.02, 0.19), (0.04, 0.06), (0.1, 0.01), (0.34, 0.0), (0.94, 0.4), (0.98, 0.46),
+                       (0.99, 0.57), (1.0, 0.91), (0.99, 0.98), (0.94, 1.0), (0.34, 0.76), (0.08, 0.76), (0.01, 0.72),
+                       (0.0, 0.62)]
 REAR_MIRROR_FOV = 45.0             # degrees
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
-# The gauges (throttle pedal, speed) on a panel at the lower right of the middle monitor, like a
-# car's center display: the car's own instrument cluster is below the view (DRIVER_VIEW_PITCH).
-CLUSTER_PANEL = (0.33, 0.21)   # width, height: shares of the monitor
-CLUSTER_MARGIN = (0.02, 0.03)  # from the monitor's right and bottom edges, shares of the monitor
+# The gauges (throttle pedal, speed) on a tablet standing at the bottom middle of the middle monitor,
+# where a car's instrument cluster sits (the car's own cluster is below the view, DRIVER_VIEW_PITCH).
+CLUSTER_PANEL = (0.40, 0.21)   # tablet width, height: shares of the monitor; on the bottom edge
+CLUSTER_BEZEL = (22, 23, 26)   # the tablet's frame
+CLUSTER_EDGE = (78, 80, 86)    # its rim catching the light
+CLUSTER_SCREEN = ((24, 29, 38), (9, 11, 15))  # screen, top and bottom of its gradient
+BLINKER_ON = (40, 220, 90)     # turn signal arrow, lit
+BLINKER_DIM = (46, 54, 66)     # its outline while off (and the dark half of its blink)
+BLINKER_HZ = 1.5               # blinks per second, as a car's turn signal
 MODE_BOX_MARGIN = 20           # px from the window's right and bottom edges: AUTONOMOUS / MANUAL box
-CLUSTER_BACKGROUND = (12, 14, 18)
 CLUSTER_TEXT = (235, 240, 245)
 CLUSTER_DIM = (120, 130, 140)
 CLUSTER_NEEDLE = (235, 60, 40)
@@ -364,10 +371,10 @@ ARROW_BOARD_OFFSET = 0.5 * LANE_WIDTH   # m right of lane 3's center: the line b
 EXIT_SIGNS = ((1000.0, ['EXIT', '1 km'], None), (500.0, ['EXIT', '500 m'], None), (0.0, ['EXIT'], 'up_right'))
 # (m before the event point, text lines, arrow[, image]): with an image (in SIGN_IMAGE_DIR) the
 # lines go on a small plate under the picture, e.g. a triangular warning sign above "1 km"
-# Only distances before the scene: an arrow ahead of time makes drivers change lanes early. The one
-# arrow is the arrow board where the lanes start to close (_place_arrow_board).
-WORKZONE_SIGNS = ((1000.0, ['1 km'], None, 'roadwork.png'), (500.0, ['500 m'], None, 'roadwork.png'),
-                  (250.0, ['250 m'], None, 'roadwork.png'))
+# One triangular warning sign before the scene, no distances and no arrows (an arrow ahead of time
+# makes drivers change lanes early; the one arrow is the arrow board where the lanes start to close).
+SCENE_SIGN_BEFORE = 200.0     # m before the scene
+WORKZONE_SIGNS = ((SCENE_SIGN_BEFORE, [], None, 'roadwork.png'),)
 ACCIDENT_AT = 880.0           # scenario 4: the crashed cars, m from the start (straight, 4 lanes, 180 m+
                               # from the rest of the loop: not in view from the overpass before it)
 ACCIDENT_SPAWN_AHEAD = 2300.0  # m ahead of the ego car at which the scene appears: beyond view, and
@@ -391,8 +398,7 @@ LANE2_TRIANGLE_PIXELS = 24                    # across: thick lines
 LANE2_OBSTACLE_AFTER = 250.0  # m after the end of the scene (scenario 4: on the straight after the curve)
 LANE2_OBSTACLE_SPAWN = 500.0  # m ahead of the ego car (after the takeover) at which it appears ...
 LANE2_OBSTACLE_LATEST = 250.0  # ... as soon as no car is near its place, but at this distance at the latest
-ACCIDENT_SIGNS = ((1000.0, ['ACCIDENT', '1 km'], None), (500.0, ['ACCIDENT', '500 m'], None),
-                  (250.0, ['ACCIDENT', '250 m'], None))
+ACCIDENT_SIGNS = ((SCENE_SIGN_BEFORE, [], None, 'caution.png'),)  # general danger: "!" in the triangle
 # After the takeover cars drive level with the ego car in the lanes next to it, so the driver keeps
 # the lane and the takeover period measures steady driving (EscortCars). Scenarios 2 and 4: from
 # when the car is past the closed lanes; scenario 1: on the left only, the exit is on the right.
@@ -449,6 +455,7 @@ AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, -
 AUDIO_ENGINE_PYTHON = os.path.join(ROOT, 'venv_carla', 'Scripts', 'python.exe')     # has pyfmodex installed
 GLASSES_DIR = os.path.join(ROOT, 'TORApp', 'pc')  # tor_glasses.py, --glasses
 KAKAO_SOUND = os.path.join(EXPERIMENT_DIR, 'kakao_app', 'kakao.mp3')  # NDRT nudges, played on this PC
+KAKAO_VOLUME = 0.8         # of the file's own loudness
 POST_WINDOW = 10.0  # seconds after the takeover that count as the takeover period
 FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no overpass
 FOG_AT = 700.0          # scenario 3: where the fog starts to thicken, m from the start
@@ -2521,6 +2528,10 @@ class Scenario(object):
             if not image:
                 self._new_signs.append(Sign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT, lines, color, arrow=arrow))
                 continue
+            if not lines:  # the picture alone, on its post
+                self._new_signs.append(ImageSign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT,
+                                                 os.path.join(SIGN_IMAGE_DIR, image[0]), SIGN_IMAGE_WIDTH))
+                continue
             plate = Sign(waypoint, SIGN_SHOULDER, SIGN_HEIGHT, lines, color, letter=SIGN_PLATE_LETTER)
             self._new_signs.append(plate)
             self._new_signs.append(ImageSign(waypoint, SIGN_SHOULDER, plate.top + 0.2,
@@ -3072,6 +3083,7 @@ class AlertSound(object):
         except Exception as error:  # pylint: disable=broad-except
             logging.warning('No KakaoTalk sound (%s: %s): the NDRT nudges play two tones', KAKAO_SOUND, error)
             self._kakao = self._sound([(1318.5, 0.12), (1046.5, 0.22)], 0.5)  # "카톡", as kakao_app
+        self._kakao.set_volume(KAKAO_VOLUME)
 
     @staticmethod
     def _sound(parts, volume):
@@ -3536,7 +3548,8 @@ class TakeoverExperiment(object):
             control = self._control
         self._world.player.apply_control(control)
         if self._phone_cluster is not None:
-            self._phone_cluster.update(self._speed_kmh, self._pedal, *self._mode_label())
+            blinker = 'left' if self._lights & LEFT_BLINKER else 'right' if self._lights & RIGHT_BLINKER else ''
+            self._phone_cluster.update(self._speed_kmh, self._pedal, *self._mode_label(), blinker=blinker)
         self._input.force_feedback(speed_kmh)
         self._update_lights(control)
         self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
@@ -3626,9 +3639,9 @@ class TakeoverExperiment(object):
                               remaining / TOR_SECONDS)
 
     def _draw_cluster(self, display):
-        """Driver's seat view: a panel at the lower right of the middle monitor with two round gauges
-        whose needles turn, the throttle pedal travel (left) and the speed (right), and the speed in
-        digits between them."""
+        """Driver's seat view: a tablet at the bottom middle of the middle monitor with two round gauges
+        whose needles turn, the throttle pedal travel (left) and the speed (right), the speed in
+        digits between them, and a clock in its status bar."""
         manager = self._world.camera_manager
         if manager.transform_index != 0 or self._phone_cluster is not None:
             return
@@ -3647,36 +3660,73 @@ class TakeoverExperiment(object):
             pygame.draw.circle(surface, CLUSTER_DIM, center, max(3, int(radius * 0.09)))
         digits = cluster['digits'].render('%d' % round(self._speed_kmh), True, CLUSTER_TEXT)
         surface.blit(digits, digits.get_rect(center=cluster['readout']))
+        clock = cluster['status'].render(time.strftime('%H:%M'), True, CLUSTER_DIM)
+        surface.blit(clock, clock.get_rect(topright=cluster['clock']))
+        lit = int(time.monotonic() * 2.0 * BLINKER_HZ) % 2 == 0  # on half of each period
+        for flag, points in ((LEFT_BLINKER, cluster['arrows'][0]), (RIGHT_BLINKER, cluster['arrows'][1])):
+            if self._lights & flag:
+                pygame.draw.polygon(surface, BLINKER_ON if lit else BLINKER_DIM, points)
+            else:
+                pygame.draw.polygon(surface, BLINKER_DIM, points, 2)
+        surface.blit(cluster['glare'], (0, 0))
         surface.blit(cluster['mask'], (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        display.blit(surface, (manager.screens // 2 * manager.screen_size[0] + cluster['origin'][0],
-                               cluster['origin'][1]))
+        x = manager.screens // 2 * manager.screen_size[0] + cluster['origin'][0]
+        display.blit(cluster['shadow'], (x - cluster['shadow_pad'], cluster['origin'][1] - cluster['shadow_pad']))
+        display.blit(surface, (x, cluster['origin'][1]))
 
     @staticmethod
     def _cluster_face(size):
-        """The gauges without needles on the panel, for one monitor size: face, mask (the panel's
-        rounded corners), origin on the monitor, dials [(center, radius, full scale)], digits font,
-        readout center."""
+        """The tablet with the gauges but no needles, for one monitor size: face, mask (its rounded
+        corners), glare (light on the glass, over the needles), shadow, origin on the monitor, dials
+        [(center, radius, full scale)], fonts, readout and clock positions."""
         width, height = size
         panel_w, panel_h = int(CLUSTER_PANEL[0] * width), int(CLUSTER_PANEL[1] * height)
-        x0 = width - panel_w - int(CLUSTER_MARGIN[0] * width)
-        y0 = height - panel_h - int(CLUSTER_MARGIN[1] * height)
+        x0, y0 = (width - panel_w) // 2, height - panel_h  # on the bottom edge
+        corner = max(6, int(panel_h * 0.09))
+        bezel = max(6, int(panel_h * 0.055))
         mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 0))
-        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=max(4, panel_h // 10))
-        face = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        face.fill(CLUSTER_BACKGROUND + (255,))
+        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=corner)
 
-        # the area the gauges are laid out in (the dials reach a little below it)
-        rw, rh = panel_w * 0.96, panel_h / 1.35
-        rx, ry = (panel_w - rw) / 2.0, panel_h * 0.05
+        # body: dark frame with a lighter rim, a front camera in the top bezel
+        face = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        face.fill((0, 0, 0, 0))
+        pygame.draw.rect(face, CLUSTER_BEZEL + (255,), face.get_rect(), border_radius=corner)
+        pygame.draw.rect(face, CLUSTER_EDGE + (255,), face.get_rect(), width=2, border_radius=corner)
+        pygame.draw.circle(face, (44, 46, 54), (panel_w // 2, bezel // 2), max(2, bezel // 5))
+        # screen: a dark gradient, top to bottom
+        screen = pygame.Rect(bezel, bezel, panel_w - 2 * bezel, panel_h - 2 * bezel)
+        gradient = pygame.Surface(screen.size, pygame.SRCALPHA)
+        top, bottom = CLUSTER_SCREEN
+        for row in range(screen.height):
+            share = row / max(1, screen.height - 1)
+            gradient.fill(tuple(int(a + (b - a) * share) for a, b in zip(top, bottom)) + (255,),
+                          pygame.Rect(0, row, screen.width, 1))
+        screen_mask = pygame.Surface(screen.size, pygame.SRCALPHA)
+        screen_mask.fill((0, 0, 0, 0))
+        pygame.draw.rect(screen_mask, (255, 255, 255, 255), screen_mask.get_rect(), border_radius=max(3, corner - bezel // 2))
+        gradient.blit(screen_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        face.blit(gradient, screen.topleft)
+
+        default = pygame.font.get_default_font()
+        status = pygame.font.Font(default, max(9, int(screen.height * 0.075)))
+        status_h = int(screen.height * 0.11)  # the status bar: a clock at its right
+        clock = (screen.right - int(screen.height * 0.06), screen.top + int(status_h * 0.25))
+
+        # the gauges, laid out below the status bar (the dials reach a little below the area)
+        rw, rh = screen.width * 0.94, (screen.height - status_h) / 1.3
+        rx, ry = screen.left + (screen.width - rw) / 2.0, screen.top + status_h
         radius = int(rh * 0.56)
         cy = int(ry + rh * 0.66)
         dials = [((int(rx + rw * 0.24), cy), radius, 100.0), ((int(rx + rw * 0.76), cy), radius, GAUGE_MAX_SPEED)]
-        default = pygame.font.get_default_font()
         small = pygame.font.Font(default, max(9, int(radius * 0.19)))
         # (minor tick step, labelled every, title)
         scales = ((10.0, 20.0, 'ACCEL %'), (10.0, 40.0, 'km/h'))
         for ((cx, cyy), r, maximum), (step, label_every, title) in zip(dials, scales):
+            # a faint track along the sweep, as on a car's screen
+            arc = pygame.Rect(cx - r, cyy - r, 2 * r, 2 * r)
+            pygame.draw.arc(face, (46, 54, 66), arc, math.radians(GAUGE_START - GAUGE_SWEEP),
+                            math.radians(GAUGE_START), max(2, int(r * 0.03)))
             value = 0.0
             while value <= maximum + 1e-6:
                 angle = math.radians(GAUGE_START - GAUGE_SWEEP * value / maximum)
@@ -3692,9 +3742,36 @@ class TakeoverExperiment(object):
             text = small.render(title, True, CLUSTER_DIM)
             face.blit(text, text.get_rect(center=(cx, cyy + r * 0.42)))
         digits = pygame.font.Font(default, int(radius * 0.6))
-        readout = (int(rx + rw * 0.5), int(cy + radius * 0.15))
-        return {'size': size, 'face': face, 'mask': mask, 'origin': (x0, y0), 'dials': dials,
-                'digits': digits, 'readout': readout}
+        readout = (int(rx + rw * 0.5), int(ry + rh * 0.22))  # at the top, between the dials
+
+        # turn signal arrows, left and right of the speed digits
+        size = radius * 0.32
+        arrows = []
+        for side in (-1, 1):
+            tip_x = readout[0] + side * radius * 1.0
+            base_x = tip_x - side * size
+            y = readout[1]
+            arrows.append([(tip_x, y), (base_x, y - size * 0.62), (base_x, y - size * 0.24),
+                           (base_x - side * size * 0.8, y - size * 0.24), (base_x - side * size * 0.8, y + size * 0.24),
+                           (base_x, y + size * 0.24), (base_x, y + size * 0.62)])
+
+        # light on the glass: a faint band across the upper left of the screen
+        glare = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        glare.fill((0, 0, 0, 0))
+        band = [(screen.left, screen.top), (screen.left + screen.width * 0.42, screen.top),
+                (screen.left + screen.width * 0.22, screen.bottom), (screen.left, screen.bottom)]
+        pygame.draw.polygon(glare, (255, 255, 255, 10), band)
+        # a soft shadow around the tablet on the picture
+        pad = max(4, int(panel_h * 0.04))
+        shadow = pygame.Surface((panel_w + 2 * pad, panel_h + 2 * pad), pygame.SRCALPHA)
+        shadow.fill((0, 0, 0, 0))
+        for k in range(pad):
+            pygame.draw.rect(shadow, (0, 0, 0, int(70 * (k + 1) / pad / pad) + 2),
+                             shadow.get_rect().inflate(-2 * k, -2 * k), border_radius=corner + pad - k)
+        return {'size': size, 'face': face, 'mask': mask, 'glare': glare, 'shadow': shadow, 'shadow_pad': pad,
+                'origin': (x0, y0), 'dials': dials, 'digits': digits, 'readout': readout, 'status': status,
+                'arrows': arrows,
+                'clock': clock}
 
     @staticmethod
     def _draw_box(display, font, text, rect, background, foreground, alpha=220):
@@ -3838,8 +3915,8 @@ def game_loop(args):
         road_signs = RoadSigns(sim_world)
         clearance = TrafficClearance(client, traffic, args.npc_speed)
         escort = EscortCars(client, sim_world, carla_map)
-        # --glasses: TORApp plays them (here too with --pc-sound, or while the glasses display is off)
-        sound = AlertSound(not args.no_sound, glasses=None if args.pc_sound else glasses)
+        # always on this PC too (with --glasses TORApp also plays them on the glasses)
+        sound = AlertSound(not args.no_sound)
         if args.ndrt:
             from kakao_ndrt import KakaoNdrtLink  # next to this script
             ndrt = KakaoNdrtLink(args.ndrt, args.scenario, args.ndrt_port, None if args.no_log else recorder.dir,
@@ -4054,7 +4131,7 @@ def main():
                            help='the NDRT laptop running kakao_ndrt.py (follow-up messages, RtR summaries)')
     argparser.add_argument('--ndrt-port', '--rtr-port', dest='ndrt_port', metavar='P', type=int, default=5008,
                            help='kakao_ndrt.py\'s port on the NDRT laptop when --ndrt has none (default: 5008)')
-    argparser.add_argument('--pc-sound', action='store_true',
+    argparser.add_argument('--pc-sound', action='store_true',  # kept for old commands: the PC always plays them now
                            help='with --glasses: play the alert sounds on the PC too (default: only on the glasses)')
     argparser.add_argument('--no-auto-alert', action='store_true',
                            help='do not start the pre-alert automatically, only with the P key')

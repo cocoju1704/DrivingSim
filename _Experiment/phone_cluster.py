@@ -10,7 +10,8 @@ screen. The page gets the latest state up to STREAM_HZ times a second over one H
 (server-sent events), so it needs no polling and no app install.
 
     GET /          the cluster page (cluster_app/)
-    GET /stream    text/event-stream of {"speed": km/h, "pedal": 0..1, "mode": "AUTONOMOUS", "color": [r, g, b]}
+    GET /stream    text/event-stream of {"speed": km/h, "pedal": 0..1, "mode": "AUTONOMOUS", "color": [r, g, b],
+                   "blinker": "left" / "right" / ""}
 
 Try it without the simulator (the needles sweep):
 
@@ -107,11 +108,12 @@ class PhoneCluster(object):
         logging.info('Phone cluster: open %s on the phone (USB tethering or the same Wi-Fi)',
                      ' or '.join('http://%s:%d/' % (a, port) for a in addresses) or 'http://<this PC>:%d/' % port)
 
-    def update(self, speed_kmh, pedal, mode, color):
-        """The latest state; sent to the phones at most STREAM_HZ times a second. Cheap: every frame."""
+    def update(self, speed_kmh, pedal, mode, color, blinker=''):
+        """The latest state; sent to the phones at most STREAM_HZ times a second. Cheap: every frame.
+        blinker: 'left', 'right' or '' (the turn signal that is on)."""
         with self._lock:
             self._state = {'speed': round(speed_kmh, 1), 'pedal': round(min(max(pedal, 0.0), 1.0), 3),
-                           'mode': mode, 'color': list(color)}
+                           'mode': mode, 'color': list(color), 'blinker': blinker}
             self._seq += 1
             self._changed.notify_all()
 

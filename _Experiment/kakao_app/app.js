@@ -27,7 +27,9 @@
   // sound only after the participant has clicked or typed on the page once (the name dialog does).
 
   const SOUND_FILE = 'kakao.mp3';
+  const SOUND_VOLUME = 0.8;      // of the file's own loudness
   let soundFile = new Audio(SOUND_FILE);
+  soundFile.volume = SOUND_VOLUME;
   soundFile.addEventListener('error', () => { soundFile = null; });
   let audioCtx = null;
 
@@ -59,7 +61,7 @@
     osc.frequency.value = freq;
     const t = audioCtx.currentTime + start;
     gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.4 * SOUND_VOLUME, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
     osc.connect(gain).connect(audioCtx.destination);
     osc.start(t);

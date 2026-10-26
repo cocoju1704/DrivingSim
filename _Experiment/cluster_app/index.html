@@ -28,7 +28,8 @@
 
   const canvas = document.getElementById('cluster');
   const ctx = canvas.getContext('2d');
-  let target = { speed: 0, pedal: 0, mode: '', color: [40, 160, 70] };
+  let target = { speed: 0, pedal: 0, mode: '', color: [40, 160, 70], blinker: '' };
+  const BLINK_HZ = 1.5;         // turn signal blinks per second, as on the monitor's tablet
   let shown = [0, 0];           // pedal %, km/h on the needles
   let online = false;
   let last = performance.now();
@@ -98,6 +99,19 @@
     ctx.fillStyle = DIM;
     ctx.font = `${Math.round(r * 0.14)}px sans-serif`;
     ctx.fillText('km/h', w * 0.5, cy + r * 0.42);
+    // turn signal arrows above the speed digits
+    const lit = Math.floor(now / 1000 * 2 * BLINK_HZ) % 2 === 0;
+    for (const side of [-1, 1]) {
+      const on = target.blinker === (side < 0 ? 'left' : 'right');
+      const s = r * 0.22, y = cy - r * 0.72, tip = w * 0.5 + side * r * 0.62, b = tip - side * s;
+      ctx.beginPath();
+      ctx.moveTo(tip, y);
+      ctx.lineTo(b, y - s * 0.62); ctx.lineTo(b, y - s * 0.24); ctx.lineTo(b - side * s * 0.8, y - s * 0.24);
+      ctx.lineTo(b - side * s * 0.8, y + s * 0.24); ctx.lineTo(b, y + s * 0.24); ctx.lineTo(b, y + s * 0.62);
+      ctx.closePath();
+      if (on && lit) { ctx.fillStyle = '#28dc5a'; ctx.fill(); }
+      else { ctx.strokeStyle = '#2e3642'; ctx.lineWidth = Math.max(2, r * 0.015); ctx.stroke(); }
+    }
 
     if (target.mode) {
       ctx.font = `bold ${Math.round(r * 0.16)}px sans-serif`;
