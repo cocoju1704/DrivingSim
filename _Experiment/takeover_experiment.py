@@ -12,8 +12,9 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
                         turn signals, horn, lights, ...): set them up once with --wheel-setup.
                           keyboard : W/A/S/D or ARROWS
                           wheel    : steering wheel, throttle pedal, brake pedal
-                        Autonomous driving is locked until the pre-alert: input is
-                        ignored. From the pre-alert on, any driver input switches
+                        Autonomous driving is locked until the TOR: input is
+                        ignored, also during the pre-alert. From the TOR on, new driver input (a move from
+                        where the wheel and pedals were at the TOR) switches
                         to manual driving immediately.
     P                 : start a takeover sequence (autonomous mode only)
                           0 s   pre-alert shown, chime
@@ -134,6 +135,8 @@ Run from the CARLA_0.9.16 root folder:
     python _Experiment\\takeover_experiment.py --lane 1 --vehicles 15
     python _Experiment\\takeover_experiment.py --glasses 192.168.0.23
     python _Experiment\\takeover_experiment.py --glasses usb   (USB tethering)
+    python _Experiment\\takeover_experiment.py --scenario 4 --wireless   (phone and NDRT laptop over Wi-Fi, devices.json)
+    python _Experiment\\takeover_experiment.py --phone-cluster   (gauges on a phone, phone_cluster.py)
     python _Experiment\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
 
@@ -193,7 +196,7 @@ except ImportError:
 
 PYTHON_API = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'PythonAPI')
 sys.path.append(os.path.join(PYTHON_API, 'carla'))
-sys.path.append(os.path.join(PYTHON_API, 'examples'))  # manual_control, analyze_takeover
+sys.path.append(os.path.join(PYTHON_API, 'examples'))  # manual_control
 from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-error
 from agents.navigation.global_route_planner import GlobalRoutePlanner  # pylint: disable=import-error
 from agents.navigation.local_planner import RoadOption  # pylint: disable=import-error
@@ -214,7 +217,8 @@ MAP_NAME = 'Town04'
 START_SPAWN_INDEX = 15
 DEFAULT_LANE = 3
 DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instrument cluster
-DRIVER_VIEW_PITCH = 6.0    # degrees up, driver seat and windshield views (the car's own cluster is out of view)
+DRIVER_VIEW_PITCH = 4.0    # degrees up, driver seat and windshield views (the car's own cluster is out of view;
+                           # higher cuts off the bottom of the left mirror on 3 x 60 degree monitors)
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
 MIRROR_FOV = 60.0          # degrees, side mirror views
 DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
@@ -251,8 +255,9 @@ REAR_MIRROR_FOV = 45.0             # degrees
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 # The gauges (throttle pedal, speed) on a panel at the lower right of the middle monitor, like a
 # car's center display: the car's own instrument cluster is below the view (DRIVER_VIEW_PITCH).
-CLUSTER_PANEL = (0.22, 0.14)   # width, height: shares of the monitor
+CLUSTER_PANEL = (0.33, 0.21)   # width, height: shares of the monitor
 CLUSTER_MARGIN = (0.02, 0.03)  # from the monitor's right and bottom edges, shares of the monitor
+MODE_BOX_MARGIN = 20           # px from the window's right and bottom edges: AUTONOMOUS / MANUAL box
 CLUSTER_BACKGROUND = (12, 14, 18)
 CLUSTER_TEXT = (235, 240, 245)
 CLUSTER_DIM = (120, 130, 140)
@@ -271,23 +276,31 @@ SIDE_INSET_MARGIN = 20             # px from the monitor edge
 WHEEL_SETUP_WAIT = 10         # seconds --wheel-setup waits for each button
 PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals are not exactly at rest)
 # The MKZ's engine brakes with the throttle released (damping_rate_zero_throttle_clutch_engaged
-# 2.0: from 80 km/h to a stop in 10 s). With this it rolls on at about 0.5 m/s^2 from 85 km/h.
-ENGINE_DAMPING = 0.35
-# Without that engine braking the brake pedal stops the car less (full brake 5.7 instead of 7.5
-# m/s^2 from 80 km/h). Stronger brakes and BRAKE_CURVE give back the MKZ's default braking.
+# 2.0: from 80 km/h to a stop in 10 s). With this it slows down like an electric car's regenerative
+# braking when the throttle pedal is released: measured 1.8 m/s^2 at 82 km/h, 1.9 at 58, 1.3 at
+# 20 (Tesla Model 3, standard regen: about 0.19 g = 1.9 m/s^2, SAE 2020-01-0883; 0.35 gave 0.3).
+ENGINE_DAMPING = 1.0
+# Stronger brakes, so that the brake pedal fully pressed still stops the car as the default MKZ.
 BRAKE_TORQUE_SCALE = 1.35
-# brake pedal travel -> CARLA brake, (travel, brake): the default MKZ's deceleration from 80 km/h,
-# measured (2.9 m/s^2 at 5 % travel, 3.8 at 20 %, 6.0 at 50 %, 7.5 fully pressed)
-BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.33), (0.1, 0.38), (0.2, 0.47), (0.3, 0.57), (0.5, 0.77), (1.0, 0.90)]
+# brake pedal travel -> CARLA brake, (travel, brake): the default MKZ's deceleration from 80 km/h
+# (2.9 m/s^2 at 5 % travel, 3.8 at 20 %, 6.0 at 50 %, 7.5 fully pressed). Refitted with ENGINE_DAMPING 1.0
+# (its regen adds to the brake) so each travel brakes as hard as with the curve made for 0.35.
+BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.25), (0.1, 0.30), (0.2, 0.39), (0.3, 0.50), (0.5, 0.63), (1.0, 0.77)]
 # CARLA's throttle is a share of the engine torque at any speed: a slightly pressed pedal would keep
 # accelerating to well past 100 km/h. The wheel's throttle pedal instead asks for an acceleration
 # that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
 # controller finds the CARLA throttle for it (see PedalThrottle).
-PEDAL_ACCEL_MAX = 4.0        # m/s^2 asked for with the pedal fully pressed, at standstill
+# m/s^2 asked for with the pedal fully pressed, by speed (km/h, m/s^2), before the fade towards the
+# settle speed (1 - (v / PEDAL_FULL_SPEED)^2), so that with it the car accelerates like a mid-size
+# sedan at full throttle: 3.8 m/s^2 from standstill, 3.0 at 60 km/h, 2.3 at 80, 1.3 at 120; 0-100 km/h
+# in about 9.5 s, 80-120 km/h in about 6.5 s. (Before: 4.0 at any speed, 0-100 in 7.6 s, 80-120 in 3.7 s.)
+PEDAL_ACCEL_FULL = [(0.0, 3.8), (30.0, 3.68), (60.0, 3.3), (80.0, 2.74), (100.0, 2.4), (120.0, 2.03), (150.0, 1.6), (180.0, 1.05)]
 PEDAL_ACCEL_CURVE = 1.2      # acceleration asked for grows with travel ** this: gentle at small travel
 PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pressed, proportionally less with less
-# CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle), measured
-HOLD_THROTTLE = [(0.0, 0.08), (8.0, 0.10), (33.0, 0.15), (53.0, 0.20), (112.0, 0.30), (130.0, 0.45), (190.0, 0.85)]
+# CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle),
+# measured on the loop's flat straight at 1900-2300 m (not monotonic: the automatic shifts up)
+HOLD_THROTTLE = [(0.0, 0.20), (8.0, 0.23), (33.0, 0.29), (53.0, 0.28), (80.0, 0.25), (112.0, 0.39), (130.0, 0.50),
+                 (190.0, 0.90)]
 # After the takeover the car keeps the speed it had (like the autopilot's engine power) until the driver
 # presses the throttle or the brake: throttle = HOLD_THROTTLE + PI on the speed error (SpeedHold).
 SPEED_HOLD_GAIN_P = 0.03     # throttle per km/h below the takeover speed
@@ -421,6 +434,8 @@ RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many secon
 NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messages start (scenarios 1, 3)
 NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 4 (else: once past the scene)
 TEST_ALERT_AFTER = 10.0
+SERVER_RETRY = 5.0       # s per try while the CARLA server is not ready yet
+COLLISION_LOG_GAP = 2.0  # s: a collision with the same object is logged again only after this
 TEST_PRE_ALERT = 5.0
 
 EXPERIMENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -454,6 +469,7 @@ SCENARIOS = {
 }
 CLOSED_LANES = {2: WORKZONE_LANES, 4: ACCIDENT_LANES}  # scenario -> lanes its obstacle closes (no traffic there)
 INTERVENTION_CONFIG = os.path.join(EXPERIMENT_DIR, 'intervention_config.json')
+DEVICES_FILE = os.path.join(EXPERIMENT_DIR, 'devices.json')  # Wi-Fi addresses: --wireless, --glasses phone, --ndrt laptop
 INTERVENTION_DIR = os.path.join(EXPERIMENT_DIR, 'NDRT_scripts')
 INTERVENTIONS = ('none', 'driving', 'NDRT')
 INTERVENTION_FORMATS = ('summary', 'question')
@@ -463,7 +479,8 @@ PRE_ALERT = 'PRE_ALERT'
 TOR = 'TOR'
 MANUAL = 'MANUAL'
 AUTONOMOUS_MODES = (AUTO, PRE_ALERT, TOR)
-ALERT_MODES = (PRE_ALERT, TOR)  # driver input can take over only in these
+ALERT_MODES = (PRE_ALERT, TOR)
+TAKEOVER_MODES = (TOR,)  # driver input takes over only in these: locked until TAKE OVER NOW
 
 DRIVE_KEYS = (K_w, K_a, K_s, K_d, K_UP, K_DOWN, K_LEFT, K_RIGHT)
 
@@ -844,8 +861,8 @@ class _FixedBoundingBox(object):
 
 def soften_engine_braking(vehicle):
     """With the pedal released the MKZ's engine brakes like a brake pedal (80 km/h to a stop in
-    10 s, it shifts down to first gear); ENGINE_DAMPING lets it roll on like a real car, and
-    BRAKE_TORQUE_SCALE keeps its full braking."""
+    10 s, it shifts down to first gear); ENGINE_DAMPING makes that an electric car's regenerative
+    braking, and BRAKE_TORQUE_SCALE keeps its full braking."""
     physics = vehicle.get_physics_control()
     physics.damping_rate_zero_throttle_clutch_engaged = ENGINE_DAMPING
     wheels = physics.wheels
@@ -894,7 +911,7 @@ class LoopFollower(object):
     gives full throttle 1 km/h below its target and none above it: on and off in every curve.
     """
 
-    def __init__(self, vehicle, route, target_speed, carla_map, route_planner):
+    def __init__(self, vehicle, route, target_speed, carla_map, route_planner, quiet=False):
         self._vehicle = vehicle
         self._route = route
         self._cruise = target_speed
@@ -909,8 +926,9 @@ class LoopFollower(object):
         self._index = 0
         self._last = None
         self._plan = []
-        logging.info('Autonomous speed: %.0f km/h, down to %.0f km/h in the tightest curve', target_speed,
-                     min(target_speed, min(self._limits)))
+        if not quiet:
+            logging.info('Autonomous speed: %.0f km/h, down to %.0f km/h in the tightest curve', target_speed,
+                         min(target_speed, min(self._limits)))
         self.engage()
 
     def engage(self):
@@ -964,6 +982,62 @@ class LoopFollower(object):
         # brakes only when far too fast (downhill): coasting does the rest
         control.brake = min(0.3, 0.03 * (-error - AUTO_BRAKE_OVER)) if -error > AUTO_BRAKE_OVER else 0.0
         return control
+
+
+class TestDriver(object):
+    """--test-driver, for checking the scenarios without a participant: takes over TEST_DRIVER_REACTION
+    s after the TOR and drives on with the autopilot's controller in the lane a driver would pick:
+    scenarios 2 and 4 lane 2 past the closure, lane 3 from LANE_CHANGE_BEFORE m before the lane 2
+    obstacle; else the lane it was in."""
+
+    REACTION = 1.0              # s after the TOR
+    LANE_CHANGE_BEFORE = 90.0   # m before the lane 2 obstacle it moves over to lane 3
+
+    def __init__(self, vehicle, routes, speed, carla_map, route_planner, scenario):
+        self._followers = {lane: LoopFollower(vehicle, route, speed, carla_map, route_planner, quiet=True)
+                           for lane, route in routes.items()}
+        self._scenario = scenario
+        self._lane = None
+
+    def _wanted_lane(self):
+        scenario = self._scenario
+        if not scenario.has_scene or scenario.ego_index is None or scenario.scene_cleared:
+            return self._lane
+        count = scenario._count  # pylint: disable=protected-access
+        to_obstacle = ((scenario._obstacle_index - scenario.ego_index) % count) * ROUTE_RESOLUTION  # pylint: disable=protected-access
+        if to_obstacle < self.LANE_CHANGE_BEFORE or to_obstacle > count * ROUTE_RESOLUTION - 300.0:
+            return 3  # just before the van, or past it
+        return 2
+
+    def run_step(self):
+        lane = self._wanted_lane() or 3
+        if lane != self._lane:
+            logging.info('Test driver: lane %d', lane)
+            self._lane = lane
+            self._followers[lane].engage()
+        return self._followers[lane].run_step()
+
+
+def log_collisions(sim_world, vehicle):
+    """A collision sensor that logs what the car hits, once per object per COLLISION_LOG_GAP s (the
+    world's own sensor reports every frame of contact). Returns the sensor and the list of hits."""
+    hits = []
+    last = {}
+
+    def on_collision(event):
+        other = event.other_actor
+        now = time.monotonic()
+        if now - last.get(other.id, -1e9) < COLLISION_LOG_GAP:
+            return
+        last[other.id] = now
+        impulse = event.normal_impulse
+        hits.append(other.type_id)
+        logging.warning('Collision with %s (role %s), impulse %.0f N s', other.type_id,
+                        other.attributes.get('role_name', '-'), math.sqrt(impulse.x ** 2 + impulse.y ** 2 + impulse.z ** 2))
+    sensor = sim_world.spawn_actor(sim_world.get_blueprint_library().find('sensor.other.collision'),
+                                   carla.Transform(), attach_to=vehicle)
+    sensor.listen(on_collision)
+    return sensor, hits
 
 
 def curve_speed_limits(route):
@@ -1605,6 +1679,10 @@ class KeyboardInput(object):
     def reset(self):
         self._steer_cache = 0.0
 
+    def mark_input(self, keys):
+        """At the TOR: keys held now do not take over, only keys pressed from now on."""
+        self._held = {k for k in DRIVE_KEYS if keys[k]}
+
     def is_takeover_event(self, event):
         return event.type == pygame.KEYDOWN and event.key in DRIVE_KEYS
 
@@ -1616,7 +1694,7 @@ class KeyboardInput(object):
         return keyboard_light_event(event)
 
     def driver_active(self, keys):
-        return any(keys[k] for k in DRIVE_KEYS)
+        return any(keys[k] for k in DRIVE_KEYS if k not in getattr(self, '_held', ()))
 
     def hand_brake(self):
         return False
@@ -1864,6 +1942,14 @@ class WheelInput(object):
         # The wheel is not necessarily centered when autonomous driving starts.
         pygame.event.pump()
         self._steer_baseline = self._steer()
+        self._pedal_baseline = (0.0, 0.0)
+
+    def mark_input(self, keys):
+        """At the TOR: the wheel and pedals as they are now are the baseline; only a move from here
+        takes over (a wheel held turned or a pedal held down through the pre-alert does not)."""
+        pygame.event.pump()
+        self._steer_baseline = self._steer()
+        self._pedal_baseline = (self._pedal(self._throttle_axis), self._pedal(self._brake_axis))
 
     def _steer(self):
         return min(1.0, max(-1.0, self._joystick.get_axis(self._steer_axis)))
@@ -1910,8 +1996,9 @@ class WheelInput(object):
         return keyboard_light_event(event)
 
     def driver_active(self, keys):
-        return (self._pedal(self._throttle_axis) > PEDAL_TAKEOVER or
-                self._pedal(self._brake_axis) > PEDAL_TAKEOVER or
+        throttle, brake = self._pedal_baseline
+        return (self._pedal(self._throttle_axis) > throttle + PEDAL_TAKEOVER or
+                self._pedal(self._brake_axis) > brake + PEDAL_TAKEOVER or
                 abs(self._steer() - self._steer_baseline) > STEER_TAKEOVER)
 
     def hand_brake(self):
@@ -1929,7 +2016,7 @@ class WheelInput(object):
 
 
 class PedalThrottle(object):
-    """CARLA throttle for the throttle pedal (see PEDAL_ACCEL_MAX): the pedal travel asks for an
+    """CARLA throttle for the throttle pedal (see PEDAL_ACCEL_FULL): the pedal travel asks for an
     acceleration, fading out at the settle speed (on level road); the throttle is what holds the
     current speed (HOLD_THROTTLE) plus a PI correction on the measured acceleration. With the pedal
     released (or pressed less than the speed needs) the car rolls on with throttle 0 and creeps at
@@ -1951,7 +2038,8 @@ class PedalThrottle(object):
         wanted = CREEP_ACCEL * (1.0 - speed_kmh / CREEP_SPEED)  # < 0 above the creep speed
         if pedal > 0.0:
             settle_speed = PEDAL_FULL_SPEED * pedal
-            wanted = max(wanted, PEDAL_ACCEL_MAX * pedal ** PEDAL_ACCEL_CURVE * (1.0 - (speed_kmh / settle_speed) ** 2))
+            wanted = max(wanted, _interpolate(PEDAL_ACCEL_FULL, speed_kmh) * pedal ** PEDAL_ACCEL_CURVE
+                         * (1.0 - (speed_kmh / settle_speed) ** 2))
         rolling = speed_kmh > 2 * CREEP_SPEED
         if brake > 0.0 or (rolling and wanted <= 0.0):  # roll on
             self._integral = 0.0
@@ -2211,7 +2299,7 @@ class TrialRecorder(object):
         if self._writer is None:
             return
         try:
-            import analyze_takeover  # in PythonAPI/examples
+            import analyze_takeover  # next to this script
             analyze_takeover.report(self.dir, self._window)
         except Exception as error:  # the raw log is already safe on disk
             logging.error('Could not write summary.csv and figure.png: %s', error)
@@ -2737,6 +2825,8 @@ class FogScenario(Scenario):
         self._rise = max(args.fog_rise, 0.1)
         self._peak_after = max(args.fog_peak_after, 0.1)
         self._pre_alert = args.pre_alert
+        # test run: the fog thickens from the start so it is at the threshold at the (timed) pre-alert
+        self._test_after = getattr(args, 'test_alert_after', None) if args.test else None
         at = args.fog_at if args.fog_at is not None else FOG_AT
         self.event_index = int(at / ROUTE_RESOLUTION) % len(route)
         self._state = 'idle'          # idle, rising, clearing
@@ -2802,6 +2892,11 @@ class FogScenario(Scenario):
             self._last = now
 
     def tick(self, now, laps):
+        if self._test_after is not None:
+            self._start(now)
+            self._rate = self._threshold / self._test_after
+            self._test_after = None
+            logging.info('Test run: fog from the start, at %.0f when the pre-alert comes', self._threshold)
         if self._state == 'idle':
             return
         dt = 0.0 if self._last is None else max(now - self._last, 0.0)
@@ -2838,6 +2933,39 @@ def test_start_index(scenario, route, args, alert_after):
     logging.info('Test run: the car starts %.0f m before the event point (%.0f m from the route start)',
                  distance, index * ROUTE_RESOLUTION)
     return index
+
+
+def connect_server(host, port):
+    """A client of the CARLA server, once it answers: a server that has just been started takes a
+    while, and a call made too early can hang (retried every SERVER_RETRY s, with a log line)."""
+    client = carla.Client(host, port)
+    started = time.monotonic()
+    while True:
+        client.set_timeout(SERVER_RETRY)
+        try:
+            version = client.get_server_version()
+            client.get_world().get_map().name
+            break
+        except RuntimeError:
+            logging.info('Waiting for the CARLA server at %s:%d (%.0f s)...', host, port, time.monotonic() - started)
+            client = carla.Client(host, port)
+    client.set_timeout(60.0)
+    logging.info('CARLA server %s ready', version)
+    return client
+
+
+def device_address(value, name, key):
+    """`value` as given, or the address recorded under `key` in devices.json when it is `name`."""
+    if value is None or value.lower() != name:
+        return value
+    try:
+        with open(DEVICES_FILE, encoding='utf-8') as handle:
+            address = (json.load(handle).get(key) or '').strip()
+    except (OSError, ValueError) as error:
+        raise RuntimeError('%s: %s' % (DEVICES_FILE, error))
+    if not address:
+        raise RuntimeError('no "%s" address in %s yet: put it there or give the IP' % (key, DEVICES_FILE))
+    return address
 
 
 def make_scenario(args, client, sim_world, routes, route):
@@ -2915,10 +3043,14 @@ class Intervention(object):
 
 
 class AlertSound(object):
-    """Alert sounds made in code: a chime for the pre-alert, repeating beeps for the TOR."""
+    """Alert sounds made in code: a chime for the pre-alert, repeating beeps for the TOR. With
+    `glasses` (GlassesLink) TORApp plays them on the glasses instead, while their display runs;
+    when it does not, they play here, so an alert is never silent."""
 
-    def __init__(self, enabled=True):
+    def __init__(self, enabled=True, glasses=None):
         self._ok = False
+        self._glasses = glasses
+        self._warned = False
         if not enabled:
             return
         try:
@@ -2947,13 +3079,22 @@ class AlertSound(object):
         mono = (numpy.concatenate(pieces) * volume * 32767).astype(numpy.int16)
         return pygame.sndarray.make_sound(numpy.ascontiguousarray(numpy.repeat(mono[:, None], channels, axis=1)))
 
+    def _here(self):
+        """Play on the PC: no glasses, or their display is not running."""
+        if self._glasses is None or self._glasses.display_ready:
+            return self._glasses is None
+        if not self._warned:
+            self._warned = True
+            logging.warning('Glasses display not running: the alert sounds play on the PC')
+        return True
+
     def pre_alert(self):
-        if self._ok:
+        if self._ok and self._here():
             self._beeps.stop()
             self._chime.play()
 
     def tor(self):
-        if self._ok:
+        if self._ok and self._here():
             self._beeps.play(loops=-1)
 
     def stop(self, confirm=False):
@@ -3015,8 +3156,10 @@ class AudioEngine(object):
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
                  pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
-                 escort=None, rtr=None, test_alert_after=None, ndrt=None):
+                 escort=None, rtr=None, test_alert_after=None, ndrt=None, phone_cluster=None, test_driver=None):
         self._world = world
+        self._test_driver = test_driver      # TestDriver: drives after the takeover (--test-driver)
+        self._phone_cluster = phone_cluster  # PhoneCluster: the gauges on a phone instead of the monitor
         self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
         self._takeover_time = None
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
@@ -3135,7 +3278,7 @@ class TakeoverExperiment(object):
         if light is not None:
             self._switch_light(light)
             return
-        if self.mode in ALERT_MODES and self._input.is_takeover_event(event):
+        if self.mode in TAKEOVER_MODES and self._input.is_takeover_event(event):
             self._take_over(now)
             return
         if self.mode == MANUAL and self._input.is_reverse_event(event):
@@ -3335,15 +3478,18 @@ class TakeoverExperiment(object):
             self._escort_tick(now)
         self._ndrt_tick(now)
         if self.mode in AUTONOMOUS_MODES:
-            if self.mode in ALERT_MODES and self._input.driver_active(keys):
+            if self.mode in TAKEOVER_MODES and self._input.driver_active(keys):
                 self._take_over(now)
             elif self.mode == PRE_ALERT and now - self._alert_time >= self._pre_alert:
                 self.mode = TOR
                 self._tor_time = now
+                self._input.mark_input(keys)  # only input from now on takes over
                 self._recorder.mark_tor(now)
                 self._mark('tor')
                 self._sound.tor()
                 logging.info('TOR issued')
+            elif self.mode == TOR and self._test_driver is not None and now - self._tor_time >= TestDriver.REACTION:
+                self._take_over(now)
             elif self.mode == TOR and now - self._tor_time >= TOR_SECONDS:
                 self._take_over(now, forced=True)
 
@@ -3352,11 +3498,16 @@ class TakeoverExperiment(object):
         if self.mode in AUTONOMOUS_MODES:
             control = self._follower.run_step()
             self._pedal = control.throttle  # the cluster shows what the autopilot gives
+        elif self._test_driver is not None and not self._scenario.manual_only:
+            control = self._test_driver.run_step()
+            self._pedal = control.throttle
         else:
             incline = self._world.player.get_transform().get_forward_vector().z  # sine of the road's slope, uphill > 0
             self._parse_manual_keys(keys, clock.get_time(), speed_kmh, incline)
             control = self._control
         self._world.player.apply_control(control)
+        if self._phone_cluster is not None:
+            self._phone_cluster.update(self._speed_kmh, self._pedal, *self._mode_label())
         self._input.force_feedback(speed_kmh)
         self._update_lights(control)
         self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
@@ -3389,12 +3540,17 @@ class TakeoverExperiment(object):
         self._control.hand_brake = bool(keys[K_SPACE]) or self._input.hand_brake()
         self._control.reverse = self._control.gear < 0  # also when shifting down with the manual transmission
         if self._speed_hold is not None:
+            # The throttle pedal takes over from the speed hold only once it asks for at least the
+            # speed held (pedal travel speed / PEDAL_FULL_SPEED, see PedalThrottle): pressed less, the
+            # hold keeps the speed (and the pedal does nothing yet), so there is no jump either way.
+            # The brake ends the hold at once.
             pedal = self._input.peek(keys)[1]
-            if (pedal > PEDAL_TAKEOVER or self._control.brake > 0.0 or self._control.hand_brake
+            release_at = max(PEDAL_TAKEOVER, self._speed_hold.target / PEDAL_FULL_SPEED)
+            if (pedal >= release_at or self._control.brake > 0.0 or self._control.hand_brake
                     or self._control.reverse):
                 self._speed_hold = None
                 logging.info('%s at %.0f km/h: the speed hold after the takeover is off',
-                             'Throttle' if pedal > PEDAL_TAKEOVER else 'Brake', speed_kmh)
+                             'Throttle %.0f %%' % (pedal * 100) if pedal >= release_at else 'Brake', speed_kmh)
             else:
                 self._control.throttle = self._speed_hold.step(speed_kmh, milliseconds / 1000.0)
 
@@ -3403,6 +3559,8 @@ class TakeoverExperiment(object):
     def _mode_label(self):
         """Text and color of the mode box at the top of the screen."""
         if self.mode == AUTO:
+            return 'AUTONOMOUS - LOCKED', (40, 160, 70)
+        if self.mode == PRE_ALERT:
             return 'AUTONOMOUS - LOCKED', (40, 160, 70)
         if self.mode in ALERT_MODES:
             return 'AUTONOMOUS', (40, 160, 70)
@@ -3415,10 +3573,13 @@ class TakeoverExperiment(object):
         width = display.get_width()
 
         self._draw_cluster(display)
+        # the mode at the lower right corner of the window (the right monitor): white on its color
         label, color = self._mode_label()
-        box_width = small.size(label)[0] + 36
-        self._draw_box(display, small, label, (width // 2 - box_width // 2, 10, box_width, 34), color,
-                       (255, 255, 255))
+        box_width, box_height = small.size(label)[0] + 36, 34
+        rect = (width - box_width - MODE_BOX_MARGIN, display.get_height() - box_height - MODE_BOX_MARGIN,
+                box_width, box_height)
+        self._draw_box(display, small, label, rect, color, (255, 255, 255), alpha=255)
+        pygame.draw.rect(display, (255, 255, 255), rect, 2)
 
         if self._glasses is not None:
             return  # the pre-alert and the TOR are on the glasses
@@ -3440,7 +3601,7 @@ class TakeoverExperiment(object):
         whose needles turn, the throttle pedal travel (left) and the speed (right), and the speed in
         digits between them."""
         manager = self._world.camera_manager
-        if manager.transform_index != 0:
+        if manager.transform_index != 0 or self._phone_cluster is not None:
             return
         if self._cluster is None or self._cluster['size'] != manager.screen_size:
             self._cluster = self._cluster_face(manager.screen_size)
@@ -3507,9 +3668,9 @@ class TakeoverExperiment(object):
                 'digits': digits, 'readout': readout}
 
     @staticmethod
-    def _draw_box(display, font, text, rect, background, foreground):
+    def _draw_box(display, font, text, rect, background, foreground, alpha=220):
         surface = pygame.Surface(rect[2:])
-        surface.set_alpha(220)
+        surface.set_alpha(alpha)
         surface.fill(background)
         display.blit(surface, rect[:2])
         label = font.render(text, True, foreground)
@@ -3554,6 +3715,8 @@ def game_loop(args):
     glasses = None
     rtr = None
     ndrt = None
+    phone_cluster = None
+    collision_sensor = None
 
     try:
         if args.glasses:
@@ -3565,13 +3728,13 @@ def game_loop(args):
         args.test = intervention.test is not None and args.scenario != 0
         if args.test:
             args.pre_alert = intervention.test[1]
+            args.test_alert_after = intervention.test[0]
             logging.info('Test run: pre-alert %.0f s after the start, TOR %.0f s after the pre-alert',
                          intervention.test[0], args.pre_alert)
         if intervention.lines and glasses is None:
             logging.warning('Intervention %s is shown only on the glasses (--glasses)', intervention.name)
         driver_input = WheelInput(args) if args.input == 'wheel' else KeyboardInput()
-        client = carla.Client(args.host, args.port)
-        client.set_timeout(60.0)
+        client = connect_server(args.host, args.port)
 
         sim_world = client.get_world()
         if not sim_world.get_map().name.endswith(MAP_NAME):
@@ -3646,7 +3809,8 @@ def game_loop(args):
         road_signs = RoadSigns(sim_world)
         clearance = TrafficClearance(client, traffic, args.npc_speed)
         escort = EscortCars(client, sim_world, carla_map)
-        sound = AlertSound(not args.no_sound and (not args.glasses or args.pc_sound))  # --glasses: TORApp plays them
+        # --glasses: TORApp plays them (here too with --pc-sound, or while the glasses display is off)
+        sound = AlertSound(not args.no_sound, glasses=None if args.pc_sound else glasses)
         if args.ndrt:
             from kakao_ndrt import KakaoNdrtLink  # next to this script
             ndrt = KakaoNdrtLink(args.ndrt, args.scenario, args.ndrt_port, None if args.no_log else recorder.dir,
@@ -3660,17 +3824,30 @@ def game_loop(args):
             if glasses is not None:
                 glasses.set_rtr(rtr.status())  # TORApp shows its RtR button
                 glasses.on_rtr_request = lambda: rtr.request('glasses')
+        test_driver = None
+        if args.test_driver:
+            test_driver = TestDriver(world.player, routes, args.speed, carla_map, route_planner, scenario)
+        if args.phone_cluster:
+            from phone_cluster import PhoneCluster  # next to this script
+            phone_cluster = PhoneCluster(args.phone_cluster_port)
         experiment = TakeoverExperiment(world, follower, driver_input, recorder, route, scenario, sound,
                                         auto_alert=not args.no_auto_alert, pre_alert=args.pre_alert,
                                         glasses=glasses, intervention=intervention, clearance=clearance,
                                         cruise_kmh=args.speed, escort=escort, rtr=rtr,
-                                        test_alert_after=intervention.test[0] if args.test else None, ndrt=ndrt)
+                                        test_alert_after=intervention.test[0] if args.test else None, ndrt=ndrt,
+                                        phone_cluster=phone_cluster, test_driver=test_driver)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
         advance(sim_world, args)
+        collision_sensor, collisions = log_collisions(sim_world, world.player)
+        run_start = time.monotonic()
         clock = pygame.time.Clock()
         while True:
+            if args.duration and time.monotonic() - run_start >= args.duration:
+                logging.info('--duration %.0f s: done, %d collision(s): %s', args.duration, len(collisions),
+                             ', '.join(collisions) or 'none')
+                return
             clock.tick_busy_loop(args.fps or 60)
             if ticker is not None:
                 ticker.wait()
@@ -3692,7 +3869,7 @@ def game_loop(args):
                 road_signs.add(sign)
             for sign in scenario.take_old_signs():
                 road_signs.remove(sign)
-            road_signs.tick(now)
+            road_signs.tick(now, world.player.get_location())
             if traffic and now - last_refresh > NPC_PATH_REFRESH:
                 last_refresh = now
                 for npc in traffic:
@@ -3722,6 +3899,11 @@ def game_loop(args):
             glasses.close()
         if ndrt is not None:
             ndrt.close()
+        if phone_cluster is not None:
+            phone_cluster.close()
+        if collision_sensor is not None:
+            collision_sensor.stop()
+            collision_sensor.destroy()
         if recorder is not None:
             recorder.close()
         if traffic:
@@ -3825,9 +4007,20 @@ def main():
     argparser.add_argument('--glasses', metavar='PHONE_IP',
                            help='show the pre-alert and the TOR on Meta Ray-Ban Display glasses instead of the '
                                 'screen, through TORApp on the phone at this IP (shown in the app); usb: over '
-                                'the USB cable with USB tethering on in the phone')
+                                'the USB cable with USB tethering on in the phone; phone: the address in devices.json')
     argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
                            help='UDP port of TORApp (default: 5007)')
+    argparser.add_argument('--duration', metavar='SEC', type=float, default=None,
+                           help='checking the scenarios: quit by itself after this many seconds')
+    argparser.add_argument('--test-driver', action='store_true',
+                           help='checking the scenarios: a scripted driver takes over 1 s after the TOR (TestDriver)')
+    argparser.add_argument('--phone-cluster', action='store_true',
+                           help='the gauges (throttle pedal, speed) on a phone instead of the monitor: open the '
+                                'logged address in its browser (phone_cluster.py)')
+    argparser.add_argument('--phone-cluster-port', metavar='P', type=int, default=5009,
+                           help='HTTP port of the phone cluster page (default: 5009)')
+    argparser.add_argument('--wireless', action='store_true',
+                           help='over Wi-Fi: --glasses phone --ndrt laptop (addresses in devices.json), unless given')
     argparser.add_argument('--ndrt', metavar='IP[:PORT]', default=None,
                            help='the NDRT laptop running kakao_ndrt.py (follow-up messages, RtR summaries)')
     argparser.add_argument('--ndrt-port', '--rtr-port', dest='ndrt_port', metavar='P', type=int, default=5008,
@@ -3881,6 +4074,14 @@ def main():
     args = argparser.parse_args()
     if args.pre_alert <= 0:
         argparser.error('--pre-alert must be greater than 0')
+    if args.wireless:
+        args.glasses = args.glasses or 'phone'
+        args.ndrt = args.ndrt or 'laptop'
+    try:
+        args.glasses = device_address(args.glasses, 'phone', 'phone')
+        args.ndrt = device_address(args.ndrt, 'laptop', 'ndrt_laptop')
+    except RuntimeError as error:
+        argparser.error(str(error))
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
     if os.name == 'nt':

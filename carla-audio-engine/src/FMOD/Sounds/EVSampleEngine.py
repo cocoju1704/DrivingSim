@@ -47,8 +47,8 @@ class EVSampleEngine:
     # The motor gets louder the more the throttle is pressed: full throttle gives MOTOR_VOLUME_LOW
     # at standstill up to MOTOR_VOLUME_HIGH at TOP_SPEED. Released, it fades down to
     # MOTOR_VOLUME_RELEASED of that, never quite silent (0: silent).
-    MOTOR_VOLUME_LOW = 0.3
-    MOTOR_VOLUME_HIGH = 0.65
+    MOTOR_VOLUME_LOW = 0.24
+    MOTOR_VOLUME_HIGH = 0.52
     MOTOR_VOLUME_RELEASED = 0.15
     MOTOR_FADE = 0.12           # share of the way to the new volume per update (20 per second): no clicks
     BLINKER_VOLUME = 0.6

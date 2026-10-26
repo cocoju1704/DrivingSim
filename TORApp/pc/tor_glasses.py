@@ -133,6 +133,12 @@ class GlassesLink(object):
             self._state = state
         self._wake.set()  # send the change now, not at the next resend
 
+    @property
+    def display_ready(self):
+        """True while the app answers and its glasses display runs (the alert sounds play there)."""
+        return (self._display == 'STARTED' and self._last_answer is not None
+                and time.monotonic() - self._last_answer < 3.0)
+
     def set_rtr(self, status):
         """RtR summary status shown in the app (see rtr in the message above); None: none."""
         with self._lock:

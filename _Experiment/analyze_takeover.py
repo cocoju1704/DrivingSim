@@ -24,10 +24,10 @@ collision (0.1 s before to 1 s after it).
 
 Run from the CARLA_0.9.16 root folder:
 
-    python PythonAPI\\examples\\analyze_takeover.py                     newest run in Data
-    python PythonAPI\\examples\\analyze_takeover.py Data\\261006_173529   chosen run(s)
-    python PythonAPI\\examples\\analyze_takeover.py --all               every run in Data
-    python PythonAPI\\examples\\analyze_takeover.py --window 15         other takeover period
+    python _Experiment\\analyze_takeover.py                       newest run in Data
+    python _Experiment\\analyze_takeover.py Data\\261006_173529   chosen run(s)
+    python _Experiment\\analyze_takeover.py --all                 every run in Data
+    python _Experiment\\analyze_takeover.py --window 15           other takeover period
 """
 
 from __future__ import print_function
@@ -38,7 +38,7 @@ import os
 import statistics
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))  # CARLA_0.9.16
 DATA_DIR = os.path.join(ROOT, 'Data')
 
 NUMERIC = ['t_prealert_s', 't_tor_s', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',

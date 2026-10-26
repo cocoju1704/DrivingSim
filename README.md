@@ -18,7 +18,7 @@ This repository holds only our own files inside the CARLA 0.9.16 folder. The CAR
 | [_Experiment/CarlaUE4_nosound.bat](_Experiment/CarlaUE4_nosound.bat) | Starts the CARLA server (no sound, no window; shows in the taskbar while running) |
 | [_Experiment/intervention_config.json](_Experiment/intervention_config.json) | Which intervention text the glasses show during the pre-alert |
 | [_Experiment/NDRT_scripts/](_Experiment/NDRT_scripts/) | Intervention texts, `scenario<N>_<driving\|NDRT>_<summary\|question>.txt` (3 × 2 × 2 = 12) |
-| [PythonAPI/examples/analyze_takeover.py](PythonAPI/examples/analyze_takeover.py) | Recompute metrics and figures from the logs |
+| [_Experiment/analyze_takeover.py](_Experiment/analyze_takeover.py) | Recompute metrics and figures from the logs |
 | [carla-audio-engine/](carla-audio-engine/) | Vehicle sounds (FMOD). The experiment starts it automatically |
 | [TORApp/](TORApp/) | Shows alerts on the Meta Ray-Ban Display glasses (Android app + PC sender) |
 | [requirements.txt](requirements.txt) | Python packages |
@@ -119,8 +119,8 @@ Each run creates `Data\YYMMDD_HHMMSS\`:
 
 To recompute:
 ```powershell
-.\venv_carla\Scripts\python.exe PythonAPI\examples\analyze_takeover.py              # newest run
-.\venv_carla\Scripts\python.exe PythonAPI\examples\analyze_takeover.py --all        # every run
+.\venv_carla\Scripts\python.exe _Experiment\analyze_takeover.py                     # newest run
+.\venv_carla\Scripts\python.exe _Experiment\analyze_takeover.py --all               # every run
 ```
 The metrics follow Bai et al. (2024), *Human Factors* 66(12).
 

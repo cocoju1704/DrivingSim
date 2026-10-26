@@ -62,6 +62,7 @@ IMAGE_PIXELS = 72    # image sign: pixels across (rows follow the image's aspect
 FILL = 0.22          # m between the lines that fill the board
 LIFE = 3.0           # seconds a drawn line lasts
 REDRAW = 2.0         # seconds between redraws (before LIFE ends, so the signs never blink)
+DRAW_RANGE = 700.0   # m from the car beyond which a sign is not drawn (each line costs every camera)
 
 
 def text_width(text):
@@ -222,28 +223,34 @@ class RoadSigns(object):
     """Keeps signs drawn: add() them, call tick() every frame.
 
     Every debug line is a call to the server, so the lines are redrawn a few per frame, each
-    one REDRAW s after it was last drawn, instead of all at once (a visible hitch).
+    one REDRAW s after it was last drawn, instead of all at once (a visible hitch). Signs more
+    than DRAW_RANGE m from the car are left out (they fade LIFE s after their last draw).
     """
 
     MAX_PER_FRAME = 60
 
     def __init__(self, sim_world):
         self._debug = sim_world.debug
-        self._queue = collections.deque()  # (due time, segment), oldest first
+        self._queue = collections.deque()  # (due time, segment, sign location), oldest first
 
     def add(self, sign):
         for segment in sign.segments:
-            self._queue.appendleft((0.0, segment))  # due now
+            self._queue.appendleft((0.0, segment, sign._origin))  # due now
 
     def remove(self, sign):
         """Stop redrawing `sign`: its lines are gone LIFE s later."""
         segments = {id(segment) for segment in sign.segments}
         self._queue = collections.deque(entry for entry in self._queue if id(entry[1]) not in segments)
 
-    def tick(self, now):
+    def tick(self, now, around=None):
+        """around: the car's location (None: draw all signs)."""
         drawn = 0
         while self._queue and self._queue[0][0] <= now and drawn < self.MAX_PER_FRAME:
-            _, (start, end, thickness, color) = self._queue.popleft()
+            _, segment, origin = self._queue.popleft()
+            # the same segment object goes back in the queue: remove() finds it by identity
+            self._queue.append((now + REDRAW, segment, origin))
+            if around is not None and origin.distance(around) > DRAW_RANGE:
+                continue
+            start, end, thickness, color = segment
             self._debug.draw_line(start, end, thickness=thickness, color=color, life_time=LIFE)
-            self._queue.append((now + REDRAW, (start, end, thickness, color)))
             drawn += 1

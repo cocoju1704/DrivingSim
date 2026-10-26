@@ -1,0 +1,6 @@
+{
+    "_comment": "Wireless addresses for --wireless (or --glasses phone / --ndrt laptop). All on the Wi-Fi network below. Checked 2026-10-23; reserve them in the router (DHCP) so they stay.",
+    "network": "Mocap",
+    "phone": "192.168.0.41",
+    "ndrt_laptop": "192.168.0.69"
+}

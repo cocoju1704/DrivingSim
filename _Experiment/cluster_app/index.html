@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0c0e12">
+<title>계기판</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0c0e12; overflow: hidden; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: 12px; text-align: center;
+    color: #78828c; font: 14px "Malgun Gothic", sans-serif; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="cluster"></canvas>
+<div id="hint">화면을 누르면 전체 화면 · 가로로 두세요</div>
+<script>
+(() => {
+  'use strict';
+  // Same gauges as takeover_experiment.py's panel (GAUGE_START, GAUGE_SWEEP, GAUGE_MAX_SPEED, colors)
+  const START = 210, SWEEP = 240, MAX_SPEED = 200;
+  const BG = '#0c0e12', TEXT = '#ebf0f5', DIM = '#78828c', NEEDLE = '#eb3c28';
+  const FOLLOW = 12;            // 1/s: how fast the needles follow (smooth at any frame rate)
+
+  const canvas = document.getElementById('cluster');
+  const ctx = canvas.getContext('2d');
+  let target = { speed: 0, pedal: 0, mode: '', color: [40, 160, 70] };
+  let shown = [0, 0];           // pedal %, km/h on the needles
+  let online = false;
+  let last = performance.now();
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(innerWidth * dpr);
+    canvas.height = Math.round(innerHeight * dpr);
+  }
+
+  function dial(cx, cy, r, value, maximum, step, labelEvery, title) {
+    ctx.lineCap = 'round';
+    for (let v = 0; v <= maximum + 1e-6; v += step) {
+      const a = (START - SWEEP * v / maximum) * Math.PI / 180;
+      const dx = Math.cos(a), dy = -Math.sin(a);
+      const major = Math.abs(v % (2 * step)) < 1e-6;
+      const inner = r * (major ? 0.78 : 0.86);
+      ctx.strokeStyle = major ? TEXT : DIM;
+      ctx.lineWidth = Math.max(1, r * (major ? 0.022 : 0.012));
+      ctx.beginPath();
+      ctx.moveTo(cx + dx * inner, cy + dy * inner);
+      ctx.lineTo(cx + dx * r * 0.96, cy + dy * r * 0.96);
+      ctx.stroke();
+      if (Math.abs(v % labelEvery) < 1e-6) {
+        ctx.fillStyle = TEXT;
+        ctx.font = `${Math.round(r * 0.17)}px sans-serif`;
+        ctx.fillText(String(v), cx + dx * r * 0.6, cy + dy * r * 0.6);
+      }
+    }
+    ctx.fillStyle = DIM;
+    ctx.font = `${Math.round(r * 0.15)}px sans-serif`;
+    ctx.fillText(title, cx, cy + r * 0.42);
+    const a = (START - SWEEP * Math.min(Math.max(value / maximum, 0), 1)) * Math.PI / 180;
+    const dx = Math.cos(a), dy = -Math.sin(a);
+    ctx.strokeStyle = NEEDLE;
+    ctx.lineWidth = Math.max(3, r * 0.045);
+    ctx.beginPath();
+    ctx.moveTo(cx - dx * r * 0.14, cy - dy * r * 0.14);
+    ctx.lineTo(cx + dx * r * 0.84, cy + dy * r * 0.84);
+    ctx.stroke();
+    ctx.fillStyle = DIM;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(4, r * 0.09), 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  function draw(now) {
+    const dt = Math.min((now - last) / 1000, 0.1);
+    last = now;
+    const k = 1 - Math.exp(-FOLLOW * dt);
+    shown[0] += k * (target.pedal * 100 - shown[0]);
+    shown[1] += k * (target.speed - shown[1]);
+
+    const w = canvas.width, h = canvas.height;
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // two dials side by side, the speed in digits between them, the mode below
+    const r = Math.min(w * 0.19, h * 0.36);
+    const cy = h * 0.46;
+    dial(w * 0.24, cy, r, shown[0], 100, 10, 20, 'ACCEL %');
+    dial(w * 0.76, cy, r, shown[1], MAX_SPEED, 10, 40, 'km/h');
+    ctx.fillStyle = TEXT;
+    ctx.font = `bold ${Math.round(r * 0.62)}px sans-serif`;
+    ctx.fillText(String(Math.round(target.speed)), w * 0.5, cy);
+    ctx.fillStyle = DIM;
+    ctx.font = `${Math.round(r * 0.14)}px sans-serif`;
+    ctx.fillText('km/h', w * 0.5, cy + r * 0.42);
+
+    if (target.mode) {
+      ctx.font = `bold ${Math.round(r * 0.16)}px sans-serif`;
+      const bw = ctx.measureText(target.mode).width + r * 0.4, bh = r * 0.3;
+      const bx = w * 0.5 - bw / 2, by = h * 0.86 - bh / 2;
+      ctx.fillStyle = `rgb(${target.color.join(',')})`;
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(2, r * 0.012);
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(target.mode, w * 0.5, h * 0.86);
+    }
+    if (!online) {
+      ctx.fillStyle = '#e37400';
+      ctx.font = `${Math.round(r * 0.13)}px "Malgun Gothic", sans-serif`;
+      ctx.fillText('실험 PC 연결 대기 중…', w * 0.5, h * 0.08);
+    }
+    requestAnimationFrame(draw);
+  }
+
+  function connect() {
+    const source = new EventSource('/stream');
+    source.onopen = () => { online = true; };
+    source.onmessage = (e) => { online = true; target = JSON.parse(e.data); };
+    source.onerror = () => { online = false; };  // EventSource reconnects by itself
+  }
+
+  document.body.addEventListener('click', async () => {
+    document.getElementById('hint').style.display = 'none';
+    try {
+      await document.documentElement.requestFullscreen();
+      await screen.orientation.lock('landscape');
+    } catch (err) {
+      // not allowed on this browser: the page still works
+    }
+  });
+
+  addEventListener('resize', resize);
+  resize();
+  connect();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

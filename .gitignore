@@ -11,10 +11,4 @@
 /carla-audio-engine/logs/
 !/TORApp/
 
-!/PythonAPI/
-/PythonAPI/*
-!/PythonAPI/examples/
-/PythonAPI/examples/*
-!/PythonAPI/examples/analyze_takeover.py
-
 __pycache__/
