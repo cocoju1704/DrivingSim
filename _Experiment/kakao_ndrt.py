@@ -79,6 +79,8 @@ SYSTEM_PROMPT = """당신은 운전 시뮬레이터 실험에서 Ready-to-Resume
 
 ## 판정
 - 반영 항목: 과제 설명의 항목 중 초안에 해당 내용이 쓰인 것. 값이 맞는지는 판정하지 않습니다 (틀려도 썼으면 반영).
+- 항목 이름이 아니라 내용으로 판정합니다. 참가자는 항목을 자기 말로 씁니다: 다른 단어(점심 → 식사, 집합 → 모이는 곳·만나는 장소, 입장권 → 티켓·입장료), 줄임말, 다른 순서, 제목 없이 문장 속에 넣기, 여러 항목을 한 문장에 묶기 모두 반영으로 봅니다.
+- 항목의 일부만 썼어도 (예: 집합 시각만 쓰고 장소는 안 씀) 그 항목을 다루기 시작했으면 반영으로 봅니다. 단, 초안 맨 끝에서 쓰다 만 항목은 반영이 아니라 진행중이던 작업으로만 셉니다 (두 곳에 함께 넣지 않음).
 - 진행중이던 작업: 초안 맨 끝이 끊긴 문장이면 그 문장이 다루는 항목. 끝이 완결 문장이면 없음.
 - 남은 항목: 반영도, 진행중이던 작업도 아닌 항목.
 
@@ -87,7 +89,7 @@ SYSTEM_PROMPT = """당신은 운전 시뮬레이터 실험에서 Ready-to-Resume
 - 진행중이던 작업: "~ 문장을 쓰다 멈추셨습니다." 진행중이던 작업이 없으면 마지막으로 마친 항목을 말합니다.
 - 앞으로 남은 작업: 진행중이던 작업부터 이어서 쓰고 남은 항목을 쓰라는 다음 행동. 남은 것이 없으면 검토·등록을 안내합니다.
 - 각 줄은 완결된 존댓말 문장 1개, 라벨 제외 30자 이내, 3줄 합계 60–80자.
-- 괄호 보충 금지. 항목은 과제 설명의 짧은 항목 이름으로 부릅니다.
+- 괄호 보충 금지. 항목은 과제 설명의 짧은 항목 이름으로 부르되, 참가자가 초안에서 그 항목을 다른 단어로 불렀으면 (예: "식사") 참가자의 단어를 씁니다. 단, 값(시각, 장소명 등)이 들어간 말은 쓰지 않습니다.
 - 금지: 남은 항목이나 하던 항목의 정답 값(금액, 시각, 날짜, 장소명, 메뉴 등)을 절대 쓰지 않습니다. 계산 결과나 정보 충돌의 해답도 쓰지 않습니다. 상태와 다음 행동만 씁니다.
 - 초안의 오류를 지적하거나 고치라고 하지 않습니다.
 
@@ -134,6 +136,7 @@ class KakaoNdrt(object):
         self._seq = 1                       # increases with every change the page shows
         self._name = None
         started = datetime.datetime.now()
+        self._instance = started.strftime('%y%m%d_%H%M%S_%f')  # a page from an earlier run reloads itself
         self._messages = [{'id': k, 'from': m['from'], 'text': m['text'], 'phase': 1,
                            'time': (started + datetime.timedelta(minutes=m['t'])).isoformat(timespec='seconds')}
                           for k, m in enumerate(self._set['messages'])]
@@ -266,8 +269,9 @@ class KakaoNdrt(object):
     def _state(self, seq):
         with self._lock:
             if seq == self._seq:
-                return {'seq': self._seq, 'changed': False}
+                return {'instance': self._instance, 'seq': self._seq, 'changed': False}
             return {
+                'instance': self._instance,
                 'seq': self._seq,
                 'changed': True,
                 'name': self._name,
@@ -276,6 +280,7 @@ class KakaoNdrt(object):
                 'messages': [dict(m, text=self._fill(m['text'])) for m in self._messages],
                 'notice': self._notice,
                 'draft': self._draft,
+                'placeholder': self._set.get('placeholder'),  # grey template in the empty editor
             }
 
     def _set_name(self, name):

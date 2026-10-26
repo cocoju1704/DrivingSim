@@ -12,6 +12,7 @@
   const draftEl = $('draft');
   const postBtn = $('post');
 
+  let instance = null;           // the server run this page belongs to
   let seq = 0;
   let state = null;
   let shownCount = 0;            // messages rendered so far
@@ -100,6 +101,13 @@
     try {
       const res = await fetch(`/ndrt/state?seq=${seq}`, { cache: 'no-store' });
       const data = await res.json();
+      if (instance && data.instance !== instance) {
+        // kakao_ndrt.py was restarted (next participant): start over, without the old draft
+        draftEl.value = '';
+        location.reload();
+        return;
+      }
+      instance = data.instance;
       seq = data.seq;
       if (data.changed) apply(data);
     } catch (err) {
@@ -110,10 +118,10 @@
 
   // -- rendering ---------------------------------------------------------------
 
+  const avatarColors = new Map(); // in order of first appearance: no two members share a color
   function avatarColor(name) {
-    let h = 0;
-    for (const ch of name) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+    if (!avatarColors.has(name)) avatarColors.set(name, AVATAR_COLORS[avatarColors.size % AVATAR_COLORS.length]);
+    return avatarColors.get(name);
   }
 
   function timeText(iso) {
@@ -175,12 +183,14 @@
   }
 
   function apply(data) {
-    const stick = !state || nearBottom();
+    const first = !state;          // the chat opens at its first message, read from the top
+    const stick = !first && nearBottom();
     const before = shownCount;
     state = data;
     $('room-name').textContent = data.room;
     $('room-count').textContent = data.member_count;
     document.title = data.room;
+    if (data.placeholder) draftEl.placeholder = data.placeholder;
     render(data.messages);
     // new messages from the others since the last poll (not at the first load)
     if (before > 0 && data.messages.slice(before).some((m) => m.from && m.kind !== 'notice' && m.from !== data.name)) {
@@ -188,7 +198,9 @@
       event('message_sound');
     }
     shownCount = data.messages.length;
-    if (stick) {
+    if (first) {
+      messagesEl.scrollTop = 0;
+    } else if (stick) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     } else if (shownCount > before) {
       $('new-pill').hidden = false;
@@ -303,6 +315,7 @@
   });
   window.addEventListener('pagehide', sendDraft);
 
+  draftEl.value = ''; // never a draft the browser kept: the server's draft comes with the first poll
   event('load', { width: window.innerWidth, height: window.innerHeight });
   poll();
 })();
