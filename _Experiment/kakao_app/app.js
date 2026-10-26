@@ -192,8 +192,10 @@
     document.title = data.room;
     if (data.placeholder) draftEl.placeholder = data.placeholder;
     render(data.messages);
-    // new messages from the others since the last poll (not at the first load)
-    if (before > 0 && data.messages.slice(before).some((m) => m.from && m.kind !== 'notice' && m.from !== data.name)) {
+    // new messages from the others since the last poll (not at the first load); the nudges during
+    // the pre-alert sound on the simulator PC instead (takeover_experiment.py)
+    if (before > 0 && data.messages.slice(before).some((m) => m.from && m.kind !== 'notice' && m.phase !== 'nudge'
+                                                         && m.from !== data.name)) {
       playMessageSound();
       event('message_sound');
     }

@@ -24,6 +24,7 @@ The laptop's firewall has to let the simulator PC in on the port (5008).
     POST /ndrt/post         {"text": "..."}: the notice is posted to the room
     POST /ndrt/event        {"type": "focus"} etc.: logged only
     GET  /ndrt/followup     release the follow-up messages now (?source=NAME: the experiment, or by hand)
+    GET  /ndrt/nudge        ?index=K: post nudge K (kakao_sets "nudges", during the pre-alert)
     GET  /ndrt/mark         ?event=prealert etc.: the experiment's events, logged on this clock
     GET  /ndrt/info         scenario and title, for the experiment to check
     GET  /rtr/request       request an RtR summary now (?source=NAME)
@@ -71,7 +72,7 @@ NO_NAME = '○○○'            # in the messages until the participant has ent
 
 LABELS = ['완료된 작업', '진행중이던 작업', '앞으로 남은 작업']
 MAX_SENTENCE_CHARS = 32    # Notion: 줄당 30자 이내 (label excluded, small slack)
-TOTAL_CHARS = (60, 80)     # Notion: 3줄 합계 60–80자
+TOTAL_CHARS = (0, 80)      # Notion: 3줄 합계 60–80자; no lower bound since the lines only describe the draft
 
 SYSTEM_PROMPT = """당신은 운전 시뮬레이터 실험에서 Ready-to-Resume(RtR) 요약을 쓰는 보조자입니다.
 참가자는 자율주행 중 회사 단톡방(카카오톡)의 대화를 정리해 공지를 작성하는 과제(NDRT)를 하다가 곧 운전 제어권을 넘겨받습니다.
@@ -84,19 +85,24 @@ SYSTEM_PROMPT = """당신은 운전 시뮬레이터 실험에서 Ready-to-Resume
 - 진행중이던 작업: 초안 맨 끝이 끊긴 문장이면 그 문장이 다루는 항목. 끝이 완결 문장이면 없음.
 - 남은 항목: 반영도, 진행중이던 작업도 아닌 항목.
 
+## 말투 (가장 중요)
+- 참가자의 초안에 보이는 것만 담담하게 서술합니다. 과제의 정답을 아는 말투를 쓰지 않습니다: 아직 초안에 없는 항목의 이름, 항목이 몇 개 남았는지, 값이 맞는지, 무엇이 빠졌는지를 말하지 않습니다.
+- 평가하지 않습니다: "반영하셨습니다", "잘", "빠짐없이", "아직 ~ 안 하셨습니다" 금지.
+- 명령·지시·권유하지 않습니다: "~하세요", "~하시면 됩니다", "~해야 합니다", "~부터 쓰세요", "확인하세요" 금지. 상태를 알려 주는 서술문("~이 있습니다", "~하던 중이었습니다", "~할 수 있습니다")만 씁니다.
+
 ## 3줄 작성 규칙
-- 완료된 작업: 반영한 항목 이름을 나열하고 "~을 반영하셨습니다."로 끝냅니다. 반영 항목이 없으면 그렇다고 씁니다.
-- 진행중이던 작업: "~ 문장을 쓰다 멈추셨습니다." 진행중이던 작업이 없으면 마지막으로 마친 항목을 말합니다.
-- 앞으로 남은 작업: 진행중이던 작업부터 이어서 쓰고 남은 항목을 쓰라는 다음 행동. 남은 것이 없으면 검토·등록을 안내합니다.
-- 각 줄은 완결된 존댓말 문장 1개, 라벨 제외 30자 이내, 3줄 합계 60–80자.
+- 완료된 작업: "초안에 A, B, C 내용이 있습니다." (반영 항목 나열). 반영 항목이 없으면 "초안에 아직 쓴 내용이 없습니다."
+- 진행중이던 작업: "A 문장을 쓰던 중이었습니다." 진행중이던 작업이 없으면 "마지막으로 A 문장을 마쳤습니다."
+- 앞으로 남은 작업: "A 문장부터 이어 쓸 수 있습니다." 진행중이던 작업이 없으면 "A 문장 다음부터 이어 쓸 수 있습니다." 초안에 없는 항목은 이 줄에도 쓰지 않습니다.
+- 각 줄은 완결된 존댓말 문장 1개, 라벨 제외 30자 이내, 3줄 합계 80자 이내.
 - 괄호 보충 금지. 항목은 과제 설명의 짧은 항목 이름으로 부르되, 참가자가 초안에서 그 항목을 다른 단어로 불렀으면 (예: "식사") 참가자의 단어를 씁니다. 단, 값(시각, 장소명 등)이 들어간 말은 쓰지 않습니다.
-- 금지: 남은 항목이나 하던 항목의 정답 값(금액, 시각, 날짜, 장소명, 메뉴 등)을 절대 쓰지 않습니다. 계산 결과나 정보 충돌의 해답도 쓰지 않습니다. 상태와 다음 행동만 씁니다.
+- 금지: 정답 값(금액, 시각, 날짜, 장소명, 메뉴 등), 계산 결과, 정보 충돌의 해답을 절대 쓰지 않습니다.
 - 초안의 오류를 지적하거나 고치라고 하지 않습니다.
 
-예시 (날짜, 장소, 출발, 발표, 자료 마감 반영 / 숙박비 문장 작성 중 / 저녁 남음):
-완료된 작업: 날짜, 장소, 출발, 발표, 자료 마감을 반영하셨습니다.
-진행중이던 작업: 숙박비 문장을 쓰다 멈추셨습니다.
-앞으로 남은 작업: 숙박비부터 이어서 쓰고, 저녁 안내를 마저 쓰시면 됩니다."""
+예시 (날짜, 장소, 출발, 발표, 자료 마감 반영 / 숙박비 문장 작성 중):
+완료된 작업: 초안에 날짜, 장소, 출발, 발표, 자료 마감 내용이 있습니다.
+진행중이던 작업: 숙박비 문장을 쓰던 중이었습니다.
+앞으로 남은 작업: 숙박비 문장부터 이어 쓸 수 있습니다."""
 
 OUTPUT_SCHEMA = {
     'type': 'object',
@@ -143,6 +149,7 @@ class KakaoNdrt(object):
         self._draft = ''
         self._notice = None                 # the posted notice: {'text', 'time'}
         self._followup = 'waiting'          # waiting, sending, done
+        self._nudged = set()                # indexes of the nudges posted (once each per run)
         # RtR summaries, as rtr_bridge.py
         self._next_id = 1
         self._latest = None                 # latest request dict: id, source, time (monotonic)
@@ -161,13 +168,16 @@ class KakaoNdrt(object):
                     self._json(ndrt._state(int(query.get('seq', ['0'])[0] or 0)))
                 elif url.path == '/ndrt/followup':
                     self._json({'ok': ndrt.release_followup(query.get('source', ['http'])[0])})
+                elif url.path == '/ndrt/nudge':
+                    self._json({'ok': ndrt.post_nudge(int(query.get('index', ['-1'])[0]),
+                                                      query.get('source', ['http'])[0])})
                 elif url.path == '/ndrt/mark':
                     entry = {key: values[0] for key, values in query.items()}
                     ndrt.log_ndrt(dict(entry, event='experiment_' + entry.pop('event', 'mark')))
                     self._json({'ok': True})
                 elif url.path == '/ndrt/info':
                     self._json({'scenario': ndrt._scenario, 'title': ndrt._set['title'],
-                                'followup': ndrt._followup})
+                                'followup': ndrt._followup, 'nudges': ndrt.nudge_times})
                 elif url.path == '/rtr/request':
                     self._json({'id': ndrt.request(query.get('source', ['http'])[0])})
                 elif url.path == '/rtr/status':
@@ -323,6 +333,34 @@ class KakaoNdrt(object):
         thread.start()
         return True
 
+    @property
+    def nudge_times(self):
+        """Seconds after the pre-alert of each nudge (kakao_sets "nudges"), for the experiment."""
+        return [float(nudge['after']) for nudge in self._set.get('nudges', [])]
+
+    def post_nudge(self, index, source):
+        """Post nudge `index` (a team member pressing for the notice, during the pre-alert) to the
+        room. The experiment plays the KakaoTalk sound on the simulator PC. Once per index per run;
+        False if already posted or no such nudge."""
+        nudges = self._set.get('nudges', [])
+        with self._lock:
+            if not 0 <= index < len(nudges) or index in self._nudged:
+                return False
+            self._nudged.add(index)
+            nudge = nudges[index]
+            self._messages.append({'id': len(self._messages), 'from': nudge['from'], 'text': nudge['text'],
+                                   'phase': 'nudge', 'time': _now_iso()})
+            self._changed_page()
+        self.log_ndrt({'event': 'nudge', 'index': index, 'source': source, 'from': nudge['from'],
+                       'text': self._fill(nudge['text'])})
+        logging.info('NDRT chat: nudge %d posted (%s)', index, source)
+        return True
+
+    def next_nudge(self):
+        """Index of the first nudge not posted yet, or None."""
+        with self._lock:
+            return next((k for k in range(len(self.nudge_times)) if k not in self._nudged), None)
+
     def _send_followup(self):
         for k, message in enumerate(self._set['followup']):
             if k:
@@ -439,7 +477,7 @@ class KakaoNdrt(object):
                     if len(s) > MAX_SENTENCE_CHARS]
         total = sum(len(s) for s in sentences)
         if not TOTAL_CHARS[0] <= total <= TOTAL_CHARS[1]:
-            warnings.append('3줄 합계 %d자 (60–80자 밖)' % total)
+            warnings.append('3줄 합계 %d자 (%d–%d자 밖)' % (total, TOTAL_CHARS[0], TOTAL_CHARS[1]))
         warnings += ['금지어 포함: "%s"' % term for term in self._set.get('banned_terms', [])
                      if any(term in s for s in sentences)]
         return warnings
@@ -527,6 +565,7 @@ class KakaoNdrtLink(object):
         self._reported = None
         self._online = None
         self._running = True
+        self.nudge_times = []       # s after the pre-alert of each nudge, from the laptop's /ndrt/info
         thread = threading.Thread(target=self._poll, name='kakao-ndrt-link')
         thread.daemon = True
         thread.start()
@@ -563,6 +602,16 @@ class KakaoNdrtLink(object):
         except (OSError, ValueError) as error:
             self._released = False  # tried again next frame
             logging.warning('NDRT chat: could not release the follow-up messages: %s', error)
+
+    def post_nudge(self, index, source):
+        """Post nudge `index` to the room on the laptop (it ignores one already posted)."""
+        self._later(self._send_nudge, index, source)
+
+    def _send_nudge(self, index, source):
+        try:
+            self._get('/ndrt/nudge', index=index, source=source)
+        except (OSError, ValueError) as error:
+            logging.warning('NDRT chat: could not post nudge %d: %s', index, error)
 
     def mark(self, event, **fields):
         """Log the experiment's `event` in the laptop's ndrt.jsonl, on its clock."""
@@ -644,6 +693,7 @@ class KakaoNdrtLink(object):
             info = self._get('/ndrt/info')
         except (OSError, ValueError):
             return
+        self.nudge_times = [float(after) for after in info.get('nudges', [])]
         if info.get('scenario') != self._scenario:
             logging.warning('NDRT chat: the laptop runs scenario %s (%s), the drive is scenario %d',
                             info.get('scenario'), info.get('title'), self._scenario)
@@ -688,7 +738,7 @@ def main():
         timer.daemon = True
         timer.start()
     try:
-        print('Enter: follow-up messages, s + Enter: RtR summary, Ctrl+C: quit')
+        print('Enter: follow-up messages, n + Enter: next nudge, s + Enter: RtR summary, Ctrl+C: quit')
         while True:
             try:
                 line = input()
@@ -697,6 +747,12 @@ def main():
                     time.sleep(1.0)
             if line.strip() == 's':
                 ndrt.request('console')
+            elif line.strip() == 'n':
+                index = ndrt.next_nudge()
+                if index is None:
+                    print('No nudges left')
+                else:
+                    ndrt.post_nudge(index, 'console')
             else:
                 ndrt.release_followup('console')
     except KeyboardInterrupt:

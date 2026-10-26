@@ -118,6 +118,9 @@ connects this program to it: after the takeover the team adds more messages, sil
 notice has to take in: once the car is past the scene (scenarios 2 and 4; at the latest
 NDRT_FOLLOWUP_LATEST s after the takeover), else NDRT_FOLLOWUP_AFTER s after the takeover; K: now.
 The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl too, on its clock.
+During the pre-alert and the TOR the team presses for the notice (kakao_sets "nudges", each "after"
+s after the pre-alert): the message goes to the chat and the KakaoTalk sound plays on this PC
+(kakao_app/kakao.mp3; the chat page itself stays silent for these).
 
 NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
 the laptop sends the notice draft to ChatGPT (OpenAI API key there: OPENAI_API_KEY or
@@ -445,6 +448,7 @@ LOG_DIR = os.path.join(ROOT, 'Data')
 AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, --no-audio-engine
 AUDIO_ENGINE_PYTHON = os.path.join(ROOT, 'venv_carla', 'Scripts', 'python.exe')     # has pyfmodex installed
 GLASSES_DIR = os.path.join(ROOT, 'TORApp', 'pc')  # tor_glasses.py, --glasses
+KAKAO_SOUND = os.path.join(EXPERIMENT_DIR, 'kakao_app', 'kakao.mp3')  # NDRT nudges, played on this PC
 POST_WINDOW = 10.0  # seconds after the takeover that count as the takeover period
 FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no overpass
 FOG_AT = 700.0          # scenario 3: where the fog starts to thicken, m from the start
@@ -3062,6 +3066,12 @@ class AlertSound(object):
             self._ok = True
         except Exception as error:  # no audio device: run silently
             logging.warning('No sound: %s', error)
+            return
+        try:
+            self._kakao = pygame.mixer.Sound(KAKAO_SOUND)
+        except Exception as error:  # pylint: disable=broad-except
+            logging.warning('No KakaoTalk sound (%s: %s): the NDRT nudges play two tones', KAKAO_SOUND, error)
+            self._kakao = self._sound([(1318.5, 0.12), (1046.5, 0.22)], 0.5)  # "카톡", as kakao_app
 
     @staticmethod
     def _sound(parts, volume):
@@ -3096,6 +3106,11 @@ class AlertSound(object):
     def tor(self):
         if self._ok and self._here():
             self._beeps.play(loops=-1)
+
+    def kakao(self):
+        """A KakaoTalk message (NDRT nudge): always on the PC, even with the glasses."""
+        if self._ok:
+            self._kakao.play()
 
     def stop(self, confirm=False):
         if self._ok:
@@ -3161,6 +3176,7 @@ class TakeoverExperiment(object):
         self._test_driver = test_driver      # TestDriver: drives after the takeover (--test-driver)
         self._phone_cluster = phone_cluster  # PhoneCluster: the gauges on a phone instead of the monitor
         self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
+        self._nudged = set()                # NDRT nudges posted (once each per run, _nudge_tick)
         self._takeover_time = None
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
         self._escort = escort               # EscortCars: cars beside the car after the takeover
@@ -3446,6 +3462,18 @@ class TakeoverExperiment(object):
             return
         self._ndrt.release_followup(reason)
 
+    def _nudge_tick(self, now):
+        """The team pressing for the notice in the NDRT chat during the pre-alert and the TOR
+        (kakao_sets "nudges": s after the pre-alert), each with the KakaoTalk sound on this PC."""
+        if self._ndrt is None or self.mode not in (PRE_ALERT, TOR):
+            return
+        for index, after in enumerate(self._ndrt.nudge_times):
+            if index not in self._nudged and now - self._alert_time >= after:
+                self._nudged.add(index)
+                self._ndrt.post_nudge(index, 'prealert')
+                self._sound.kakao()
+                logging.info('NDRT nudge %d (%.0f s after the pre-alert)', index, now - self._alert_time)
+
     def _request_rtr_ahead(self, now, speed):
         """NDRT summary: request the participant's RtR summary RTR_LEAD s before the automatic pre-alert."""
         if self._rtr is None or self._rtr_since is not None or not self._auto_alert or self.mode != AUTO:
@@ -3477,6 +3505,7 @@ class TakeoverExperiment(object):
         if self._escort is not None:
             self._escort_tick(now)
         self._ndrt_tick(now)
+        self._nudge_tick(now)
         if self.mode in AUTONOMOUS_MODES:
             if self.mode in TAKEOVER_MODES and self._input.driver_active(keys):
                 self._take_over(now)
