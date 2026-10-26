@@ -33,7 +33,9 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
     SHIFT + L         : high beam on/off (also --high-beam-button)
     I                 : interior light on/off
     H                 : horn (played by the audio engine)
-    E                 : re-engage autonomous mode (manual driving)
+    E                 : re-engage autonomous mode (manual driving). It also comes back by itself
+                        REENGAGE_AFTER (10) s after the takeover, in scenarios 2 and 4 10 s after the
+                        car is past the lane 2 obstacle, in the lane the car is in (--no-reengage: off)
     K                 : NDRT chat: the team's follow-up messages now (else after the takeover)
 
     TAB               : next camera position: driver's seat, windshield (no steering wheel),
@@ -44,9 +46,11 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
 Scenarios (--scenario N). Each has an event point on the loop; the TOR comes
 --tor-lead seconds before the car reaches it, once per pass, so the pre-alert starts
 --pre-alert seconds earlier still (--alert-lead: set the pre-alert's lead directly):
-    0  practice       manual driving from the start, for getting used to the wheel and
-                      pedals: no autonomous mode, no pre-alert (P and E do nothing),
-                      nothing logged; clear noon weather
+    0  practice       starts in the town and goes round its blocks to the loop, about 2 km with
+                      21 turns (PRACTICE_SPAWN_INDEX, PRACTICE_VIA), by hand, guided by a
+                      navigation map at the top right (NavigationMap); once on the loop
+                      autonomous driving starts, and P gives a takeover to practise;
+                      clear noon weather
     1  highway exit   event: the exit point (end of the overpass, --exit-at)
                       TOR 5 s before it
     2  work zone      after the first lap, lanes 3 and 4 are closed further ahead
@@ -447,6 +451,19 @@ NUDGE_FROM = 10.0    # s after the pre-alert: the NDRT nudges start once the par
 NUDGE_UNTIL = 35.0   # ... and end with the intervention text (Intervention.end; this without one)
 TEST_ALERT_AFTER = 10.0
 SERVER_RETRY = 5.0       # s per try while the CARLA server is not ready yet
+REENGAGE_AFTER = 10.0    # s of manual driving after the takeover (scenarios 2, 4: after passing the
+                         # lane 2 obstacle) before autonomous driving comes back, in the car's lane
+LOOP_LANE_TOLERANCE = 1.8    # m from a loop lane's middle: the car is in that lane ...
+LOOP_HEADING_TOLERANCE = 25.0  # ... and heading its way within this many degrees
+# Practice: starts in the town (spawn points, Town04) and goes round its blocks through the via points,
+# then the shortest way to the loop: about 2 km with 21 turns, shown on the navigation map
+PRACTICE_SPAWN_INDEX = 176
+PRACTICE_VIA = [230, 255, 182, 364, 173]
+NAV_PANEL = (0.24, 0.36)        # width, height of the navigation map: shares of a monitor
+NAV_MARGIN = 0.015              # from the window's top and right edges, share of a monitor's width
+NAV_METRES = 420.0              # metres across the map
+NAV_AHEAD = 0.25                # the car sits this share of the map's height below its middle (it looks ahead)
+NAV_REDRAW = 1.0 / 15.0         # s between redraws of the turned map (a rotation per frame is not needed)
 COLLISION_LOG_GAP = 2.0  # s: a collision with the same object is logged again only after this
 TEST_PRE_ALERT = 5.0
 
@@ -1052,6 +1069,171 @@ def log_collisions(sim_world, vehicle):
                                    carla.Transform(), attach_to=vehicle)
     sensor.listen(on_collision)
     return sensor, hits
+
+
+class NavigationMap(object):
+    """A navigation map like a car's, at the top right of the window: the roads, the way in blue, the car
+    in the middle heading up, and (with turns) the next turn and its distance at the top.
+
+    practice(): the way from the town to the loop (scenario 0, until the car is on it); loop(): the
+    loop itself (--minimap)."""
+
+    TURNS = {RoadOption.LEFT: '좌회전', RoadOption.RIGHT: '우회전', RoadOption.STRAIGHT: '직진',
+             RoadOption.CHANGELANELEFT: '왼쪽 차선으로', RoadOption.CHANGELANERIGHT: '오른쪽 차선으로'}
+
+    @classmethod
+    def practice(cls, carla_map, route_planner, loop_routes):
+        """The practice way: the start, the via points, then the shortest way onto the loop."""
+        spawns = carla_map.get_spawn_points()
+        stops = [spawns[PRACTICE_SPAWN_INDEX].location] + [spawns[k].location for k in PRACTICE_VIA]
+        trace = []
+        for a, b in zip(stops, stops[1:]):
+            trace += route_planner.trace_route(a, b)
+        loop = [w.transform.location for route in loop_routes.values() for w in route[::3]]
+        best = None
+        for waypoint in loop_routes[3][::100]:
+            tail = route_planner.trace_route(stops[-1], waypoint.transform.location)
+            for n, (point, _) in enumerate(tail):
+                if min(point.transform.location.distance(q) for q in loop) < 2.0:
+                    if best is None or n < len(best):
+                        best = tail[:n + 1]
+                    break
+        trace += best or []
+        way, turns, along, last = [], [], 0.0, None
+        for waypoint, option in trace:
+            location = waypoint.transform.location
+            if way:
+                along += location.distance(way[-1][0])
+            way.append((location, along))
+            if option in cls.TURNS and option != last and (option != RoadOption.STRAIGHT or waypoint.is_junction):
+                turns.append((along, cls.TURNS[option]))
+            last = option
+        turns.append((along, '고속도로 진입'))
+        logging.info('Practice way to the highway, %.0f m, %d turns: %s', along,
+                     sum(1 for _, text in turns if text in ('좌회전', '우회전')),
+                     ', '.join('%.0f m %s' % turn for turn in turns))
+        return cls(carla_map, way, turns)
+
+    @classmethod
+    def loop(cls, carla_map, route):
+        """The loop the car drives (closed, no turns to announce)."""
+        way, along = [], 0.0
+        for waypoint in route:
+            location = waypoint.transform.location
+            if way:
+                along += location.distance(way[-1][0])
+            way.append((location, along))
+        return cls(carla_map, way, [], closed=True)
+
+    def __init__(self, carla_map, way, turns, closed=False):
+        self._way, self._turns, self._closed = way, turns, closed
+        self.length = way[-1][1] if way else 0.0
+        # the map, drawn once (north up), self._scale px per m around the way
+        xs = [l.x for l, _ in way]
+        ys = [l.y for l, _ in way]
+        pad = NAV_METRES
+        self._x0, self._y0 = min(xs) - pad, min(ys) - pad
+        self._scale = 2.0
+        size = (int((max(xs) + pad - self._x0) * self._scale), int((max(ys) + pad - self._y0) * self._scale))
+        self._map = pygame.Surface(size)
+        self._map.fill((24, 28, 36))
+        for waypoint in carla_map.generate_waypoints(3.0):
+            location = waypoint.transform.location
+            if self._x0 <= location.x <= self._x0 + size[0] / self._scale and \
+                    self._y0 <= location.y <= self._y0 + size[1] / self._scale:
+                pygame.draw.circle(self._map, (88, 96, 110), self._px(location),
+                                   max(2, int(waypoint.lane_width * 0.55 * self._scale)))
+        pygame.draw.lines(self._map, (60, 150, 255), closed, [self._px(l) for l, _ in way], max(4, int(2.2 * self._scale)))
+        if not closed:
+            pygame.draw.circle(self._map, (40, 220, 90), self._px(way[-1][0]), int(5 * self._scale))
+        self._index = 0
+        self._turned = None
+        self._turned_at = -1.0
+        self._fonts = None
+
+    def _px(self, location):
+        return (int((location.x - self._x0) * self._scale), int((location.y - self._y0) * self._scale))
+
+    def _progress(self, location):
+        """m along the way at the point nearest the car (searched near the last one; on a loop, all
+        round once when the car is far from it)."""
+        count = len(self._way)
+        if self._closed:
+            candidates = [(self._index + k) % count for k in range(-30, 120)]
+            if self._way[self._index][0].distance(location) > 30.0:
+                candidates = range(count)
+        else:
+            candidates = range(max(0, self._index - 30), min(count, self._index + 120))
+        self._index = min(candidates, key=lambda i: self._way[i][0].distance(location))
+        return self._way[self._index][1]
+
+    def draw(self, display, manager, transform, now):
+        width, height = manager.screen_size
+        panel_w, panel_h = int(NAV_PANEL[0] * width), int(NAV_PANEL[1] * height)
+        x0 = display.get_width() - panel_w - int(NAV_MARGIN * width)  # top right of the window
+        y0 = int(NAV_MARGIN * width)
+        bezel = max(6, int(panel_h * 0.035))
+        screen = pygame.Rect(bezel, bezel, panel_w - 2 * bezel, panel_h - 2 * bezel)
+        if self._fonts is None or self._fonts[0] != (panel_w, panel_h):
+            name = pygame.font.match_font('malgungothic,applesdgothicneo,notosanscjkkr') or pygame.font.get_default_font()
+            self._fonts = ((panel_w, panel_h), pygame.font.Font(name, max(12, int(panel_h * 0.075))),
+                           pygame.font.Font(name, max(10, int(panel_h * 0.045))))
+        _, big, small = self._fonts
+        location = transform.location
+        along = self._progress(location)
+        # the map turned so the car heads up, redrawn NAV_REDRAW s apart
+        if self._turned is None or now - self._turned_at >= NAV_REDRAW:
+            self._turned_at = now
+            side = int(NAV_METRES * self._scale * 1.5)  # enough to fill the panel after turning
+            cx, cy = self._px(location)
+            crop = pygame.Surface((side, side))
+            crop.fill((24, 28, 36))
+            crop.blit(self._map, (side // 2 - cx, side // 2 - cy))
+            turned = pygame.transform.rotate(crop, transform.rotation.yaw + 90.0)
+            zoom = screen.width / (NAV_METRES * self._scale)
+            turned = pygame.transform.smoothscale(turned, (int(turned.get_width() * zoom), int(turned.get_height() * zoom)))
+            self._turned = turned
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel.fill((0, 0, 0, 0))
+        corner = max(6, int(panel_h * 0.06))
+        pygame.draw.rect(panel, CLUSTER_BEZEL + (255,), panel.get_rect(), border_radius=corner)
+        pygame.draw.rect(panel, CLUSTER_EDGE + (255,), panel.get_rect(), width=2, border_radius=corner)
+        view = pygame.Surface(screen.size)
+        car = (screen.width // 2, int(screen.height * (0.5 + NAV_AHEAD)))
+        view.blit(self._turned, self._turned.get_rect(center=(car[0], car[1])))
+        # the car: an arrow pointing up
+        size = screen.height * 0.05
+        pygame.draw.polygon(view, (255, 255, 255), [(car[0], car[1] - size), (car[0] + size * 0.7, car[1] + size * 0.7),
+                                                    (car[0], car[1] + size * 0.35), (car[0] - size * 0.7, car[1] + size * 0.7)])
+        if not self._turns:  # the loop: the map alone
+            panel.blit(view, screen.topleft)
+            mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+            mask.fill((0, 0, 0, 0))
+            pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=corner)
+            panel.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            display.blit(panel, (x0, y0))
+            return
+        # the next turn and the distance left, on a dark band at the top
+        band = pygame.Rect(0, 0, screen.width, int(screen.height * 0.2))
+        shade = pygame.Surface(band.size, pygame.SRCALPHA)
+        shade.fill((10, 12, 16, 225))
+        view.blit(shade, band)
+        upcoming = next(((at, text) for at, text in self._turns if at > along + 5.0), self._turns[-1])
+        ahead = max(0.0, upcoming[0] - along)
+        text = big.render('%s  %s' % (_distance_text(ahead), upcoming[1]), True, (235, 240, 245))
+        view.blit(text, text.get_rect(midleft=(int(screen.width * 0.05), band.centery)))
+        left = small.render('남은 거리 %s' % _distance_text(max(0.0, self.length - along)), True, (150, 160, 172))
+        view.blit(left, left.get_rect(bottomright=(screen.width - int(screen.width * 0.04), screen.height - 8)))
+        panel.blit(view, screen.topleft)
+        mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        mask.fill((0, 0, 0, 0))
+        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=corner)
+        panel.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        display.blit(panel, (x0, y0))
+
+
+def _distance_text(metres):
+    return '%.1f km' % (metres / 1000.0) if metres >= 1000.0 else '%d m' % (round(metres / 10.0) * 10)
 
 
 def curve_speed_limits(route):
@@ -2572,7 +2754,7 @@ class Scenario(object):
         self._taken_over = True
 
     def on_engage(self, now):
-        self._taken_over = False
+        pass
 
     def fog_density(self):
         return None
@@ -2582,10 +2764,12 @@ class Scenario(object):
 
 
 class PracticeScenario(Scenario):
-    """0: practice drive, manual from the start. No event point, so no pre-alert and nothing logged.
-    In bright daylight (PRACTICE_WEATHER); the server's weather comes back afterwards."""
+    """0: practice drive. It starts in the town (PRACTICE_SPAWN_INDEX), driven by hand to the highway;
+    there autonomous driving starts (TakeoverExperiment._practice_tick: manual_only becomes False) and
+    the P key gives a takeover sequence to practise. No event point, so no automatic pre-alert. In
+    bright daylight (PRACTICE_WEATHER); the server's weather comes back afterwards."""
 
-    manual_only = True
+    manual_only = True  # until the car is on the highway
     escort_sides = ()
 
     def __init__(self, args, sim_world):
@@ -2593,7 +2777,8 @@ class PracticeScenario(Scenario):
         self._world = sim_world
         self._original = sim_world.get_weather()
         sim_world.set_weather(getattr(carla.WeatherParameters, PRACTICE_WEATHER))
-        logging.info('Scenario 0, practice drive: manual driving, no takeover requests, %s', PRACTICE_WEATHER)
+        logging.info('Scenario 0, practice drive: to the highway by hand (navigation map), then autonomous; %s',
+                     PRACTICE_WEATHER)
 
     def cleanup(self, client):
         self._world.set_weather(self._original)
@@ -3191,8 +3376,17 @@ class AudioEngine(object):
 class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
                  pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
-                 escort=None, rtr=None, test_alert_after=None, ndrt=None, phone_cluster=None, test_driver=None):
+                 escort=None, rtr=None, test_alert_after=None, ndrt=None, phone_cluster=None, test_driver=None,
+                 followers=None, routes=None, reengage=True, navigator=None, loop_map=None):
         self._world = world
+        self._navigator = navigator         # NavigationMap: the way to the highway (practice, until on it)
+        self._loop_map = loop_map           # NavigationMap of the loop (--minimap)
+        self._followers = followers or {}   # lane -> LoopFollower: autonomous driving goes on in the car's lane
+        self._routes = routes or {}         # lane -> route of the loop, to tell which lane the car is in
+        self._reengage = reengage           # autonomous driving comes back REENGAGE_AFTER s after the takeover
+        self._reengage_at = None            # time.monotonic() it comes back; None: not known yet
+        self._reengage_due = False          # a takeover happened and autonomous driving has not come back
+        self._next_lane_check = 0.0
         self._test_driver = test_driver      # TestDriver: drives after the takeover (--test-driver)
         self._phone_cluster = phone_cluster  # PhoneCluster: the gauges on a phone instead of the monitor
         self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
@@ -3249,8 +3443,13 @@ class TakeoverExperiment(object):
 
     # -- mode changes ----------------------------------------------------------
 
-    def _engage_autonomous(self):
+    def _engage_autonomous(self, lane=None):
+        """lane: the loop lane to drive on (the car's), else the one followed before."""
         now = time.monotonic()
+        if lane in self._followers:
+            self._follower = self._followers[lane]
+        self._reengage_due = False
+        self._reengage_at = None
         self._recorder.abort(now)
         self._sound.stop()
         self._scenario.on_engage(now)
@@ -3293,6 +3492,8 @@ class TakeoverExperiment(object):
             reason = 'driver input'
         self._recorder.mark_takeover(now, 'forced' if forced else 'after_tor' if self.mode == TOR else 'before_tor')
         self._takeover_time = now
+        self._reengage_due = self._reengage and not self._scenario.manual_only
+        self._reengage_at = None
         self._mark('takeover', forced=int(forced))
         self._scenario.on_takeover(now)
         self.mode = MANUAL
@@ -3328,7 +3529,7 @@ class TakeoverExperiment(object):
         elif event.key == K_p and self.mode == AUTO:
             self._start_alert(now, manual=True)
         elif event.key == K_e and self.mode == MANUAL and not self._scenario.manual_only:
-            self._engage_autonomous()
+            self._engage_autonomous(self._loop_lane())
         elif event.key == K_q and self.mode == MANUAL:
             self._toggle_reverse()
         elif event.key == K_m and self.mode == MANUAL:
@@ -3463,6 +3664,56 @@ class TakeoverExperiment(object):
         elif not self._test and self._event_dist > max(threshold, (self._cruise_kmh or 0.0) / 3.6 * self._scenario.lead) + 100.0:
             self._armed = True  # the event point has been passed (at cruise speed: not while starting off)
 
+    def _loop_lane(self):
+        """The loop lane (1-3) the car is in and heading along, or None (off the highway, or across lanes)."""
+        transform = self._world.player.get_transform()
+        location = transform.location
+        best = None
+        for lane, route in self._routes.items():
+            if lane not in self._followers:
+                continue
+            waypoint = min(route, key=lambda w: w.transform.location.distance(location))
+            distance = waypoint.transform.location.distance(location)
+            turn = abs((waypoint.transform.rotation.yaw - transform.rotation.yaw + 180.0) % 360.0 - 180.0)
+            if distance < LOOP_LANE_TOLERANCE and turn < LOOP_HEADING_TOLERANCE and (best is None or distance < best[1]):
+                best = (lane, distance)
+        return best[0] if best else None
+
+    def _reengage_tick(self, now):
+        """Autonomous driving back REENGAGE_AFTER s after the takeover (scenarios 2 and 4: after the car
+        is past the lane 2 obstacle), once the car is in a loop lane (not after leaving at the exit)."""
+        if not self._reengage_due or self.mode != MANUAL:
+            return
+        scenario = self._scenario
+        if self._reengage_at is None:
+            if scenario.has_scene and scenario.obstacle is not None:
+                if not scenario.obstacle_passed():
+                    return
+                logging.info('Past the lane 2 obstacle: autonomous driving again in %.0f s', REENGAGE_AFTER)
+                self._reengage_at = now + REENGAGE_AFTER
+            else:
+                self._reengage_at = self._takeover_time + REENGAGE_AFTER
+        if now < self._reengage_at or now < self._next_lane_check:
+            return
+        self._next_lane_check = now + 0.5
+        lane = self._loop_lane()
+        if lane is None:
+            return  # off the highway (or between lanes): tried again
+        logging.info('Autonomous driving back by itself, in lane %d', lane)
+        self._engage_autonomous(lane)
+
+    def _practice_tick(self, now):
+        """Practice: once the car is on the highway, autonomous driving starts."""
+        if self._scenario.number != 0 or not self._scenario.manual_only or now < self._next_lane_check:
+            return
+        self._next_lane_check = now + 0.5
+        lane = self._loop_lane()
+        if lane is None:
+            return
+        self._scenario.manual_only = False
+        logging.info('Practice: on the highway (lane %d), autonomous driving starts', lane)
+        self._engage_autonomous(lane)
+
     def _mark(self, event, **fields):
         """The experiment's event in the NDRT laptop's log, on its clock."""
         if self._ndrt is not None:
@@ -3533,6 +3784,8 @@ class TakeoverExperiment(object):
         if self._escort is not None:
             self._escort_tick(now)
         self._ndrt_tick(now)
+        self._reengage_tick(now)
+        self._practice_tick(now)
         self._nudge_tick(now)
         if self.mode in AUTONOMOUS_MODES:
             if self.mode in TAKEOVER_MODES and self._input.driver_active(keys):
@@ -3631,6 +3884,10 @@ class TakeoverExperiment(object):
         width = display.get_width()
 
         self._draw_cluster(display)
+        if self._world.camera_manager.transform_index == 0:
+            shown = self._navigator if self._navigator is not None and self._scenario.manual_only else self._loop_map
+            if shown is not None:
+                shown.draw(display, self._world.camera_manager, self._world.player.get_transform(), now)
         # the mode at the lower right corner of the window (the right monitor): white on its color
         label, color = self._mode_label()
         box_width, box_height = small.size(label)[0] + 36, 34
@@ -3913,12 +4170,20 @@ def game_loop(args):
         scenario = make_scenario(args, client, sim_world, routes, route)
         start_index = test_start_index(scenario, route, args, intervention.test[0]) if args.test else 0
         start = route[start_index].transform
+        if args.scenario == 0:  # practice: in the town, driven to the highway by hand
+            start = carla_map.get_spawn_points()[PRACTICE_SPAWN_INDEX]
         start.location.z += 0.5
         world.player.set_transform(start)
         advance(sim_world, args)  # let the new position reach the client
 
         route_planner = GlobalRoutePlanner(carla_map, ROUTE_RESOLUTION)
         follower = LoopFollower(world.player, route, args.speed, carla_map, route_planner)
+        navigator = NavigationMap.practice(carla_map, route_planner, routes) if args.scenario == 0 else None
+        loop_map = NavigationMap.loop(carla_map, route) if args.minimap else None
+        # one per lane: autonomous driving goes on in the lane the car is in (re-engage, practice)
+        followers = {lane: follower if lane == args.lane else
+                     LoopFollower(world.player, routes[lane], args.speed, carla_map, route_planner, quiet=True)
+                     for lane in LANES}
         # in scenarios 2 and 4 cars driving a lane that gets closed would run into the obstacle
         traffic_lanes = tuple(lane for lane in LANES if lane not in CLOSED_LANES.get(args.scenario, ()))
         traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes, start_index)
@@ -3957,7 +4222,9 @@ def game_loop(args):
                                         glasses=glasses, intervention=intervention, clearance=clearance,
                                         cruise_kmh=args.speed, escort=escort, rtr=rtr,
                                         test_alert_after=intervention.test[0] if args.test else None, ndrt=ndrt,
-                                        phone_cluster=phone_cluster, test_driver=test_driver)
+                                        phone_cluster=phone_cluster, test_driver=test_driver,
+                                        followers=followers, routes=routes, reengage=not args.no_reengage,
+                                        navigator=navigator, loop_map=loop_map)
         fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
                  pygame.font.Font(pygame.font.get_default_font(), 24))
 
@@ -4132,6 +4399,11 @@ def main():
                                 'the USB cable with USB tethering on in the phone; phone: the address in devices.json')
     argparser.add_argument('--glasses-port', metavar='P', type=int, default=5007,
                            help='UDP port of TORApp (default: 5007)')
+    argparser.add_argument('--minimap', action='store_true',
+                           help='a navigation map of the loop at the top right (practice: the way to the highway '
+                                'is shown anyway, until the car is on it)')
+    argparser.add_argument('--no-reengage', action='store_true',
+                           help='autonomous driving does not come back by itself after the takeover (E still works)')
     argparser.add_argument('--duration', metavar='SEC', type=float, default=None,
                            help='checking the scenarios: quit by itself after this many seconds')
     argparser.add_argument('--test-driver', action='store_true',
