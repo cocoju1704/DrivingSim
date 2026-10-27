@@ -49,6 +49,7 @@ import json
 import logging
 import mimetypes
 import os
+import socket
 import threading
 import time
 import urllib.error
@@ -70,7 +71,7 @@ MODEL = 'gpt-5.5'
 REASONING_EFFORT = 'low'
 API_TIMEOUT = 60.0
 NO_NAME = '○○○'            # in the messages until the participant has entered a name
-NOTICE_DEADLINE = 10       # min after the start: {deadline} in the messages ("오후 3시 25분")
+NOTICE_DEADLINE = 10       # min after the name is entered: {deadline} in the messages ("오후 3시 25분")
 
 LABELS = ['완료된 작업', '진행중이던 작업', '앞으로 남은 작업']
 MAX_SENTENCE_CHARS = 32    # Notion: 줄당 30자 이내 (label excluded, small slack)
@@ -88,23 +89,23 @@ SYSTEM_PROMPT = """당신은 운전 시뮬레이터 실험에서 Ready-to-Resume
 - 남은 항목: 반영도, 진행중이던 작업도 아닌 항목.
 
 ## 말투 (가장 중요)
-- 참가자의 초안에 보이는 것만 담담하게 서술합니다. 과제의 정답을 아는 말투를 쓰지 않습니다: 아직 초안에 없는 항목의 이름, 항목이 몇 개 남았는지, 값이 맞는지, 무엇이 빠졌는지를 말하지 않습니다.
+- 참가자의 초안을 담담하게 서술합니다. 과제의 정답을 아는 말투를 쓰지 않습니다: 값이 맞는지, 무엇이 틀렸는지, 항목이 몇 개 남았는지를 말하지 않습니다.
 - 평가하지 않습니다: "반영하셨습니다", "잘", "빠짐없이", "아직 ~ 안 하셨습니다" 금지.
-- 명령·지시·권유하지 않습니다: "~하세요", "~하시면 됩니다", "~해야 합니다", "~부터 쓰세요", "확인하세요" 금지. 상태를 알려 주는 서술문("~이 있습니다", "~하던 중이었습니다", "~할 수 있습니다")만 씁니다.
+- 명령·지시하지 않습니다: "~하세요", "~해야 합니다", "~부터 쓰세요", "확인하세요" 금지. 완료된 작업과 진행중이던 작업 줄은 상태를 알려 주는 서술문("~이 있습니다", "~하던 중이었습니다")만 씁니다. 앞으로 남은 작업 줄만 아래의 "~을 마저 작성하시면 됩니다." 형식을 씁니다.
 
 ## 3줄 작성 규칙
 - 완료된 작업: "초안에 A, B, C 내용이 있습니다." (반영 항목 나열). 반영 항목이 없으면 "초안에 아직 쓴 내용이 없습니다."
 - 진행중이던 작업: "A 문장을 쓰던 중이었습니다." 진행중이던 작업이 없으면 "마지막으로 A 문장을 마쳤습니다."
-- 앞으로 남은 작업: "A 문장부터 이어 쓸 수 있습니다." 진행중이던 작업이 없으면 "A 문장 다음부터 이어 쓸 수 있습니다." 초안에 없는 항목은 이 줄에도 쓰지 않습니다.
+- 앞으로 남은 작업: 남은 항목을 모두 나열하지 않습니다 (정답을 아는 것처럼 보임). 과제 설명의 순서로 바로 다음 항목 하나만 들고 "등"을 붙여 "B 등을 마저 작성하시면 됩니다."라고 씁니다. 진행중이던 작업이 있으면 그것부터: "A부터 B 등을 마저 작성하시면 됩니다." 진행중이던 작업 말고 남은 항목이 없으면 "A부터 마저 작성하시면 됩니다." 남은 항목이 하나도 없으면 "작성한 공지를 확인하고 등록하시면 됩니다." 남은 항목이 몇 개인지는 말하지 않습니다.
 - 각 줄은 완결된 존댓말 문장 1개, 라벨 제외 30자 이내, 3줄 합계 80자 이내.
 - 괄호 보충 금지. 항목은 과제 설명의 짧은 항목 이름으로 부르되, 참가자가 초안에서 그 항목을 다른 단어로 불렀으면 (예: "식사") 참가자의 단어를 씁니다. 단, 값(시각, 장소명 등)이 들어간 말은 쓰지 않습니다.
 - 금지: 정답 값(금액, 시각, 날짜, 장소명, 메뉴 등), 계산 결과, 정보 충돌의 해답을 절대 쓰지 않습니다.
 - 초안의 오류를 지적하거나 고치라고 하지 않습니다.
 
-예시 (날짜, 장소, 출발, 발표, 자료 마감 반영 / 숙박비 문장 작성 중):
+예시 (날짜, 장소, 출발, 발표, 자료 마감 반영 / 숙박비 문장 작성 중 / 운영 파트, 저녁 남음):
 완료된 작업: 초안에 날짜, 장소, 출발, 발표, 자료 마감 내용이 있습니다.
 진행중이던 작업: 숙박비 문장을 쓰던 중이었습니다.
-앞으로 남은 작업: 숙박비 문장부터 이어 쓸 수 있습니다."""
+앞으로 남은 작업: 숙박비부터 운영 파트 등을 마저 작성하시면 됩니다."""
 
 OUTPUT_SCHEMA = {
     'type': 'object',
@@ -127,6 +128,19 @@ def load_set(scenario):
         return json.load(handle)
 
 
+def _own_address():
+    """This laptop's address on the network toward the internet (a UDP socket only picks the
+    route, nothing is sent), or None."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(('8.8.8.8', 80))
+        return probe.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        probe.close()
+
+
 def _now_iso():
     return datetime.datetime.now().isoformat(timespec='seconds')
 
@@ -145,12 +159,9 @@ class KakaoNdrt(object):
         self._name = None
         started = datetime.datetime.now()
         self._instance = started.strftime('%y%m%d_%H%M%S_%f')  # a page from an earlier run reloads itself
-        deadline = started + datetime.timedelta(minutes=NOTICE_DEADLINE)
-        self._deadline = '%s %d시%s' % ('오전' if deadline.hour < 12 else '오후', deadline.hour % 12 or 12,
-                                       ' %d분' % deadline.minute if deadline.minute else '')
-        self._messages = [{'id': k, 'from': m['from'], 'text': m['text'], 'phase': 1,
-                           'time': (started + datetime.timedelta(minutes=m['t'])).isoformat(timespec='seconds')}
+        self._messages = [{'id': k, 'from': m['from'], 'text': m['text'], 'phase': 1}
                           for k, m in enumerate(self._set['messages'])]
+        self._start_clock(started)
         self._draft = ''
         self._notice = None                 # the posted notice: {'text', 'time'}
         self._followup = 'waiting'          # waiting, sending, done
@@ -160,6 +171,7 @@ class KakaoNdrt(object):
         self._latest = None                 # latest request dict: id, source, time (monotonic)
         self._result = None                 # latest result dict, with 'since' (monotonic)
         self._reported = None
+        self._simulators = set()            # addresses the experiment has called from (_seen_simulator)
         self._running = True
         self._api_key = os.environ.get('OPENAI_API_KEY') or self._read_key()
 
@@ -168,6 +180,8 @@ class KakaoNdrt(object):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 url = urlparse(self.path)
+                if url.path.startswith(('/rtr/', '/ndrt/info', '/ndrt/mark')):
+                    ndrt._seen_simulator(self.client_address[0])
                 query = parse_qs(url.query)
                 if url.path == '/ndrt/state':
                     self._json(ndrt._state(int(query.get('seq', ['0'])[0] or 0)))
@@ -178,6 +192,11 @@ class KakaoNdrt(object):
                                                       query.get('source', ['http'])[0])})
                 elif url.path == '/ndrt/mark':
                     entry = {key: values[0] for key, values in query.items()}
+                    if 'lines' in entry:  # the summary the glasses showed, as JSON
+                        try:
+                            entry['lines'] = json.loads(entry['lines'])
+                        except ValueError:
+                            pass
                     ndrt.log_ndrt(dict(entry, event='experiment_' + entry.pop('event', 'mark')))
                     self._json({'ok': True})
                 elif url.path == '/ndrt/info':
@@ -252,6 +271,9 @@ class KakaoNdrt(object):
             watcher.start()
         self.log_ndrt({'event': 'start', 'scenario': scenario, 'title': self._set['title']})
         logging.info('NDRT chat (%s): open http://localhost:%d/ in the browser', self._set['title'], port)
+        address = _own_address()
+        logging.info('Simulator PC: takeover_experiment.py --scenario %d --ndrt %s  (this laptop now; the '
+                     'address can change when the Wi-Fi reconnects)', scenario, address or '<this laptop IP>')
         if not self._api_key:
             logging.warning('NDRT chat: no OpenAI API key (OPENAI_API_KEY or %s): no RtR summaries',
                             os.path.basename(API_KEY_FILE))
@@ -263,6 +285,16 @@ class KakaoNdrt(object):
                 return handle.read().strip()
         except OSError:
             return ''
+
+    def _seen_simulator(self, address):
+        """Log the first call from the experiment (KakaoNdrtLink) at each address: the check that the
+        simulator PC is connected before the drive."""
+        with self._lock:
+            if address in self._simulators:
+                return
+            self._simulators.add(address)
+        self.log_ndrt({'event': 'simulator_connected', 'address': address})
+        logging.info('NDRT chat: the simulator PC is connected (%s)', address)
 
     # -- the chat ----------------------------------------------------------------
 
@@ -298,10 +330,21 @@ class KakaoNdrt(object):
                 'placeholder': self._set.get('placeholder'),  # grey template in the empty editor
             }
 
+    def _start_clock(self, now):
+        """The chat's clock: the times of the first messages (kakao_sets "t", min before `now`) and
+        {deadline} (NOTICE_DEADLINE min after `now`). Set again when the name is entered."""
+        for message, source in zip(self._messages, self._set['messages']):
+            message['time'] = (now + datetime.timedelta(minutes=source['t'])).isoformat(timespec='seconds')
+        deadline = now + datetime.timedelta(minutes=NOTICE_DEADLINE)
+        self._deadline = '%s %d시%s' % ('오전' if deadline.hour < 12 else '오후', deadline.hour % 12 or 12,
+                                       ' %d분' % deadline.minute if deadline.minute else '')
+
     def _set_name(self, name):
         if not name:
             return
         with self._lock:
+            if self._name is None:  # the participant starts now: the deadline counts from here
+                self._start_clock(datetime.datetime.now())
             self._name = name
             self._changed_page()
         self.log_ndrt({'event': 'name', 'name': name})
@@ -398,6 +441,7 @@ class KakaoNdrt(object):
             self._latest = request
         logging.info('RtR summary requested (#%d, %s)', request['id'], source)
         self.log({'event': 'request', 'id': request['id'], 'source': source})
+        self.log_ndrt({'event': 'rtr_request', 'id': request['id'], 'source': source, 'draft': request['draft']})
         self._changed()
         thread = threading.Thread(target=self._summarize, args=(request,), name='kakao-ndrt-rtr')
         thread.daemon = True
@@ -506,6 +550,11 @@ class KakaoNdrt(object):
             for warning in entry.get('warnings') or []:
                 logging.warning('RtR summary #%d: %s', request['id'], warning)
         self.log(dict(entry, event='result', seconds=entry['latency_s']))
+        # the generated summary in the chat log too, next to the draft it summarizes
+        self.log_ndrt({'event': 'rtr_result', 'id': request['id'], 'source': request['source'],
+                       'lines': entry.get('lines'), 'analysis': entry.get('analysis'),
+                       'warnings': entry.get('warnings'), 'error': entry.get('error'),
+                       'seconds': entry['latency_s']})
         self._changed()
 
     def _changed(self):
@@ -626,6 +675,7 @@ class KakaoNdrtLink(object):
 
     def mark(self, event, **fields):
         """Log the experiment's `event` in the laptop's ndrt.jsonl, on its clock."""
+        fields = {key: value for key, value in fields.items() if value is not None}
         self._later(self._send_mark, dict(fields, event=event))
 
     def _send_mark(self, fields):
@@ -712,7 +762,11 @@ class KakaoNdrtLink(object):
             logging.info('NDRT chat: connected to the NDRT laptop (%s)', info.get('title'))
 
     def log(self, entry):
-        """One line in the experiment's rtr.jsonl (the laptop keeps its own)."""
+        """One line in the experiment's rtr.jsonl (the laptop keeps its own). The summary the
+        glasses showed ('shown': the LLM's or the fixed fallback) goes to the laptop's ndrt.jsonl too."""
+        if entry.get('event') == 'shown':
+            self.mark('rtr_shown', trial=entry.get('trial'), source=entry.get('source'),
+                      request_id=entry.get('request_id'), lines=json.dumps(entry.get('lines'), ensure_ascii=False))
         if self._log_dir is None:
             return
         entry = dict(entry, wall_time=datetime.datetime.now().isoformat(timespec='milliseconds'))
