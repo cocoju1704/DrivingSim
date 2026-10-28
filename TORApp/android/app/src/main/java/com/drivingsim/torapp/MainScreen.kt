@@ -41,6 +41,7 @@ fun MainScreen(
     onUnregister: () -> Unit,
     onFirmwareUpdate: () -> Unit,
     onDatAppUpdate: () -> Unit,
+    onGlassesPermissions: () -> Unit,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   // re-read the clock twice a second for "receiving" and the packet age
@@ -150,6 +151,33 @@ fun MainScreen(
               (state.phoneAddress ?: "PHONE_IP"),
           style = MaterialTheme.typography.bodySmall,
       )
+    }
+
+    Section("Recording") {
+      Text(
+          "With --record (start_experiment: 녹화) the PC asks for a recording of each run: the " +
+              "glasses' camera with the display drawn over it and the glasses' microphone, in " +
+              "Movies/TORApp on this phone. Needs the glasses display started.",
+          style = MaterialTheme.typography.bodySmall,
+      )
+      fun allowed(value: Boolean?) = when (value) { true -> "allowed"; false -> "not allowed"; null -> "-" }
+      Line("Glasses camera", allowed(state.cameraAllowed))
+      Line("Glasses microphone", allowed(state.microphoneAllowed))
+      if (state.cameraAllowed != true || state.microphoneAllowed != true) {
+        Button(
+            onClick = onGlassesPermissions,
+            enabled = state.registrationState == RegistrationState.REGISTERED,
+        ) {
+          Text("Allow camera and microphone")
+        }
+      }
+      val recording = state.recording
+      Line("State", recording.state)
+      recording.file?.let { Line("File", it) }
+      if (recording.frames > 0) {
+        Line("Frames", "${recording.frames}" + if (recording.state == "OFF") (if (recording.audio) ", with sound" else ", no sound") else "")
+      }
+      recording.error?.let { ErrorText(it) }
     }
 
     Section("NDRT RtR summary") {

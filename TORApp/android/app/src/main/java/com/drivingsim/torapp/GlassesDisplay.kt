@@ -42,6 +42,10 @@ class GlassesDisplay(private val scope: CoroutineScope) {
 
   private var session: DeviceSession? = null
   @Volatile private var display: Display? = null
+
+  /** The running session (STARTED), for the camera of the recording; null otherwise. */
+  val startedSession: DeviceSession?
+    get() = session?.takeIf { _state.value.sessionState == DeviceSessionState.STARTED }
   private val jobs = mutableListOf<Job>()
 
   fun start() {

@@ -15,6 +15,8 @@ import com.meta.wearable.dat.core.types.Device
 import com.meta.wearable.dat.core.types.DeviceCompatibility
 import com.meta.wearable.dat.core.types.DeviceIdentifier
 import com.meta.wearable.dat.core.types.LinkState
+import com.meta.wearable.dat.core.types.Permission
+import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.meta.wearable.dat.display.types.DisplayState
 import java.net.Inet4Address
@@ -39,7 +41,8 @@ import org.json.JSONObject
 private const val TAG = "TORApp"
 const val TOR_PORT = 5007 // UDP, see TORApp/pc/tor_glasses.py
 private const val KEEP_AWAKE_MS = 15_000L // the glasses display dims after 20 s without activity
-private const val PRE_ALERT_BANNER_SECONDS = 5.0 // the PRE-ALERT banner shows only this long
+private const val TOR_BLINK_MS = 250L // the TOR message on, then off, this long each (2 blinks per second)
+private const val RECORD_SILENCE_MS = 10_000L // no packet from the PC this long: the recording stops
 
 data class UiState(
     val registrationState: RegistrationState = RegistrationState.UNAVAILABLE,
@@ -56,9 +59,12 @@ data class UiState(
     val keepAwake: Boolean = true,
     val lastSendMs: Long? = null, // duration of the last sendContent (Bluetooth)
     val blinking: Boolean = false,
-    val alertSounds: Boolean = true,
+    val alertSounds: Boolean = false, // off: the alert sounds come from the simulator PC only
     val audioOutput: String? = null, // where the sounds play: the glasses when they are connected
     val rtrPresses: Int = 0, // RtR button presses since the app started
+    val recording: RecorderStatus = RecorderStatus(),
+    val cameraAllowed: Boolean? = null, // the glasses' camera and microphone (null: not checked yet)
+    val microphoneAllowed: Boolean? = null,
 )
 
 class TorViewModel(application: Application) : AndroidViewModel(application) {
@@ -69,6 +75,8 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   private val receiver = TorReceiver(TOR_PORT)
   private val wanted = MutableStateFlow(GlassesView.WAITING) // what the glasses should show
   private val sounds = AlertSounds { output -> _uiState.update { it.copy(audioOutput = output) } }
+  private val recorder = GlassesRecorder(application, viewModelScope)
+  private val videoServer = VideoServer(application).apply { start() } // the PC fetches the recordings
   private val sendLock = Mutex()
   @Volatile private var lastSentAt = 0L
   @Volatile private var shownSeq = -1
@@ -113,7 +121,20 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
     )
     viewModelScope.launch { glasses.state.collect { state -> _uiState.update { it.copy(glasses = state) } } }
     // The alert sounds follow the mode right away, independent of the display's Bluetooth sends.
-    viewModelScope.launch(Dispatchers.Default) { wanted.collect { sounds.onMode(it.mode) } }
+    viewModelScope.launch(Dispatchers.Default) {
+      wanted.collect {
+        sounds.onMode(it.mode)
+        recorder.overlay = it // the recording draws what the glasses show
+      }
+    }
+    viewModelScope.launch { recorder.status.collect { status -> _uiState.update { it.copy(recording = status) } } }
+    // The TOR message blinks: on and off TOR_BLINK_MS each, until the mode changes.
+    viewModelScope.launch {
+      while (isActive) {
+        delay(TOR_BLINK_MS)
+        wanted.update { if (it.mode == TorMode.TOR && it.test == null) it.copy(dim = !it.dim) else it }
+      }
+    }
 
     // Send the wanted view when it changes, and again when the display (re)starts.
     viewModelScope.launch(Dispatchers.IO) {
@@ -126,6 +147,10 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
     viewModelScope.launch(Dispatchers.IO) {
       while (isActive) {
         delay(1_000)
+        // the PC is gone (it ended without saying so): finish the recording
+        if (recorder.active && SystemClock.elapsedRealtime() - _uiState.value.lastPacketAt > RECORD_SILENCE_MS) {
+          launch(Dispatchers.Main) { recorder.stop() }
+        }
         if (
             _uiState.value.keepAwake &&
                 glasses.state.value.displayState == DisplayState.STARTED &&
@@ -145,6 +170,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
     viewModelScope.launch {
       Wearables.registrationState.collect { state ->
         _uiState.update { it.copy(registrationState = state) }
+        if (state == RegistrationState.REGISTERED) checkGlassesPermissions()
       }
     }
     viewModelScope.launch {
@@ -189,6 +215,20 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  /** Whether the app may use the glasses' camera and microphone (for the recording). */
+  fun checkGlassesPermissions() {
+    viewModelScope.launch {
+      suspend fun allowed(permission: Permission): Boolean {
+        var granted = false
+        Wearables.checkPermissionStatus(permission).onSuccess { granted = it is PermissionStatus.Granted }
+        return granted
+      }
+      val camera = allowed(Permission.CAMERA)
+      val microphone = allowed(Permission.MICROPHONE)
+      _uiState.update { it.copy(cameraAllowed = camera, microphoneAllowed = microphone) }
+    }
+  }
+
   fun register(activity: Activity) = Wearables.startRegistration(activity)
 
   fun unregister(activity: Activity) = Wearables.startUnregistration(activity)
@@ -216,8 +256,8 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   fun test(mode: TorMode) {
     wanted.value =
         when (mode) {
-          TorMode.PRE_ALERT -> GlassesView(-1, mode, "Highway exit ahead", 5, 5.0)
-          TorMode.TOR -> GlassesView(-1, mode, "Highway exit ahead", 5, 5.0)
+          TorMode.PRE_ALERT -> GlassesView(-1, mode, "곧 자율주행 구간이 끝납니다")
+          TorMode.TOR -> GlassesView(-1, mode, "지금 직접 운전하세요")
           else -> GlassesView(-1, mode)
         }
   }
@@ -242,7 +282,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
       var dim = false
       while (SystemClock.elapsedRealtime() < end) {
         val seconds = ((end - SystemClock.elapsedRealtime()) / 1000 + 1).toInt()
-        wanted.value = GlassesView(-1, TorMode.TOR, "", seconds, 6.0, dim = dim)
+        wanted.value = GlassesView(-1, TorMode.TOR, "지금 직접 운전하세요", seconds, 6.0, dim = dim)
         dim = !dim
         delay(periodMs)
       }
@@ -254,20 +294,41 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   private fun onPacket(state: TorState): String {
     val view = state.toView()
     lastSeq = state.seq
-    // The PRE-ALERT banner and its countdown show for the first PRE_ALERT_BANNER_SECONDS only.
-    // After that the view has no countdown (seconds null), so it changes only with the text and
-    // is not resent over Bluetooth every second.
-    val elapsed = if (state.total != null && state.remaining != null) state.total - state.remaining else null
-    wanted.value =
-        if (view.mode == TorMode.PRE_ALERT && elapsed != null && elapsed >= PRE_ALERT_BANNER_SECONDS) {
-          view.copy(seconds = null)
-        } else {
-          view
-        }
+    // No countdown on the glasses: without it (seconds null) the alert views change only with the
+    // text (and the TOR blink, which a packet does not reset), not every second over Bluetooth.
+    wanted.update { current ->
+      if (view.mode == TorMode.PRE_ALERT || view.mode == TorMode.TOR) {
+        view.copy(seconds = null, dim = view.mode == TorMode.TOR && current.mode == TorMode.TOR && current.dim)
+      } else {
+        view
+      }
+    }
     _uiState.update {
       it.copy(lastState = state, lastPacketAt = SystemClock.elapsedRealtime(), packets = it.packets + 1)
     }
+    followRecord(state.record)
     return answer(state.seq)
+  }
+
+  /** The PC asks for a recording while its packets carry "record" (the run's name). */
+  private fun followRecord(name: String?) {
+    val status = recorder.status.value
+    // a failed recording is not tried again for the same run (every packet would), only for the next
+    fun canStart(current: RecorderStatus) =
+        current.state == "OFF" || (current.state == "ERROR" && current.name != name)
+    when {
+      name != null && canStart(status) ->
+          viewModelScope.launch(Dispatchers.Main) {
+            val session = glasses.startedSession
+            if (!canStart(recorder.status.value)) return@launch
+            if (session == null) {
+              recorder.refuse(name, "Start the glasses display to record")
+            } else {
+              recorder.start(session, name)
+            }
+          }
+      name == null && recorder.active -> viewModelScope.launch(Dispatchers.Main) { recorder.stop() }
+    }
   }
 
   private fun answer(seq: Int): String =
@@ -276,6 +337,7 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
           .put("shown", shownSeq)
           .put("display", glasses.state.value.displayState?.name ?: "NONE")
           .put("rtr_request", rtrPresses.get())
+          .put("recording", recorder.status.value.state)
           .toString()
 
   private suspend fun show(view: GlassesView) {
@@ -293,6 +355,8 @@ class TorViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   override fun onCleared() {
+    recorder.stop()
+    videoServer.stop()
     glasses.stop()
     receiver.stop()
     sounds.release()

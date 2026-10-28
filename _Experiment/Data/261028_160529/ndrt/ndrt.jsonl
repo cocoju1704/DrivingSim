@@ -1,0 +1,19 @@
+{"event": "start", "scenario": 3, "title": "디자인 전시회 참관 공지", "wall_time": "2026-10-28T16:05:33.395"}
+{"event": "simulator_connected", "address": "127.0.0.1", "wall_time": "2026-10-28T16:05:33.405"}
+{"type": "editor_focus", "editing": false, "event": "page_editor_focus", "wall_time": "2026-10-28T16:05:34.219"}
+{"type": "hidden", "editing": false, "event": "page_hidden", "wall_time": "2026-10-28T16:05:34.235"}
+{"type": "load", "editing": false, "width": 1707, "height": 898, "event": "page_load", "wall_time": "2026-10-28T16:05:36.606"}
+{"event": "experiment_start_kakao", "wall_time": "2026-10-28T16:05:38.494"}
+{"event": "name", "name": "김병주", "wall_time": "2026-10-28T16:05:39.416"}
+{"type": "editor_focus", "editing": false, "event": "page_editor_focus", "wall_time": "2026-10-28T16:05:40.565"}
+{"event": "draft", "chars": 51, "text": "디자인코리아 전시회 참관 일정\n일정 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n", "wall_time": "2026-10-28T16:05:41.161"}
+{"event": "rtr_request", "id": 1, "source": "auto", "draft": "디자인코리아 전시회 참관 일정\n일정 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n", "wall_time": "2026-10-28T16:07:35.593"}
+{"event": "rtr_result", "id": 1, "source": "auto", "lines": ["완료된 작업: 초안에 일정, 장소 내용이 있습니다.", "진행중이던 작업: 마지막으로 장소 문장을 마쳤습니다.", "앞으로 남은 작업: 집합 등을 마저 작성하시면 됩니다."], "analysis": {"reflected_items": ["일정", "장소"], "in_progress_item": "", "remaining_items": ["집합", "입장권", "조사", "보고서 마감", "점심", "세미나"]}, "warnings": [], "error": null, "seconds": 4.33, "wall_time": "2026-10-28T16:07:39.925"}
+{"trial": "1", "event": "experiment_prealert", "wall_time": "2026-10-28T16:07:40.471"}
+{"trial": "1", "source": "auto", "request_id": "1", "lines": ["완료된 작업: 초안에 일정, 장소 내용이 있습니다.", "진행중이던 작업: 마지막으로 장소 문장을 마쳤습니다.", "앞으로 남은 작업: 집합 등을 마저 작성하시면 됩니다."], "event": "experiment_rtr_shown", "wall_time": "2026-10-28T16:07:45.474"}
+{"event": "nudge", "index": 0, "source": "prealert", "from": "박 차장", "text": "김병주 사원 전시회 공지 다 돼가요?", "wall_time": "2026-10-28T16:07:50.470"}
+{"event": "nudge", "index": 1, "source": "prealert", "from": "정 대리", "text": "김병주님 공지 올라오면 바로 사전등록 하려구요~", "wall_time": "2026-10-28T16:07:54.976"}
+{"event": "nudge", "index": 2, "source": "prealert", "from": "길 인턴", "text": "저도요! 공지 기다리고 있어요 🙏", "wall_time": "2026-10-28T16:07:59.482"}
+{"event": "nudge", "index": 3, "source": "prealert", "from": "길 인턴", "text": "혹시 곧 올라오나요?", "wall_time": "2026-10-28T16:08:00.067"}
+{"event": "nudge", "index": 4, "source": "prealert", "from": "유 부장", "text": "공지 아직이에요? 마감 시간 안에는 꼭 올려주세요", "wall_time": "2026-10-28T16:08:05.039"}
+{"event": "end", "name": "김병주", "draft": "디자인코리아 전시회 참관 일정\n일정 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n", "notice": null, "followup": "waiting", "wall_time": "2026-10-28T16:08:10.228"}

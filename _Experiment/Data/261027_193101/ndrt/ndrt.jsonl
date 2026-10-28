@@ -1,0 +1,76 @@
+{"event": "start", "scenario": 4, "title": "디자인 전시회 참관 공지", "wall_time": "2026-10-27T19:31:05.600"}
+{"event": "simulator_connected", "address": "127.0.0.1", "wall_time": "2026-10-27T19:31:05.659"}
+{"type": "hidden", "editing": false, "event": "page_hidden", "wall_time": "2026-10-27T19:31:09.145"}
+{"type": "load", "editing": false, "width": 1707, "height": 898, "event": "page_load", "wall_time": "2026-10-27T19:31:09.219"}
+{"event": "experiment_start_kakao", "wall_time": "2026-10-27T19:31:10.699"}
+{"event": "name", "name": "김병주", "wall_time": "2026-10-27T19:31:14.232"}
+{"type": "editor_focus", "editing": false, "event": "page_editor_focus", "wall_time": "2026-10-27T19:31:32.406"}
+{"event": "draft", "chars": 7, "text": "디자인코리아 ", "wall_time": "2026-10-27T19:31:40.977"}
+{"event": "draft", "chars": 12, "text": "디자인코리아 전시회 ㄱ", "wall_time": "2026-10-27T19:31:43.475"}
+{"event": "draft", "chars": 11, "text": "디자인코리아 전시회 ", "wall_time": "2026-10-27T19:31:43.916"}
+{"event": "draft", "chars": 15, "text": "디자인코리아 전시회 참관 이", "wall_time": "2026-10-27T19:31:45.382"}
+{"event": "draft", "chars": 15, "text": "디자인코리아 전시회 참관 일", "wall_time": "2026-10-27T19:31:45.783"}
+{"event": "draft", "chars": 17, "text": "디자인코리아 전시회 참관 일정\n", "wall_time": "2026-10-27T19:31:46.862"}
+{"event": "draft", "chars": 22, "text": "디자인코리아 전시회 참관 일정\n장소 : ", "wall_time": "2026-10-27T19:31:49.018"}
+{"event": "draft", "chars": 24, "text": "디자인코리아 전시회 참관 일정\n일자 : 12", "wall_time": "2026-10-27T19:31:51.752"}
+{"event": "draft", "chars": 27, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 1", "wall_time": "2026-10-27T19:31:52.874"}
+{"event": "draft", "chars": 33, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n", "wall_time": "2026-10-27T19:31:55.548"}
+{"event": "draft", "chars": 38, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : ", "wall_time": "2026-10-27T19:31:56.685"}
+{"event": "draft", "chars": 51, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n", "wall_time": "2026-10-27T19:32:00.090"}
+{"event": "draft", "chars": 52, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\nㅁ", "wall_time": "2026-10-27T19:32:02.428"}
+{"event": "draft", "chars": 51, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n", "wall_time": "2026-10-27T19:32:02.997"}
+{"event": "draft", "chars": 59, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : ", "wall_time": "2026-10-27T19:32:06.014"}
+{"event": "draft", "chars": 62, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시", "wall_time": "2026-10-27T19:32:07.457"}
+{"event": "draft", "chars": 63, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n", "wall_time": "2026-10-27T19:32:07.988"}
+{"event": "draft", "chars": 70, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참ㄱㅁ : ", "wall_time": "2026-10-27T19:32:13.102"}
+{"event": "draft", "chars": 71, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참ㄱㅁ : 1", "wall_time": "2026-10-27T19:32:13.937"}
+{"event": "draft", "chars": 78, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원", "wall_time": "2026-10-27T19:32:20.262"}
+{"event": "draft", "chars": 79, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n", "wall_time": "2026-10-27T19:32:20.688"}
+{"event": "draft", "chars": 84, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n", "wall_time": "2026-10-27T19:32:30.331"}
+{"event": "draft", "chars": 86, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- ", "wall_time": "2026-10-27T19:32:31.093"}
+{"event": "draft", "chars": 111, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- 조사보고서 전시회 이틀 뒤까지 공유 드라이브엥", "wall_time": "2026-10-27T19:32:44.817"}
+{"event": "draft", "chars": 115, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- 조사보고서 전시회 이틀 뒤까지 공유 드라이브에 올리기", "wall_time": "2026-10-27T19:32:46.196"}
+{"event": "draft", "chars": 116, "text": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- 조사보고서 전시회 이틀 뒤까지 공유 드라이브에 올리기\n", "wall_time": "2026-10-27T19:32:46.901"}
+{"event": "rtr_request", "id": 1, "source": "auto", "draft": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- 조사보고서 전시회 이틀 뒤까지 공유 드라이브에 올리기\n", "wall_time": "2026-10-27T19:33:02.775"}
+{"trial": "1", "event": "experiment_prealert", "wall_time": "2026-10-27T19:33:07.922"}
+{"event": "rtr_result", "id": 1, "source": "auto", "lines": ["완료된 작업: 초안에 일자, 장소, 모임, 지참금, 보고서가 있습니다.", "진행중이던 작업: 마지막으로 보고서 문장을 마쳤습니다.", "앞으로 남은 작업: 조사 등을 마저 작성하시면 됩니다."], "analysis": {"reflected_items": ["일자", "장소", "모임", "지참금", "보고서"], "in_progress_item": "", "remaining_items": ["조사", "점심", "세미나"]}, "warnings": [], "error": null, "seconds": 10.09, "wall_time": "2026-10-27T19:33:12.878"}
+{"trial": "1", "source": "auto", "request_id": "1", "lines": ["완료된 작업: 초안에 일자, 장소, 모임, 지참금, 보고서가 있습니다.", "진행중이던 작업: 마지막으로 보고서 문장을 마쳤습니다.", "앞으로 남은 작업: 조사 등을 마저 작성하시면 됩니다."], "event": "experiment_rtr_shown", "wall_time": "2026-10-27T19:33:12.909"}
+{"event": "nudge", "index": 0, "source": "prealert", "from": "박 차장", "text": "김병주 사원 전시회 공지 다 돼가요?", "wall_time": "2026-10-27T19:33:17.893"}
+{"event": "nudge", "index": 1, "source": "prealert", "from": "정 대리", "text": "김병주님 공지 올라오면 바로 사전등록 하려구요~", "wall_time": "2026-10-27T19:33:22.412"}
+{"event": "nudge", "index": 2, "source": "prealert", "from": "길 인턴", "text": "저도요! 공지 기다리고 있어요 🙏", "wall_time": "2026-10-27T19:33:26.900"}
+{"event": "nudge", "index": 3, "source": "prealert", "from": "길 인턴", "text": "혹시 곧 올라오나요?", "wall_time": "2026-10-27T19:33:27.505"}
+{"event": "nudge", "index": 4, "source": "prealert", "from": "유 부장", "text": "공지 아직이에요? 마감 시간 안에는 꼭 올려주세요", "wall_time": "2026-10-27T19:33:32.422"}
+{"event": "nudge", "index": 5, "source": "prealert", "from": "한 대리", "text": "김병주님 조사 나눌 때 공지 보고 하려구요", "wall_time": "2026-10-27T19:33:36.959"}
+{"event": "nudge", "index": 6, "source": "prealert", "from": "노 사원", "text": "공지 언제쯤 올라와요? ㅠㅠ", "wall_time": "2026-10-27T19:33:41.461"}
+{"event": "nudge", "index": 7, "source": "prealert", "from": "박 차장", "text": "김병주 사원 서둘러 주세요~", "wall_time": "2026-10-27T19:33:41.960"}
+{"trial": "1", "event": "experiment_tor", "wall_time": "2026-10-27T19:34:07.898"}
+{"trial": "1", "forced": "0", "event": "experiment_takeover", "wall_time": "2026-10-27T19:34:09.946"}
+{"event": "nudge", "index": 8, "source": "hazard", "from": "정 대리", "text": "김병주님 사전등록하려고 대기 중이에요~", "wall_time": "2026-10-27T19:34:46.144"}
+{"event": "nudge", "index": 9, "source": "hazard", "from": "박 차장", "text": "공지 아직이에요?", "wall_time": "2026-10-27T19:34:48.108"}
+{"event": "nudge", "index": 10, "source": "hazard", "from": "유 부장", "text": "마감 시간 얼마 안 남았어요", "wall_time": "2026-10-27T19:34:50.136"}
+{"event": "followup_release", "source": "past the scene", "wall_time": "2026-10-27T19:34:50.919"}
+{"event": "followup_message", "index": 0, "from": "길 인턴", "text": "사전등록 페이지 봤는데 전시회 닷새 전까지만 받는대요!", "wall_time": "2026-10-27T19:34:50.932"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:34:51.578"}
+{"event": "followup_message", "index": 1, "from": "정 대리", "text": "사전등록 놓치면 정가네요 ㅠ", "wall_time": "2026-10-27T19:34:53.937"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:34:54.755"}
+{"event": "followup_message", "index": 2, "from": "박 차장", "text": "다들 마감 전에 꼭 등록하세요. 등록하면 문자로 QR이 오는데 그거 당일 입구에서 보여줘야 해요", "wall_time": "2026-10-27T19:34:56.940"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:34:58.037"}
+{"event": "followup_message", "index": 3, "from": "노 사원", "text": "그리고 킨텍스 정문 앞이 공사 중이라 모이기 어렵대요. 2번 출입구 앞이 넓어요", "wall_time": "2026-10-27T19:34:59.943"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:00.201"}
+{"event": "followup_message", "index": 4, "from": "유 부장", "text": "그럼 2번 출입구 앞에서 모입시다", "wall_time": "2026-10-27T19:35:02.945"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:03.248"}
+{"event": "followup_message", "index": 5, "from": "한 대리", "text": "저 그날 오전에 병원 예약 있는데 조금 늦어도 될까요?", "wall_time": "2026-10-27T19:35:05.957"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:06.337"}
+{"event": "followup_message", "index": 6, "from": "유 부장", "text": "개인 사정은 따로 얘기해요 ㅎㅎ", "wall_time": "2026-10-27T19:35:08.969"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:09.417"}
+{"event": "followup_message", "index": 7, "from": "박 차장", "text": "그리고 재무팀에서 연락 왔는데 입장권 회사 지원이 1인 8천원으로 줄었대요", "wall_time": "2026-10-27T19:35:11.980"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:12.493"}
+{"event": "followup_message", "index": 8, "from": "정 대리", "text": "흠 아쉽네요. 인턴도 입장권 지원 똑같이 8천원이에요?", "wall_time": "2026-10-27T19:35:14.982"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:15.583"}
+{"event": "followup_message", "index": 9, "from": "박 차장", "text": "인턴은 입장권 전액 지원이에요", "wall_time": "2026-10-27T19:35:17.983"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:18.829"}
+{"event": "followup_message", "index": 10, "from": "유 부장", "text": "그리고 세미나는 디자인 파트만 말고 다 같이 들읍시다", "wall_time": "2026-10-27T19:35:20.985"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:22.029"}
+{"event": "followup_message", "index": 11, "from": "박 차장", "text": "@김병주 추가사항까지 반영해서 공지 마저 작성해서 올려주세요~", "wall_time": "2026-10-27T19:35:23.987"}
+{"type": "message_sound", "editing": false, "event": "page_message_sound", "wall_time": "2026-10-27T19:35:24.088"}
+{"event": "end", "name": "김병주", "draft": "디자인코리아 전시회 참관 일정\n일자 : 12월 10일(수)\n장소 : 킨텍스 제2전시장 7홀\n모임 시각 : 10시\n지참금 : 인당 10000원\n특이사항\n- 조사보고서 전시회 이틀 뒤까지 공유 드라이브에 올리기\n", "notice": null, "followup": "done", "wall_time": "2026-10-27T19:35:27.774"}

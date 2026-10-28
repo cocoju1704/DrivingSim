@@ -1,0 +1,10 @@
+{"event": "start", "scenario": 3, "title": "디자인 전시회 참관 공지", "wall_time": "2026-10-28T14:03:26.032"}
+{"event": "simulator_connected", "address": "127.0.0.1", "wall_time": "2026-10-28T14:03:26.175"}
+{"type": "load", "editing": false, "width": 1280, "height": 579, "event": "page_load", "wall_time": "2026-10-28T14:03:28.954"}
+{"type": "focus", "editing": false, "event": "page_focus", "wall_time": "2026-10-28T14:03:30.386"}
+{"event": "experiment_start_kakao", "wall_time": "2026-10-28T14:03:31.371"}
+{"event": "name", "name": "김병주", "wall_time": "2026-10-28T14:03:35.649"}
+{"type": "blur", "editing": false, "event": "page_blur", "wall_time": "2026-10-28T14:03:47.231"}
+{"type": "focus", "editing": false, "event": "page_focus", "wall_time": "2026-10-28T14:03:52.952"}
+{"type": "blur", "editing": false, "event": "page_blur", "wall_time": "2026-10-28T14:03:55.776"}
+{"event": "end", "name": "김병주", "draft": "", "notice": null, "followup": "waiting", "wall_time": "2026-10-28T14:04:12.978"}

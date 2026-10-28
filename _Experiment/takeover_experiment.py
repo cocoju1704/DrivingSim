@@ -34,8 +34,8 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
     I                 : interior light on/off
     H                 : horn (played by the audio engine)
     E                 : re-engage autonomous mode (manual driving). It also comes back by itself
-                        REENGAGE_AFTER (10) s after the takeover, in scenarios 2 and 4 10 s after the
-                        car is past the lane 2 obstacle, in the lane the car is in (--no-reengage: off)
+                        REENGAGE_AFTER (10) s after the takeover, in scenarios 2 and 3 10 s after the
+                        car is past the van after the closure, in the lane the car is in (--no-reengage: off)
     K                 : NDRT chat: the team's follow-up messages now (else after the takeover)
 
     TAB               : next camera position: driver's seat, windshield (no steering wheel),
@@ -43,44 +43,49 @@ and loops the figure-8 highway forever, with 10 traffic cars (--vehicles N).
     F1                : toggle HUD
     ESC               : quit
 
-Scenarios (--scenario N). Each has an event point on the loop; the TOR comes
---tor-lead seconds before the car reaches it, once per pass, so the pre-alert starts
---pre-alert seconds earlier still (--alert-lead: set the pre-alert's lead directly):
-    0  practice       starts in the town and goes round its blocks to the loop, about 2 km with
-                      21 turns (PRACTICE_SPAWN_INDEX, PRACTICE_VIA), by hand, guided by a
-                      navigation map at the top right (NavigationMap); once on the loop
+Scenarios (--scenario N-V: the number and the variant, a or b, e.g. 2-b; a number alone is
+variant a). Each has an event point on the loop; the TOR comes --tor-lead seconds before the car
+reaches it, once per pass, so the pre-alert starts --pre-alert seconds earlier still
+(--alert-lead: set the pre-alert's lead directly):
+    0    practice     starts in the town (PRACTICE_SPAWN_INDEX): the driver finds the way to the
+                      highway by hand; the navigation map at the top right shows only where
+                      the entry is (NavigationMap). On the loop one lap by hand, then
                       autonomous driving starts, and P gives a takeover to practise;
                       clear noon weather
-    1  highway exit   event: the exit point (end of the overpass, --exit-at)
+    1-a  highway exit event: the exit point (end of the overpass, --exit-at)
                       TOR 5 s before it
-    2  work zone      after the first lap, lanes 3 and 4 are closed further ahead
+    1-b               the same on the opposite carriageway, the loop driven the other way round:
+                      the exit ramp REVERSE_EXIT_AT (908) m from the start, on the other side
+                      of the highway (Town04 has no exits on the left, next to the median)
+    2-a  work zone    after the first lap, lanes 3 and 4 are closed further ahead
                       (cones, barriers, signs, work vehicles, --workzone-at);
                       TOR 5 s before the cones reach lane 3: no input until the forced
                       takeover, and the car runs into them
-    3  sudden fog     at the fog point (--fog-at) the fog starts to thicken from 0;
-                      pre-alert when it reaches --fog-threshold (45, after --fog-rise
-                      20 s); it keeps thickening and reaches --fog-max (90)
-                      --fog-peak-after (10) s after the takeover
-    4  accident       a crash closes lanes 3 and 4 (crashed cars, police car, ambulance,
+    3-a  accident     a crash closes lanes 3 and 4 (crashed cars, police car, ambulance,
                       cones, signs, --accident-at); it appears on the second pass;
                       TOR 5 s before the cones reach lane 3, as in scenario 2
+    2-b, 3-b          mirrored: the car drives in lane 2 and lanes 1 and 2 close (the arrow
+                      board points right), the escort car keeps lane 4, the van stands in lane 3
 
-After the takeover cars drive next to the car (EscortCars). Scenario 3: beside it in the
-lanes next to it for 30 s, so the driver keeps the lane (scenario 1: none, the driver leaves
-at the exit). Scenarios 2 and 4: from the takeover on, cars in lanes 1 and 3 a little ahead; the lane 3 car
+After the takeover (scenario 1: nothing, the driver leaves at the exit). Scenarios 2 and 3
+(EscortCars, merge plan): from the takeover on, cars in lanes 1 and 3 a little ahead; the lane 3 car
 falls back out of view before the closure; the lane 1 car stays level with the car. 250 m past the
-closure a broken-down van (hazard lights) stands in lane 2 only: with lane 1 taken, the driver has to
-move over to lane 3. Past the van the lane 1 car drives off. Once the driver has taken over and is
-150 m past the van, the scene is removed with its signs (no more pre-alerts for it).
+closure (3: 350 m) a broken-down van (hazard lights) stands in lane 2 only: with lane 1 taken, the
+driver has to move over to lane 3. Past the van the lane 1 car drives off. Variant b the other way
+round: lanes 4 and 2, the van in lane 3, the driver moves over to lane 2. Once the driver has taken
+over and is 150 m past the van, the scene is removed with its signs (no more pre-alerts for it).
 
 In curves the autonomous car slows down below --speed (about 3 m/s^2 sideways at most).
 
 Every takeover sequence (P key) is logged. The run leaves the folder
-Data/YYMMDD_HHMMSS/ (start time, inside the CARLA_0.9.16 folder) with
-    raw.csv       one row per frame from the pre-alert on, plus a TRIAL_END row per trial
-    summary.csv   takeover metrics per trial (takeover time, max lateral and
-                  longitudinal acceleration, lane keeping, ...)
-    figure.png    speed, acceleration, lane offset and driver input of every trial
+_Experiment/Data/YYMMDD_HHMMSS/ (start time) with
+    driving/raw.csv       one row per frame from the pre-alert on, plus a TRIAL_END row per trial
+    driving/summary.csv   takeover metrics per trial (takeover time, max lateral and
+                          longitudinal acceleration, lane keeping, ...)
+    driving/figure.png    speed, acceleration, lane offset and driver input of every trial
+    ndrt/                 the NDRT chat with --ndrt: ndrt.jsonl (the chat, --ndrt here) and the
+                          RtR summaries (rtr.jsonl: requests and results of the chat,
+                          rtr_experiment.jsonl: what this program asked for and showed)
 summary.csv and figure.png are written when the program ends (raw.csv is written
 while it runs). Use --no-log to turn the log off.
 
@@ -90,9 +95,9 @@ dashboard is in view (--view chase: from behind the car).
 --glasses PHONE_IP shows the pre-alert and the TOR on Meta Ray-Ban Display glasses
 instead of the screen: TORApp on the phone (TORApp folder) receives the state over
 Wi-Fi and puts it on the glasses. --glasses usb: over the USB cable with USB tethering
-on in the phone, which finds the phone's address by itself. Its alert sounds (chime, beeps, click) come
-from the glasses' speakers and from the simulator PC as well. The vehicle
-sounds of the audio engine stay on the PC.
+on in the phone, which finds the phone's address by itself. The alert sounds (chime, beeps, click)
+come from the simulator PC only, as the vehicle sounds of the audio engine (TORApp's own
+"Play alert sounds" on the glasses' speakers is off unless switched on in the app).
 
 During the pre-alert the glasses also show an intervention text, chosen in
 intervention_config.json next to this script (--intervention-config):
@@ -101,41 +106,49 @@ intervention_config.json next to this script (--intervention-config):
     "format"            summary (statements, read only) or question (questions);
                         both show one line at a time, each for "question_seconds"
     "delay_seconds"     from the pre-alert to the text
-With the defaults (delay 5, question 10): 0-5 s pre-alert only, 5-15 / 15-25 /
-25-35 s SA level or ready-to-resume step 1 / 2 / 3 (NDRT summary: 완료된 작업 ->
-진행중이던 작업 -> 앞으로 남은 작업), 35-60 s nothing, 60 s TOR. The glasses show the PRE-ALERT
-banner for the first 5 s only (TORApp), never the time left; after that only the
-text and the mode box.
-The text is NDRT_scripts/scenario<N>_<intervention>_<format>.txt: one line per
+    "intro_seconds"     NDRT only: first a line on what the participant was doing, this long
+                        (NDRT_INTRO: "김민수님께서 마케팅팀 톡방에 공지를 작성 중이셨습니다.", default 5)
+With the defaults (delay 5, question 10): 0-5 s pre-alert banner, (NDRT: 5-10 s the intro,
+then) 5-15 / 15-25 / 25-35 s SA level or ready-to-resume step 1 / 2 / 3 (NDRT summary: 완료된
+작업 -> 진행중이던 작업 -> 앞으로 남은 작업; NDRT: 10-40 s), then the pre-alert banner again
+until the TOR at 60 s. The pre-alert banner (PRE_ALERT_MESSAGE, "곧 자율주행 구간이 끝납니다")
+shows whenever no text does (auditory: all along), never the time left; the TOR banner
+(TOR_MESSAGE, "지금 직접 운전하세요") blinks, no countdown. On the screen and the glasses alike.
+From the TOR on the NDRT chat page shows the RtR summary too, folded above the notice editor.
+The text is NDRT_scripts/scenario<N>-<V>_<intervention>_<format>.txt (the variant's own, e.g.
+scenario2-b_driving_summary.txt), else scenario<N>_<intervention>_<format>.txt: one line per
 displayed line, # starts a comment line.
 
 Test run: "test": true in the config (intervention_none.json): the pre-alert comes
 "test_alert_after" (10) s after the start and lasts "test_pre_alert" (5) s, and the car starts
 so far before the event point that the TOR still comes the scenario's TOR lead before it
 (the work zone and the accident are there from the start):
-    python _Experiment\\takeover_experiment.py --scenario 4 --intervention-config _Experiment\\intervention_none.json
+    python _Experiment\\takeover_experiment.py --scenario 3-a --intervention-config _Experiment\\intervention_none.json
 
-The NDRT is a team group chat that looks like KakaoTalk, on the NDRT laptop: kakao_ndrt.py runs
-there (started before the drive, with the same --scenario), the participant enters their name and
-writes the room's notice from what the team said (kakao_sets/scenario<N>.json). --ndrt <laptop IP>
-connects this program to it: after the takeover the team adds more messages, silently, which the
-notice has to take in: once the car is past the scene (scenarios 2 and 4; at the latest
+The NDRT is a team group chat that looks like KakaoTalk, on the NDRT laptop: with --ndrt here (the
+default with --wireless) this program runs the chat (kakao_ndrt.py) and the laptop only opens
+http://<this PC>:5008/ in its browser (the page can stay open between runs); --ndrt <laptop IP>
+instead connects to kakao_ndrt.py running on the laptop (started before the drive, with the same
+--scenario). The participant enters their name and writes the room's notice from what the team said
+(kakao_sets/scenario<N>.json): after the takeover the team adds more messages, silently, which the
+notice has to take in: once the car is past the scene (scenarios 2 and 3; at the latest
 NDRT_FOLLOWUP_LATEST s after the takeover), else NDRT_FOLLOWUP_AFTER s after the takeover; K: now.
 The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl too, on its clock.
 During the pre-alert, from NUDGE_FROM (10) s until the intervention text is over (35 s with the
 defaults), the team presses for the notice (kakao_sets "nudges", each "after" s after the
 pre-alert): the message goes to the chat and the KakaoTalk sound plays on this PC
 (kakao_app/kakao.mp3; the chat page itself stays silent for these). "late_nudges" do the same
-after the takeover, counted from when the car is past the lane 2 hazard (scenarios 2 and 4; in 1
-and 3 from LATE_NUDGE_NO_HAZARD s after the takeover).
+after the takeover, counted from when the car is past the van (scenarios 2 and 3; in 1 from
+LATE_NUDGE_NO_HAZARD s after the takeover).
 
 NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
 the laptop sends the notice draft to ChatGPT (OpenAI API key there: OPENAI_API_KEY or
 _Experiment/openai_api_key.txt).
-The summary is requested RTR_LEAD (5) s before the pre-alert (scenario 1/2/4: from the distance
-and speed, 3: from the fog rate; P key: right away, always a new one), and also by the RtR button
+The summary is requested RTR_LEAD (5) s before the pre-alert (from the distance and speed; P key:
+right away, always a new one), and also by the RtR button
 in TORApp. When the text is due, the newest summary requested since then is shown; if none has
-arrived, the NDRT_scripts file is shown instead (logged). Requests and results go to rtr.jsonl.
+arrived, the NDRT_scripts file is shown instead (logged). Requests and results go to
+ndrt/rtr_experiment.jsonl.
 (The Gmail extension that did this before is in legacy/gmailextension.)
 
 Run from the CARLA_0.9.16 root folder:
@@ -145,7 +158,7 @@ Run from the CARLA_0.9.16 root folder:
     python _Experiment\\takeover_experiment.py --lane 1 --vehicles 15
     python _Experiment\\takeover_experiment.py --glasses 192.168.0.23
     python _Experiment\\takeover_experiment.py --glasses usb   (USB tethering)
-    python _Experiment\\takeover_experiment.py --scenario 4 --wireless   (phone and NDRT laptop over Wi-Fi, devices.json)
+    python _Experiment\\takeover_experiment.py --scenario 3-b --wireless   (phone and NDRT laptop over Wi-Fi, devices.json)
     python _Experiment\\takeover_experiment.py --phone-cluster   (gauges on a phone, phone_cluster.py)
     python _Experiment\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
@@ -156,6 +169,7 @@ import argparse
 import csv
 import ctypes
 import datetime
+import hashlib
 import json
 import logging
 import math
@@ -167,6 +181,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 
 import carla
 import numpy
@@ -226,9 +242,13 @@ MAP_NAME = 'Town04'
 # works for lanes 1-3 (lane 1 is next to the median); lane 4 is the exit lane.
 START_SPAWN_INDEX = 15
 DEFAULT_LANE = 3
+MIRRORED_LANE = 2       # variant b of scenarios 2 and 3: lanes 1 and 2 close, the car drives in lane 2
+# The opposite carriageway (scenario 1-b: the loop the other way round) has positive lane ids, and
+# its lanes 1-4 are ids 3-6 (ids 1 and 2 are the median's).
+REVERSE_LANE_OFFSET = 2
 DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instrument cluster
-DRIVER_VIEW_PITCH = 4.0    # degrees up, driver seat and windshield views (the car's own cluster is out of view;
-                           # higher cuts off the bottom of the left mirror on 3 x 60 degree monitors)
+DRIVER_VIEW_PITCH = 0.5    # degrees up, driver seat and windshield views. At 43 degrees per monitor the
+                           # view is 24.6 degrees high: higher cuts off the left mirror, lower the rear-view one
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
 MIRROR_FOV = 60.0          # degrees, side mirror views
 DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
@@ -238,18 +258,19 @@ DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all mon
 # from that view (the glass is seen at an angle). Outline: (x, y) shares of the glass's bounding box;
 # in the windshield view the window pillar hides the left part of the right glass.
 LEFT_MIRROR = {
-    0: ((0.2800, 0.0512, 1.3944), (0.234, 0.121),
-        [(0.0, 0.42), (0.14, 0.11), (0.26, 0.02), (0.36, 0.0), (0.8, 0.02), (0.87, 0.08), (0.93, 0.17),
-         (0.95, 0.23), (1.0, 0.54), (0.99, 0.73), (0.97, 0.86), (0.92, 0.99), (0.64, 0.92), (0.05, 0.72)]),
+    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, from the bare glass
+    0: ((0.2776, 0.0512, 1.3947), (0.2173, 0.1219),
+        [(0.0, 0.48), (0.1, 0.2), (0.22, 0.05), (0.35, 0.0), (0.8, 0.0), (0.9, 0.06), (0.95, 0.16),
+         (1.0, 0.55), (0.97, 0.9), (0.9, 1.0), (0.06, 0.82), (0.0, 0.6)]),
     1: ((0.2802, 0.0506, 1.3889), (0.1359, 0.1279),
         [(0.0, 0.39), (0.0, 0.33), (0.12, 0.09), (0.2, 0.02), (0.25, 0.0), (0.51, 0.0), (0.77, 0.04),
          (0.85, 0.09), (0.91, 0.18), (1.0, 0.53), (1.0, 0.78), (0.94, 1.0), (0.07, 0.63), (0.03, 0.56)]),
 }
 RIGHT_MIRROR = {
-    # measured again at DRIVER_VIEW_PITCH 4 from the bare glass in the window
-    0: ((0.2786, 0.0535, 1.3983), (0.168, 0.1185),
-        [(0.0, 0.5), (0.07, 0.19), (0.16, 0.06), (0.22, 0.01), (0.7, 0.03), (0.76, 0.07), (0.86, 0.18),
-         (0.98, 0.42), (1.0, 0.58), (0.97, 0.75), (0.94, 0.81), (0.5, 0.93), (0.28, 0.99), (0.05, 0.99), (0.0, 0.76)]),
+    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, from the bare glass
+    0: ((0.2782, 0.0535, 1.3995), (0.1772, 0.1199),
+        [(0.0, 0.5), (0.1, 0.06), (0.2, 0.03), (0.7, 0.05), (0.8, 0.1), (0.96, 0.38), (0.99, 0.7),
+         (0.94, 0.87), (0.5, 0.93), (0.3, 0.98), (0.06, 0.98), (0.0, 0.62)]),
     1: ((0.2782, 0.0540, 1.3990), (0.1024, 0.1105),
         [(0.11, 0.05), (0.18, 0.0), (0.76, 0.0), (0.87, 0.07), (0.97, 0.22), (1.0, 0.36), (0.99, 0.57),
          (0.97, 0.77), (0.93, 0.83), (0.59, 0.92), (0.21, 0.99), (0.0, 1.0)]),
@@ -257,13 +278,12 @@ RIGHT_MIRROR = {
 MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
 # Rear-view mirror glass, m from the driver's eyes (forward, right, up). The windshield view is in
 # front of it, so there its image stays where the driver's seat view shows the glass.
-REAR_MIRROR = (0.571, 0.007, 0.1085)
-REAR_MIRROR_SIZE = (0.249, 0.0795)  # m
-# Its outline bends where the glass crosses from the middle monitor to the right one. Measured at
-# DRIVER_VIEW_PITCH 4 from the bare glass in the window (3 x 2560 x 1440, 60 degrees per monitor).
-REAR_MIRROR_OUTLINE = [(0.0, 0.58), (0.02, 0.19), (0.04, 0.06), (0.1, 0.01), (0.34, 0.0), (0.94, 0.4), (0.98, 0.46),
-                       (0.99, 0.57), (1.0, 0.91), (0.99, 0.98), (0.94, 1.0), (0.34, 0.76), (0.08, 0.76), (0.01, 0.72),
-                       (0.0, 0.62)]
+REAR_MIRROR = (0.571, 0.0123, 0.1138)
+REAR_MIRROR_SIZE = (0.2311, 0.0820)  # m
+# Measured at DRIVER_VIEW_PITCH 0.5 and 43 degrees per monitor (3 x 2560 x 1440) from the bare glass in
+# the window: all of it on the right monitor now, slanted by its turned camera.
+REAR_MIRROR_OUTLINE = [(0.0, 0.57), (0.03, 0.14), (0.05, 0.02), (0.13, 0.01), (0.93, 0.38), (0.97, 0.44), (0.98, 0.53),
+                       (1.0, 0.9), (0.99, 0.97), (0.94, 0.99), (0.09, 0.76), (0.01, 0.69), (0.0, 0.58)]
 REAR_MIRROR_FOV = 45.0             # degrees
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 # The gauges (throttle pedal, speed) on a tablet standing at the bottom middle of the middle monitor,
@@ -299,10 +319,11 @@ PEDAL_DEADZONE = 0.02        # pedal travel below this reads 0 (released pedals 
 ENGINE_DAMPING = 1.0
 # Stronger brakes, so that the brake pedal fully pressed still stops the car as the default MKZ.
 BRAKE_TORQUE_SCALE = 1.35
-# brake pedal travel -> CARLA brake, (travel, brake): the default MKZ's deceleration from 80 km/h
-# (2.9 m/s^2 at 5 % travel, 3.8 at 20 %, 6.0 at 50 %, 7.5 fully pressed). Refitted with ENGINE_DAMPING 1.0
-# (its regen adds to the brake) so each travel brakes as hard as with the curve made for 0.35.
-BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.25), (0.1, 0.30), (0.2, 0.39), (0.3, 0.50), (0.5, 0.63), (1.0, 0.77)]
+# brake pedal travel -> CARLA brake, (travel, brake): progressive like a car's brake, gentle when
+# touched, an emergency stop when pressed fully. Measured from 82 km/h with ENGINE_DAMPING 1.0 (its
+# regen is in these): 0.9 m/s^2 at 5 % travel, 1.3 at 10 %, 2.0 at 20 %, 2.7 at 30 %, 4.2 at 50 %,
+# 5.8 at 75 %, 6.9 fully pressed. (The curve before gave 2.1 m/s^2 already at 5 %: too sharp.)
+BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.06), (0.1, 0.12), (0.2, 0.24), (0.3, 0.35), (0.5, 0.57), (0.75, 0.80), (1.0, 1.0)]
 # CARLA's throttle is a share of the engine torque at any speed: a slightly pressed pedal would keep
 # accelerating to well past 100 km/h. The wheel's throttle pedal instead asks for an acceleration
 # that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
@@ -318,8 +339,9 @@ PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pres
 # measured on the loop's flat straight at 1900-2300 m (not monotonic: the automatic shifts up)
 HOLD_THROTTLE = [(0.0, 0.20), (8.0, 0.23), (33.0, 0.29), (53.0, 0.28), (80.0, 0.25), (112.0, 0.39), (130.0, 0.50),
                  (190.0, 0.90)]
-# After the takeover the car keeps the speed it had (like the autopilot's engine power) until the driver
-# presses the throttle or the brake: throttle = HOLD_THROTTLE + PI on the speed error (SpeedHold).
+# --speed-hold: after the takeover the car keeps the speed it had (like the autopilot's engine power) until
+# the driver presses the throttle or the brake: throttle = HOLD_THROTTLE + PI on the speed error (SpeedHold).
+# Off by default: from the takeover on only the driver's pedals move the car (MALAT, MALON).
 SPEED_HOLD_GAIN_P = 0.03     # throttle per km/h below the takeover speed
 SPEED_HOLD_GAIN_I = 0.01     # throttle per km/h per second (hills)
 # Pedal released: like an automatic, the car creeps forward at a walking pace unless the brake is pressed.
@@ -355,22 +377,24 @@ NPC_NEAR_RANGE = 300.0    # traffic fills this stretch around the start first
 NPC_EXCLUDED = ('vehicle.micro.microlino',)  # base_type car, but drives badly in Traffic Manager traffic
 WORKZONE_AT = 1990.0          # scenario 2: taper start, m from the start (straight, 4 lanes)
 WORKZONE_AFTER_LAPS = 1       # scenario 2: the work zone appears after this many laps
-WORKZONE_TAPER = 60.0         # length of the taper that closes lanes 3 and 4
+WORKZONE_TAPER = 60.0         # length of the taper that closes lanes 3 and 4 (b: 2 and 1)
 WORKZONE_LENGTH = 260.0       # closed stretch after the taper
 WORKZONE_END_TAPER = 24.0     # cones that open the lanes again
 WORKZONE_CLEARANCE = 5.0      # the work zone appears only when no car is this close (m) to lane 3 along it
 WORKZONE_MAX_WAIT = 30.0      # ... but after at most this many seconds
 CONE_SPACING = 10.0
 LANE_WIDTH = 3.5
-WORKZONE_LANES = (3, 4)
+WORKZONE_LANES = (3, 4)       # variant a; b: closed_lanes(), 2 and 1
 # Signs (road_signs.py) on the right shoulder: (m before the event point, text lines, arrow)
 SIGN_SHOULDER = 1.5 * LANE_WIDTH + 2.5  # m right of lane 3's center: past the edge of lane 4
 SIGN_HEIGHT = 2.5                       # m from the road to the bottom of the board
 SIGN_IMAGE_WIDTH = 2.4                  # m: image signs (WORKZONE_SIGNS)
 SIGN_PLATE_LETTER = 0.6                 # m: letters on the plate under an image sign
-# where lanes 3 and 4 start to close (scenarios 2 and 4): a square orange board with a white arrow to
-# the left, over the line between lanes 3 and 4, so the start of the closure shows from afar
+# where lanes 3 and 4 start to close (scenarios 2 and 3): a square orange board with a white arrow to
+# the left, over the line between lanes 3 and 4, so the start of the closure shows from afar (variant
+# b: an arrow to the right over the line between lanes 1 and 2)
 ARROW_BOARD_IMAGE = 'arrow_left.png'
+ARROW_BOARD_MIRRORED = 'arrow_right.png'
 ARROW_BOARD_WIDTH = 2.2                 # m (square)
 ARROW_BOARD_PIXELS = 24                 # across: thick lines, so it shows from 150 m+
 ARROW_BOARD_HEIGHT = 1.0                # m from the road to the bottom of the board
@@ -382,8 +406,12 @@ EXIT_SIGNS = ((1000.0, ['EXIT', '1 km'], None), (500.0, ['EXIT', '500 m'], None)
 # makes drivers change lanes early; the one arrow is the arrow board where the lanes start to close).
 SCENE_SIGN_BEFORE = 200.0     # m before the scene
 WORKZONE_SIGNS = ((SCENE_SIGN_BEFORE, [], None, 'roadwork.png'),)
-ACCIDENT_AT = 880.0           # scenario 4: the crashed cars, m from the start (straight, 4 lanes, 180 m+
-                              # from the rest of the loop: not in view from the overpass before it)
+ACCIDENT_AT = 780.0           # scenario 3: the crashed cars, m from the start (straight, 4 lanes). Was
+                              # 880: the takeover period then reached the sharp curve at ~990 m; from
+                              # 780 it ends on the straight (400-970 m). On the ramp down from the
+                              # crossing (5 m up), ~205 m from the loop's 2200 m straight below.
+ACCIDENT_OBSTACLE_AFTER = 350.0  # scenario 3: the lane 2 van this many m after the scene's end: ~1190 m
+                                 # from the start, on the straight after the sharp curve
 ACCIDENT_SPAWN_AHEAD = 2300.0  # m ahead of the ego car at which the scene appears: beyond view, and
                                # farther than the pre-alert comes (~1.7 km at 80 km/h)
 ACCIDENT_MAX_WAIT = 15.0      # s it waits for traffic to pass the scene, as WORKZONE_MAX_WAIT
@@ -392,23 +420,23 @@ ACCIDENT_END = 60.0           # ... to the last cone after it
 ACCIDENT_TAPER_FROM = -50.0   # m from the crashed cars where the cones start closing lane 3 ...
 ACCIDENT_TAPER_TO = -10.0     # ... and where they reach the edge of lane 2
 CAR_HALF_WIDTH = 1.0          # m: the ego car's right side, for where the cones reach it in lane 3
-ACCIDENT_LANES = (3, 4)
+ACCIDENT_LANES = (3, 4)       # variant a; b: 2 and 1
 SCENE_CLEAR_BEHIND = 150.0    # m the car is past the lane 2 obstacle after the takeover when the scene
                               # is removed with its signs (no more pre-alerts for it)
 # After the work zone / accident a broken-down van with its hazard lights on stands in lane 2 only, while
-# the escort car in lane 1 drives level with the ego car: the driver has to move over to lane 3.
+# the escort car in lane 1 drives level with the ego car: the driver has to move over to lane 3 (variant
+# b: the van in lane 3, the escort car in lane 4, over to lane 2).
 LANE2_OBSTACLE = 'vehicle.mercedes.sprinter'  # its front doors open (VehicleDoor; CARLA has no trunk)
 LANE2_TRIANGLE = 'warning_triangle.png'       # SIGN_IMAGE_DIR: a warning triangle on the road behind it ...
 LANE2_TRIANGLE_BEHIND = 40.0                  # ... this many m behind the van
 LANE2_TRIANGLE_WIDTH = 0.9                    # m (a real one is ~0.45: bigger, so it shows from afar)
 LANE2_TRIANGLE_PIXELS = 24                    # across: thick lines
-LANE2_OBSTACLE_AFTER = 250.0  # m after the end of the scene (scenario 4: on the straight after the curve)
+LANE2_OBSTACLE_AFTER = 250.0  # m after the end of the scene (scenario 2; scenario 3: ACCIDENT_OBSTACLE_AFTER)
 LANE2_OBSTACLE_SPAWN = 500.0  # m ahead of the ego car (after the takeover) at which it appears ...
 LANE2_OBSTACLE_LATEST = 250.0  # ... as soon as no car is near its place, but at this distance at the latest
 ACCIDENT_SIGNS = ((SCENE_SIGN_BEFORE, [], None, 'caution.png'),)  # general danger: "!" in the triangle
-# After the takeover cars drive level with the ego car in the lanes next to it, so the driver keeps
-# the lane and the takeover period measures steady driving (EscortCars). Scenarios 2 and 4: from
-# when the car is past the closed lanes; scenario 1: on the left only, the exit is on the right.
+# beside plan (EscortCars.start; no scenario asks for it now, it was the fog's): cars drive level with
+# the ego car in the lanes next to it after the takeover, so the driver keeps the lane.
 ESCORT_SECONDS = 30.0         # s they stay beside the ego car
 ESCORT_APPROACH = 6.0         # s to come up from behind, and to drop back again at the end
 ESCORT_BEHIND = -45.0         # m behind the ego car where they come from and go back to
@@ -417,7 +445,7 @@ ESCORT_GAP_GAIN = 0.5         # m/s faster than the ego car per m behind their p
 ESCORT_CATCH_UP = 8.0         # m/s at most faster or slower than the ego car
 ESCORT_SPEED_STEP = 0.12      # m/s their speed changes by at most per frame (about 3.5 m/s^2 at 30 FPS)
 ESCORT_GONE = 70.0            # m behind (or ahead) at which one is out of view and removed
-# merge plan (scenarios 2 and 4, lanes 3 and 4 closed): cars in lanes 1 and 3 from the takeover on
+# merge plan (scenarios 2 and 3, lanes 3 and 4 closed): cars in lanes 1 and 3 from the takeover on (b: 4 and 2)
 MERGE_AHEAD = 3.0             # m ahead of the ego car (center to center): a little in front of the driver
 MERGE_BEHIND = -25.0          # m behind the ego car where they come from
 MERGE_SIDE_CLEAR = 2.6        # m between the ego car's and a lane's centers below which the ego car is
@@ -435,6 +463,10 @@ TRAFFIC_CLEAR_RAMP = 10.0        # s over which the traffic cars change speed
 TRAFFIC_CLEAR_SPEED = 60.0       # km/h faster (cars ahead) or slower (cars behind, at least 20 km/h) than the ego car
 TRAFFIC_CLEAR_DISTANCE = 250.0   # m from the ego car at which a traffic car is removed
 TRAFFIC_CLEAR_BEFORE_TOR = 10.0  # s before the TOR at which the cars still there are removed
+# Scenarios 2 and 3: traffic drives in the lanes the scene closes too, until the scene is near: from
+# SCENE_TRAFFIC_LEAD m before the place where the scene appears the cars in those lanes leave the same
+# way (TrafficClearance.clear_lanes), the rest are removed when it appears
+SCENE_TRAFFIC_LEAD = 600.0
 NPC_PATH_STEP = 5         # use every 5th route waypoint (10 m) for traffic paths
 NPC_PATH_LAPS = 2         # laps handed to the Traffic Manager at a time
 NPC_PATH_REFRESH = 30.0   # seconds between path refreshes (keeps traffic looping)
@@ -447,22 +479,31 @@ RTR_LEAD = 5.0           # NDRT summary: request the RtR summary this many secon
 # Test run ("test": true in the intervention config, e.g. intervention_none.json): the pre-alert comes
 # "test_alert_after" s after the start instead of at a place, and lasts "test_pre_alert" s. The car
 # starts so far before the event point that the TOR still comes the scenario's TOR lead before it.
-NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messages start (scenarios 1, 3)
-NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 4 (else: once past the scene)
+NDRT_FOLLOWUP_AFTER = 40.0    # s after the takeover the team's follow-up messages start (scenario 1)
+NDRT_FOLLOWUP_LATEST = 120.0  # ... at the latest, in scenarios 2 and 3 (else: once past the scene)
+START_KAKAO_AFTER = 5.0  # s after the start: one KakaoTalk sound, the participant turns to the NDRT chat
 NUDGE_FROM = 10.0    # s after the pre-alert: the NDRT nudges start once the participant has left the NDRT
 NUDGE_UNTIL = 35.0   # ... and end with the intervention text (Intervention.end; this without one)
 LATE_NUDGE_NO_HAZARD = 5.0   # s after the takeover the late nudges start in scenarios without a lane 2
                              # hazard (before autonomous driving comes back, REENGAGE_AFTER)
 TEST_ALERT_AFTER = 10.0
+# The alerts, on the screen and the glasses: the pre-alert banner whenever no intervention text is shown
+# (before it, and after it until the TOR), the TOR banner blinking (TOR_BLINK_HZ) until the takeover.
+PRE_ALERT_MESSAGE = '곧 자율주행 구간이 끝납니다'
+TOR_MESSAGE = '지금 직접 운전하세요'
+TOR_BLINK_HZ = 2.0       # on-off cycles per second
+# NDRT interventions start with a line that says what the participant was doing (Intervention.intro_seconds)
+NDRT_INTRO = '{name}님께서 {room} 톡방에 공지를 작성 중이셨습니다.'
+NDRT_INTRO_NO_NAME = '{room} 톡방에 공지를 작성 중이셨습니다.'
 SERVER_RETRY = 5.0       # s per try while the CARLA server is not ready yet
-REENGAGE_AFTER = 10.0    # s of manual driving after the takeover (scenarios 2, 4: after passing the
-                         # lane 2 obstacle) before autonomous driving comes back, in the car's lane
+REENGAGE_AFTER = 10.0    # s of manual driving after the takeover (scenarios 2, 3: after passing the
+                         # van) before autonomous driving comes back, in the car's lane
 LOOP_LANE_TOLERANCE = 1.8    # m from a loop lane's middle: the car is in that lane ...
 LOOP_HEADING_TOLERANCE = 25.0  # ... and heading its way within this many degrees
-# Practice: starts in the town (spawn points, Town04) and goes round its blocks through the via points,
-# then the shortest way to the loop: about 2 km with 21 turns, shown on the navigation map
+# Practice: starts in the town (a Town04 spawn point); the driver finds the way to the highway alone,
+# the navigation map shows only where its nearest entry is. On the loop: one lap by hand, then
+# autonomous driving.
 PRACTICE_SPAWN_INDEX = 176
-PRACTICE_VIA = [230, 255, 182, 364, 173]
 NAV_PANEL = (0.24, 0.36)        # width, height of the navigation map: shares of a monitor
 NAV_MARGIN = 0.015              # from the window's top and right edges, share of a monitor's width
 NAV_METRES = 420.0              # metres across the map
@@ -474,7 +515,7 @@ TEST_PRE_ALERT = 5.0
 EXPERIMENT_DIR = os.path.dirname(os.path.abspath(__file__))
 SIGN_IMAGE_DIR = os.path.join(EXPERIMENT_DIR, 'sign_images')  # pictures for image signs
 ROOT = os.path.abspath(os.path.join(EXPERIMENT_DIR, '..'))
-LOG_DIR = os.path.join(ROOT, 'Data')
+LOG_DIR = os.path.join(EXPERIMENT_DIR, 'Data')  # all the runs' data: _Experiment/Data
 AUDIO_ENGINE_DIR = os.path.join(ROOT, 'carla-audio-engine')  # vehicle sounds, --no-audio-engine
 AUDIO_ENGINE_PYTHON = os.path.join(ROOT, 'venv_carla', 'Scripts', 'python.exe')     # has pyfmodex installed
 GLASSES_DIR = os.path.join(ROOT, 'TORApp', 'pc')  # tor_glasses.py, --glasses
@@ -482,32 +523,40 @@ KAKAO_SOUND = os.path.join(EXPERIMENT_DIR, 'kakao_app', 'kakao.mp3')  # NDRT nud
 KAKAO_VOLUME = 0.8         # of the file's own loudness
 POST_WINDOW = 10.0  # seconds after the takeover that count as the takeover period
 FALLBACK_EXIT = 1000.0  # exit point (m from the start) if the route has no overpass
-FOG_AT = 700.0          # scenario 3: where the fog starts to thicken, m from the start
-FOG_THRESHOLD = 45.0    # fog density at which the pre-alert starts
-FOG_MAX = 90.0          # densest fog
+# Scenario 1-b: the exit on the opposite carriageway, m from the start of its loop: where the exit ramp
+# (road 44) leaves lane 4 at junction 1061. Its first pass is closer than the pre-alert lead, so as
+# in 1-a the pre-alert comes on the second lap (3956 m from the start; 1-a: 3922 m).
+REVERSE_EXIT_AT = 908.0
 PRACTICE_WEATHER = 'ClearNoon'  # scenario 0: a carla.WeatherParameters preset
 PRACTICE_ISO = 400              # scenario 0: manual exposure of the driver view cameras (brighter than automatic)
-FOG_RISE = 20.0         # seconds from the start of the fog to the threshold
-FOG_PEAK_AFTER = 10.0   # the fog is densest this many seconds after the takeover
-FOG_PRE_ALERT = 5.0     # pre-alert duration the fog rate is set for: longer ones thicken it more slowly
-FOG_CLEAR = 5.0         # seconds for the fog to clear when autonomous driving is re-engaged
-FOG_FALLOFF = 0.2       # fog stays close to the ground
 
 # Scenario number -> name, pre-alert message, seconds before the event point at which
 # the TOR comes (the pre-alert starts PRE_ALERT_SECONDS / --pre-alert before that).
 SCENARIOS = {
     0: ('practice', 'Practice drive', 0.0),  # manual driving only, no alerts
     1: ('exit', 'Highway exit ahead', 5.0),
-    2: ('workzone', 'Work zone ahead', 5.0),  # from the cones in lane 3 (block_index): = TOR_SECONDS
-    3: ('fog', 'Low visibility', None),  # the fog starts at the fog point; the pre-alert follows its density
-    4: ('accident', 'Accident ahead', 5.0),
+    2: ('workzone', 'Work zone ahead', 5.0),  # from the cones in the car's lane (block_index): = TOR_SECONDS
+    3: ('accident', 'Accident ahead', 5.0),
 }
-CLOSED_LANES = {2: WORKZONE_LANES, 4: ACCIDENT_LANES}  # scenario -> lanes its obstacle closes (no traffic there)
+# Variants (--scenario 2-b): a as described; b mirrored (1: the opposite carriageway; 2 and 3: the
+# lanes next to the median close). The practice drive has none.
+VARIANTS = ('a', 'b')
+CLOSED_LANES = {2: WORKZONE_LANES, 3: ACCIDENT_LANES}  # scenario -> lanes its obstacle closes (no traffic there)
 INTERVENTION_CONFIG = os.path.join(EXPERIMENT_DIR, 'intervention_config.json')
 DEVICES_FILE = os.path.join(EXPERIMENT_DIR, 'devices.json')  # Wi-Fi addresses: --wireless, --glasses phone, --ndrt laptop
 INTERVENTION_DIR = os.path.join(EXPERIMENT_DIR, 'NDRT_scripts')
 INTERVENTIONS = ('none', 'driving', 'NDRT')
 INTERVENTION_FORMATS = ('summary', 'question')
+# "modality" in intervention_config.json: visual (the text on the glasses / monitor) or auditory (each
+# line spoken on this PC at the same time instead, OpenAI TTS: InterventionSpeech)
+INTERVENTION_MODALITIES = ('visual', 'auditory')
+TTS_MODEL = 'gpt-4o-mini-tts'
+TTS_VOICE = 'coral'
+TTS_INSTRUCTIONS = '차분하고 또렷한 한국어 안내 음성으로, 보통 속도로 읽으세요.'
+TTS_CACHE_DIR = os.path.join(EXPERIMENT_DIR, 'tts_cache')  # spoken lines, made once (not in git)
+TTS_TIMEOUT = 30.0
+SPEECH_MAX_WAIT = 5.0     # s a line may come late (its speech still being made) before it is dropped
+SPEECH_VOLUME = 1.0
 
 AUTO = 'AUTO'
 PRE_ALERT = 'PRE_ALERT'
@@ -595,14 +644,48 @@ def overpass_end_index(route):
 
 
 def lane_waypoint(waypoint, lane):
-    """The waypoint at the same place in highway lane 1-3 (lane 1 is next to the median)."""
+    """The waypoint at the same place in highway lane 1-4 (lane 1 is next to the median), on the
+    carriageway of `waypoint`: lane id -lane, on the opposite one lane + REVERSE_LANE_OFFSET."""
+    target = lane + REVERSE_LANE_OFFSET if waypoint.lane_id > 0 else -lane
     for _ in range(8):
-        if waypoint.lane_id == -lane:
+        if waypoint.lane_id == target:
             return waypoint
-        waypoint = waypoint.get_left_lane() if waypoint.lane_id < -lane else waypoint.get_right_lane()
+        # outwards (a larger id, either side) is to the right in the direction of travel
+        waypoint = waypoint.get_right_lane() if abs(waypoint.lane_id) < abs(target) else waypoint.get_left_lane()
         if waypoint is None:
             break
     raise RuntimeError('Could not find highway lane %d' % lane)
+
+
+def opposite_waypoint(waypoint):
+    """A waypoint at the same place on the opposite carriageway (scenario 1-b)."""
+    for _ in range(12):
+        if waypoint is None or waypoint.lane_id > 0:
+            break
+        waypoint = waypoint.get_left_lane()
+    if waypoint is None:
+        raise RuntimeError('Could not find the opposite carriageway')
+    return waypoint
+
+
+def parse_scenario(text):
+    """--scenario: '2-b', '2b' or '2' (variant a) -> (2, 'b')."""
+    text = text.strip().lower().replace('-', '')
+    number, variant = (text[:-1], text[-1]) if text[-1:] in VARIANTS else (text, 'a')
+    if not number.isdigit() or int(number) not in SCENARIOS:
+        raise argparse.ArgumentTypeError('%s: 0, 1-a, 1-b, 2-a, 2-b, 3-a or 3-b' % text)
+    return int(number), variant
+
+
+def scenario_id(number, variant):
+    """'2-b' ('0': the practice drive), as logged and in the NDRT_scripts file names."""
+    return str(number) if number == 0 else '%d-%s' % (number, variant)
+
+
+def closed_lanes(number, variant):
+    """Lanes the scene of scenario `number` closes, () for none; variant b mirrored (lane k -> 5 - k)."""
+    lanes = CLOSED_LANES.get(number, ())
+    return tuple(5 - lane for lane in lanes) if variant == 'b' else lanes
 
 
 def experiment_views(extent):
@@ -907,29 +990,21 @@ def soften_engine_braking(vehicle):
     vehicle.apply_physics_control(physics)
 
 
-def hold_loop_lights_green(sim_world, routes):
-    """Green for the loop at the junction where it crosses a road with traffic lights (Town04,
-    ~944 m from the start), red for the crossing road, held there: the autonomous mode and the
-    traffic cars ignore traffic lights and would drive through red. Returns the lights for
-    release_lights()."""
-    loop = {}
-    for route in routes.values():
-        for waypoint in route:
-            for light in sim_world.get_traffic_lights_from_waypoint(waypoint, 3.0):
-                loop[light.id] = light
-    held = []
-    for light in loop.values():
-        for member in light.get_group_traffic_lights():
-            member.set_state(carla.TrafficLightState.Green if member.id in loop else carla.TrafficLightState.Red)
-            member.freeze(True)
-            held.append(member)
-    if loop:
-        logging.info('Traffic lights %s on the loop held green', sorted(loop))
-    return held
+def hold_lights_green(sim_world):
+    """Every traffic light of the map green, held there: nobody stops at one (the autonomous mode
+    and the traffic cars ignore them too), and none turns red in front of a car that would stop or be
+    run into (the town in the practice drive, the junction the loop crosses at ~944 m). Returns the
+    lights for release_lights()."""
+    lights = list(sim_world.get_actors().filter('traffic.traffic_light'))
+    for light in lights:
+        light.set_state(carla.TrafficLightState.Green)
+        light.freeze(True)
+    logging.info('All %d traffic lights held green', len(lights))
+    return lights
 
 
 def release_lights(lights):
-    """Back to the normal light cycle after hold_loop_lights_green."""
+    """Back to the normal light cycle after hold_lights_green."""
     for light in lights:
         light.freeze(False)
     if lights:
@@ -1022,16 +1097,17 @@ class LoopFollower(object):
 class TestDriver(object):
     """--test-driver, for checking the scenarios without a participant: takes over TEST_DRIVER_REACTION
     s after the TOR and drives on with the autopilot's controller in the lane a driver would pick:
-    scenarios 2 and 4 lane 2 past the closure, lane 3 from LANE_CHANGE_BEFORE m before the lane 2
-    obstacle; else the lane it was in."""
+    scenarios 2 and 3 lane 2 past the closure, lane 3 from LANE_CHANGE_BEFORE m before the lane 2
+    obstacle (variant b: lane 3, then lane 2 before the van in lane 3); else the lane it was in."""
 
     REACTION = 1.0              # s after the TOR
-    LANE_CHANGE_BEFORE = 90.0   # m before the lane 2 obstacle it moves over to lane 3
+    LANE_CHANGE_BEFORE = 90.0   # m before the van it moves over to the free lane
 
-    def __init__(self, vehicle, routes, speed, carla_map, route_planner, scenario):
+    def __init__(self, vehicle, routes, speed, carla_map, route_planner, scenario, lane):
         self._followers = {lane: LoopFollower(vehicle, route, speed, carla_map, route_planner, quiet=True)
                            for lane, route in routes.items()}
         self._scenario = scenario
+        self._home = lane
         self._lane = None
 
     def _wanted_lane(self):
@@ -1040,12 +1116,13 @@ class TestDriver(object):
             return self._lane
         count = scenario._count  # pylint: disable=protected-access
         to_obstacle = ((scenario._obstacle_index - scenario.ego_index) % count) * ROUTE_RESOLUTION  # pylint: disable=protected-access
+        merged, around = (3, 2) if scenario.side < 0 else (2, 3)
         if to_obstacle < self.LANE_CHANGE_BEFORE or to_obstacle > count * ROUTE_RESOLUTION - 300.0:
-            return 3  # just before the van, or past it
-        return 2
+            return around  # just before the van, or past it
+        return merged
 
     def run_step(self):
-        lane = self._wanted_lane() or 3
+        lane = self._wanted_lane() or self._home
         if lane != self._lane:
             logging.info('Test driver: lane %d', lane)
             self._lane = lane
@@ -1087,36 +1164,22 @@ class NavigationMap(object):
 
     @classmethod
     def practice(cls, carla_map, route_planner, loop_routes):
-        """The practice way: the start, the via points, then the shortest way onto the loop."""
-        spawns = carla_map.get_spawn_points()
-        stops = [spawns[PRACTICE_SPAWN_INDEX].location] + [spawns[k].location for k in PRACTICE_VIA]
-        trace = []
-        for a, b in zip(stops, stops[1:]):
-            trace += route_planner.trace_route(a, b)
+        """The practice map: where the nearest way from the start meets the loop (the highway entry),
+        no way drawn and no turns: the driver finds the way."""
+        start = carla_map.get_spawn_points()[PRACTICE_SPAWN_INDEX].location
         loop = [w.transform.location for route in loop_routes.values() for w in route[::3]]
         best = None
         for waypoint in loop_routes[3][::100]:
-            tail = route_planner.trace_route(stops[-1], waypoint.transform.location)
-            for n, (point, _) in enumerate(tail):
+            trace = route_planner.trace_route(start, waypoint.transform.location)
+            for n, (point, _) in enumerate(trace):
                 if min(point.transform.location.distance(q) for q in loop) < 2.0:
-                    if best is None or n < len(best):
-                        best = tail[:n + 1]
+                    if best is None or n < best[0]:
+                        best = (n, point.transform.location)
                     break
-        trace += best or []
-        way, turns, along, last = [], [], 0.0, None
-        for waypoint, option in trace:
-            location = waypoint.transform.location
-            if way:
-                along += location.distance(way[-1][0])
-            way.append((location, along))
-            if option in cls.TURNS and option != last and (option != RoadOption.STRAIGHT or waypoint.is_junction):
-                turns.append((along, cls.TURNS[option]))
-            last = option
-        turns.append((along, '고속도로 진입'))
-        logging.info('Practice way to the highway, %.0f m, %d turns: %s', along,
-                     sum(1 for _, text in turns if text in ('좌회전', '우회전')),
-                     ', '.join('%.0f m %s' % turn for turn in turns))
-        return cls(carla_map, way, turns)
+        entry = best[1] if best else loop_routes[3][0].transform.location
+        logging.info('Practice: the highway entry shown on the map is at x %.0f y %.0f, %.0f m from the start',
+                     entry.x, entry.y, entry.distance(start))
+        return cls(carla_map, [(start, 0.0), (entry, entry.distance(start))], [], destination=entry)
 
     @classmethod
     def loop(cls, carla_map, route):
@@ -1129,8 +1192,9 @@ class NavigationMap(object):
             way.append((location, along))
         return cls(carla_map, way, [], closed=True)
 
-    def __init__(self, carla_map, way, turns, closed=False):
+    def __init__(self, carla_map, way, turns, closed=False, destination=None):
         self._way, self._turns, self._closed = way, turns, closed
+        self._destination = destination  # a place only (practice): its marker and the distance to it
         self.length = way[-1][1] if way else 0.0
         # the map, drawn once (north up), self._scale px per m around the way
         xs = [l.x for l, _ in way]
@@ -1147,13 +1211,16 @@ class NavigationMap(object):
                     self._y0 <= location.y <= self._y0 + size[1] / self._scale:
                 pygame.draw.circle(self._map, (88, 96, 110), self._px(location),
                                    max(2, int(waypoint.lane_width * 0.55 * self._scale)))
-        pygame.draw.lines(self._map, (60, 150, 255), closed, [self._px(l) for l, _ in way], max(4, int(2.2 * self._scale)))
-        if not closed:
-            pygame.draw.circle(self._map, (40, 220, 90), self._px(way[-1][0]), int(5 * self._scale))
+        if destination is None:
+            pygame.draw.lines(self._map, (60, 150, 255), closed, [self._px(l) for l, _ in way],
+                              max(4, int(2.2 * self._scale)))
         self._index = 0
         self._turned = None
         self._turned_at = -1.0
         self._fonts = None
+
+    def _draw_destination(self, view, car, transform):
+        _draw_destination_marker(view, car, transform, self._destination, view.get_width() / NAV_METRES)
 
     def _px(self, location):
         return (int((location.x - self._x0) * self._scale), int((location.y - self._y0) * self._scale))
@@ -1203,13 +1270,25 @@ class NavigationMap(object):
         pygame.draw.rect(panel, CLUSTER_BEZEL + (255,), panel.get_rect(), border_radius=corner)
         pygame.draw.rect(panel, CLUSTER_EDGE + (255,), panel.get_rect(), width=2, border_radius=corner)
         view = pygame.Surface(screen.size)
-        car = (screen.width // 2, int(screen.height * (0.5 + NAV_AHEAD)))
+        # the car looks ahead on a way; with a place only it is in the middle, the place all round it
+        ahead = NAV_AHEAD if self._destination is None else 0.0
+        car = (screen.width // 2, int(screen.height * (0.5 + ahead)))
         view.blit(self._turned, self._turned.get_rect(center=(car[0], car[1])))
+        if self._destination is not None:
+            self._draw_destination(view, car, transform)
         # the car: an arrow pointing up
         size = screen.height * 0.05
         pygame.draw.polygon(view, (255, 255, 255), [(car[0], car[1] - size), (car[0] + size * 0.7, car[1] + size * 0.7),
                                                     (car[0], car[1] + size * 0.35), (car[0] - size * 0.7, car[1] + size * 0.7)])
-        if not self._turns:  # the loop: the map alone
+        if self._destination is not None:  # practice: where the entry is, as the crow flies
+            band = pygame.Rect(0, 0, screen.width, int(screen.height * 0.2))
+            shade = pygame.Surface(band.size, pygame.SRCALPHA)
+            shade.fill((10, 12, 16, 225))
+            view.blit(shade, band)
+            text = big.render('고속도로 진입로  %s' % _distance_text(location.distance(self._destination)), True,
+                              (235, 240, 245))
+            view.blit(text, text.get_rect(midleft=(int(screen.width * 0.05), band.centery)))
+        if not self._turns:  # the loop, or the entry only: no turns
             panel.blit(view, screen.topleft)
             mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
             mask.fill((0, 0, 0, 0))
@@ -1236,6 +1315,33 @@ class NavigationMap(object):
         display.blit(panel, (x0, y0))
 
 
+def _draw_destination_marker(view, car, transform, destination, px_per_m):
+    """The place on the heading-up map: a green dot, or an arrow on the edge pointing at it."""
+    yaw = math.radians(transform.rotation.yaw)
+    dx, dy = destination.x - transform.location.x, destination.y - transform.location.y
+    forward = dx * math.cos(yaw) + dy * math.sin(yaw)
+    right = -dx * math.sin(yaw) + dy * math.cos(yaw)
+    x, y = car[0] + right * px_per_m, car[1] - forward * px_per_m
+    inset = view.get_height() * 0.08
+    top = view.get_height() * 0.22  # below the text band
+    if inset <= x <= view.get_width() - inset and top <= y <= view.get_height() - inset:
+        r = max(6, int(view.get_height() * 0.03))
+        pygame.draw.circle(view, (40, 220, 90), (int(x), int(y)), r)
+        pygame.draw.circle(view, (255, 255, 255), (int(x), int(y)), r, 2)
+        return
+    # off the map: an arrow on its edge, on the line from the car towards the place
+    ux, uy = x - car[0], y - car[1]
+    n = math.hypot(ux, uy) or 1.0
+    ux, uy = ux / n, uy / n
+    t = min((view.get_width() - inset - car[0]) / ux if ux > 0 else (inset - car[0]) / ux if ux < 0 else 1e9,
+            (view.get_height() - inset - car[1]) / uy if uy > 0 else (top - car[1]) / uy if uy < 0 else 1e9)
+    tip = (car[0] + ux * t, car[1] + uy * t)
+    size = view.get_height() * 0.06
+    side = (-uy, ux)
+    pygame.draw.polygon(view, (40, 220, 90), [tip, (tip[0] - ux * size + side[0] * size * 0.6, tip[1] - uy * size + side[1] * size * 0.6),
+                                              (tip[0] - ux * size - side[0] * size * 0.6, tip[1] - uy * size - side[1] * size * 0.6)])
+
+
 def _distance_text(metres):
     return '%.1f km' % (metres / 1000.0) if metres >= 1000.0 else '%d m' % (round(metres / 10.0) * 10)
 
@@ -1260,12 +1366,14 @@ def curve_speed_limits(route):
     return limits
 
 
-def _route_placer(sim_world, route, start_index, actors):
+def _route_placer(sim_world, route, start_index, actors, side=1):
     """put(name, distance, offset, ...): spawn `name` at route `distance` m from start_index,
-    `offset` m right of lane 3's center (`route` is lane 3), and add it to `actors`."""
+    `offset` m right of the center of `route`'s lane, and add it to `actors`. side -1: mirrored,
+    `offset` m left of it and turned the other way (yaw_add)."""
     library = sim_world.get_blueprint_library()
 
     def put(name, distance, offset, yaw_add=0.0, lift=0.05, hold=False, lights=None):
+        offset, yaw_add = offset * side, yaw_add * side
         waypoint = route[(start_index + int(round(distance / ROUTE_RESOLUTION))) % len(route)]
         right = waypoint.transform.get_right_vector()
         location = waypoint.transform.location
@@ -1286,9 +1394,10 @@ def _route_placer(sim_world, route, start_index, actors):
     return put
 
 
-def spawn_accident(sim_world, route, start_index):
-    """Scenario 4: a crash closes lanes 3 and 4 around `start_index` (the crashed cars). `route` is
-    the lane 3 route of the loop.
+def spawn_accident(sim_world, route, start_index, side=1):
+    """Scenario 3: a crash closes lanes 3 and 4 around `start_index` (the crashed cars). `route` is
+    the lane 3 route of the loop. side -1: mirrored, lanes 2 and 1 (`route`: lane 2; the shoulder
+    is the median's).
 
     Layout, along the route: an accident warning sign on the shoulder, a police car with its
     emergency lights in lane 4, a taper of cones from the outer edge of lane 4 to the edge of
@@ -1297,7 +1406,7 @@ def spawn_accident(sim_world, route, start_index):
     along lane 3's left edge past the scene.
     """
     actors = []
-    put = _route_placer(sim_world, route, start_index, actors)
+    put = _route_placer(sim_world, route, start_index, actors, side)
     inner = -0.5 * LANE_WIDTH + 0.55        # just inside lane 3, next to the lane 2 edge
     outer = 1.5 * LANE_WIDTH                # outer edge of lane 4 (offset from lane 3's center)
     emergency = int(carla.VehicleLightState.Special1 | carla.VehicleLightState.Special2 |
@@ -1326,13 +1435,14 @@ def spawn_accident(sim_world, route, start_index):
         put('static.prop.trafficcone01', distance, inner)
         distance += CONE_SPACING
 
-    logging.info('Accident: %d objects close lanes 3 and 4 around %.0f m', len(actors),
-                 start_index * ROUTE_RESOLUTION)
+    logging.info('Accident: %d objects close lanes %s around %.0f m', len(actors),
+                 '3 and 4' if side > 0 else '1 and 2', start_index * ROUTE_RESOLUTION)
     return actors
 
 
-def spawn_workzone(sim_world, route, start_index):
-    """Close lanes 3 and 4 from `start_index` on. `route` is the lane 3 route of the loop.
+def spawn_workzone(sim_world, route, start_index, side=1):
+    """Close lanes 3 and 4 from `start_index` on. `route` is the lane 3 route of the loop. side -1:
+    mirrored, lanes 2 and 1 (`route`: lane 2).
 
     Layout, along the route: two warning signs, a taper of cones that leads from the outer
     edge of lane 4 to the edge of lane 2, a row of barriers across both lanes, cones along
@@ -1340,7 +1450,7 @@ def spawn_workzone(sim_world, route, start_index):
     taper that opens the lanes again.
     """
     actors = []
-    put = _route_placer(sim_world, route, start_index, actors)
+    put = _route_placer(sim_world, route, start_index, actors, side)
 
     inner = -0.5 * LANE_WIDTH + 0.55        # just inside lane 3, next to the lane 2 edge
     outer = 1.5 * LANE_WIDTH                # outer edge of lane 4 (offset from lane 3's center)
@@ -1382,8 +1492,8 @@ def spawn_workzone(sim_world, route, start_index):
         put('static.prop.trafficcone01', body_end + k * WORKZONE_END_TAPER / count,
             inner + (outer - inner) * k / count)
 
-    logging.info('Work zone: %d objects close lanes 3 and 4 from %.0f m to %.0f m',
-                 len(actors), start_index * ROUTE_RESOLUTION, start_index * ROUTE_RESOLUTION + body_end)
+    logging.info('Work zone: %d objects close lanes %s from %.0f m to %.0f m',
+                 len(actors), '3 and 4' if side > 0 else '1 and 2', start_index * ROUTE_RESOLUTION, start_index * ROUTE_RESOLUTION + body_end)
     return actors
 
 
@@ -1394,9 +1504,10 @@ class TrafficVehicle(object):
     (and the ego agent's control loop) almost nothing.
     """
 
-    def __init__(self, vehicle, route, traffic_manager, speed):
+    def __init__(self, vehicle, route, traffic_manager, speed, lane):
         self._vehicle = vehicle
         self._route = route
+        self.lane = lane
         self._tm = traffic_manager
         self.half_length = vehicle.bounding_box.extent.x  # read once: bounding_box is a server round trip
         vehicle.set_autopilot(True, traffic_manager.get_port())
@@ -1430,6 +1541,8 @@ class TrafficClearance(object):
     it slow down to as much below (gradually, over TRAFFIC_CLEAR_RAMP s): both move out of view
     without passing it. Each car is removed once it is TRAFFIC_CLEAR_DISTANCE m away, the rest
     TRAFFIC_CLEAR_BEFORE_TOR s before the TOR. The traffic stays gone for the rest of the run.
+
+    clear_lanes: the same for the cars in some lanes only (the lanes a scene will close), earlier.
     """
 
     def __init__(self, client, traffic, npc_speed):
@@ -1438,8 +1551,18 @@ class TrafficClearance(object):
         self._npc_speed = npc_speed
         self._start = None
         self._deadline = None
-        self._targets = {}           # actor id -> target speed, km/h
-        self._ramped = False
+        self._targets = {}           # actor id -> (target speed km/h, time it started changing)
+        self._ramped = set()         # actor ids at their target speed
+        self._ego = None
+
+    def _leave(self, npc, now, location, forward, ego_kmh):
+        """`npc` speeds up (ahead of the ego car) or slows down (behind it). True if ahead."""
+        offset = npc.actor.get_location() - location
+        ahead = offset.x * forward.x + offset.y * forward.y >= 0.0
+        target = ego_kmh + TRAFFIC_CLEAR_SPEED if ahead else max(ego_kmh - TRAFFIC_CLEAR_SPEED, 20.0)
+        self._targets[npc.actor.id] = (target, now)
+        self._ramped.discard(npc.actor.id)
+        return ahead
 
     def start(self, now, ego, deadline):
         if self._start is not None or not self._traffic:
@@ -1449,36 +1572,61 @@ class TrafficClearance(object):
         location = ego.get_location()
         forward = ego.get_transform().get_forward_vector()
         ego_kmh = ego.get_velocity().length() * 3.6
-        ahead = 0
-        for npc in self._traffic:
-            offset = npc.actor.get_location() - location
-            if offset.x * forward.x + offset.y * forward.y >= 0.0:
-                self._targets[npc.actor.id] = ego_kmh + TRAFFIC_CLEAR_SPEED
-                ahead += 1
-            else:
-                self._targets[npc.actor.id] = max(ego_kmh - TRAFFIC_CLEAR_SPEED, 20.0)
+        ahead = sum(self._leave(npc, now, location, forward, ego_kmh) for npc in self._traffic)
         logging.info('Traffic leaves: %d cars ahead speed up, %d behind slow down', ahead, len(self._traffic) - ahead)
 
-    def tick(self, now, ego):
-        if self._start is None or not self._traffic:
+    def clear_lanes(self, now, lanes, force=False):
+        """The cars in `lanes` leave: those out of view (TRAFFIC_CLEAR_DISTANCE m away) are removed at
+        once, the others speed up or slow down as after the pre-alert. force: all of them removed now.
+        Returns how many are still in those lanes."""
+        if self._ego is None:
+            return 0
+        location = self._ego.get_location()
+        forward = self._ego.get_transform().get_forward_vector()
+        ego_kmh = self._ego.get_velocity().length() * 3.6
+        gone, left = [], 0
+        for npc in self._traffic:
+            if npc.lane not in lanes:
+                continue
+            if force or npc.actor.get_location().distance(location) > TRAFFIC_CLEAR_DISTANCE:
+                gone.append(npc)
+                continue
+            left += 1
+            if npc.actor.id not in self._targets:
+                self._leave(npc, now, location, forward, ego_kmh)
+                logging.info('Traffic car in lane %d leaves before the scene (%s)', npc.lane,
+                             'ahead' if self._targets[npc.actor.id][0] > ego_kmh else 'behind')
+        self._remove(gone, 'in lane%s %s, before the scene' % ('s' if len(lanes) > 1 else '',
+                                                                ' and '.join(str(lane) for lane in lanes)))
+        return left
+
+    def _remove(self, gone, why):
+        if not gone:
             return
-        share = min((now - self._start) / TRAFFIC_CLEAR_RAMP, 1.0)
+        for npc in gone:
+            self._traffic.remove(npc)
+        destroy_actors(self._client, [npc.actor for npc in gone])
+        logging.info('Traffic: %d car(s) removed %s, %d left', len(gone), why, len(self._traffic))
+
+    def tick(self, now, ego):
+        self._ego = ego
+        if not self._targets or not self._traffic:
+            return
         location = ego.get_location()
         gone = []
         for npc in self._traffic:
             target = self._targets.get(npc.actor.id)
             if target is None:
                 continue
-            if now >= self._deadline or npc.actor.get_location().distance(location) > TRAFFIC_CLEAR_DISTANCE:
+            if (self._deadline is not None and now >= self._deadline) or \
+                    npc.actor.get_location().distance(location) > TRAFFIC_CLEAR_DISTANCE:
                 gone.append(npc)
-            elif not self._ramped:
-                npc.set_speed(self._npc_speed + share * (target - self._npc_speed))
-        self._ramped = share >= 1.0
-        if gone:
-            for npc in gone:
-                self._traffic.remove(npc)
-            destroy_actors(self._client, [npc.actor for npc in gone])
-            logging.info('Traffic: %d car(s) removed, %d left', len(gone), len(self._traffic))
+            elif npc.actor.id not in self._ramped:
+                share = min((now - target[1]) / TRAFFIC_CLEAR_RAMP, 1.0)
+                npc.set_speed(self._npc_speed + share * (target[0] - self._npc_speed))
+                if share >= 1.0:
+                    self._ramped.add(npc.actor.id)
+        self._remove(gone, 'out of view')
 
 
 class EscortCars(object):
@@ -1489,7 +1637,8 @@ class EscortCars(object):
     ESCORT_SECONDS beside the ego car (ESCORT_OFFSET ahead of it), drop back again and are removed.
 
     merge (start_merge; lanes 3 and 4 closed ahead): right after the takeover a car comes up in
-    lane 1 and one in lane 3, MERGE_AHEAD m ahead of the ego car, and they keep to those lanes
+    lane 1 and one in lane 3 (mirrored: lanes 4 and 2; below, read 4 for 1 and 2 for 3 then),
+    MERGE_AHEAD m ahead of the ego car, and they keep to those lanes
     whatever lane the driver takes (in the driver's lane they stay MERGE_YIELD m behind it). The
     lane 3 car slows down
     gradually (MERGE_SLOW, and in time to stop before the closure) and is removed once it is
@@ -1514,7 +1663,7 @@ class EscortCars(object):
                             if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car'
                             and bp.id not in NPC_EXCLUDED
                             and not any(word in bp.id for word in ('police', 'ambulance', 'firetruck'))]
-        self._cars = {}       # name ('left', 'right', 'lane1', 'lane3') -> actor
+        self._cars = {}       # name ('left', 'right', 'lane1', 'lane3', ...) -> actor
         self._speed = {}      # name -> m/s it drives at
         self._plan = None     # 'beside', 'merge'; None while there are none
         self._sides = ()      # beside: 'left' and/or 'right'
@@ -1524,6 +1673,8 @@ class EscortCars(object):
         self._slow = None     # merge: time the lane 3 car starts falling back (once it is beside)
         self._passed = None   # merge: passed() -> True once the ego car is past the lane 2 obstacle
         self._leave = None    # merge: time the lane 1 car starts driving off
+        self._level = self._fall = None  # merge: names of the cars in lane 1 and 3 (mirrored 4 and 2)
+        self._lanes = {}      # merge: name -> its lane
         self._ego_location = self._ego_forward = None
 
     def start(self, now, sides):
@@ -1532,14 +1683,17 @@ class EscortCars(object):
         self._plan, self._start, self._sides = 'beside', now, tuple(sides)
         logging.info('Escort cars come up beside the car (%s) for %.0f s', ' and '.join(self._sides), ESCORT_SECONDS)
 
-    def start_merge(self, now, closure, passed=None):
+    def start_merge(self, now, closure, passed=None, lanes=(1, 3)):
         """The merge plan. passed(): True once the ego car is MERGE_CLEAR_AFTER m past the lane 2
-        obstacle, along the road (None: no obstacle, past the closure instead)."""
+        obstacle, along the road (None: no obstacle, past the closure instead). lanes: the lane the
+        car that stays level drives in, and the lane of the one that falls back ((4, 2) mirrored)."""
         if self._plan is not None:
             return
         self._plan, self._closure, self._passed, self._start = 'merge', closure, passed, now
         self._done, self._slow, self._leave = set(), None, None
-        logging.info('Escort cars come up in lanes 1 and 3')
+        self._level, self._fall = ('lane%d' % lane for lane in lanes)
+        self._lanes = {self._level: lanes[0], self._fall: lanes[1]}
+        logging.info('Escort cars come up in lanes %d and %d', *lanes)
 
     @staticmethod
     def _approach(elapsed, target, behind=ESCORT_BEHIND):
@@ -1582,18 +1736,20 @@ class EscortCars(object):
     def _merge_tick(self, now, ego, ego_waypoint):
         closure_start, closure_end = self._closure
         elapsed = now - self._start
+        level, fall = self._level, self._fall
         try:
-            lanes = {n: lane_waypoint(ego_waypoint, n) for n in (1, 2, 3)}
+            lanes = {name: self._merge_lane(ego_waypoint, lane) for name, lane in self._lanes.items()}
         except RuntimeError:
-            return  # not on the 3-lane highway here (a junction): next frame
+            return  # not on the highway here (a junction): next frame
         # lane 3: up beside the ego car, then gradually slower, stopping before the closure at the latest;
         # none if the takeover came too close to the closure for it to come up
-        if 'lane3' not in self._done and 'lane3' not in self._cars and self._gap(closure_start) < MERGE_LANE3_ROOM:
-            self._done.add('lane3')
-            logging.info('No escort car in lane 3: the closure is %.0f m ahead', self._gap(closure_start))
-        if 'lane3' not in self._done:
+        if fall not in self._done and fall not in self._cars and self._gap(closure_start) < MERGE_LANE3_ROOM:
+            self._done.add(fall)
+            logging.info('No escort car in lane %d: the closure is %.0f m ahead', self._lanes[fall],
+                         self._gap(closure_start))
+        if fall not in self._done:
             offset = self._approach(elapsed, MERGE_AHEAD, MERGE_BEHIND)
-            car = self._cars.get('lane3')
+            car = self._cars.get(fall)
             limit = None
             if car is not None:
                 gap = self._gap(car.get_location())
@@ -1603,37 +1759,46 @@ class EscortCars(object):
                     offset = MERGE_AHEAD - 0.5 * MERGE_SLOW * (now - self._slow) ** 2
                 limit = math.sqrt(2.0 * MERGE_BRAKE * max(self._gap(closure_start) - gap - MERGE_STOP_BEFORE, 0.0))
                 if gap < -ESCORT_GONE:
-                    self._drop('lane3')
-            offset, cap = self._give_way('lane3', lanes[3], offset, ego)
+                    self._drop(fall)
+            offset, cap = self._give_way(fall, lanes[fall], offset, ego)
             if cap is not None:
                 limit = cap if limit is None else min(limit, cap)
-            if 'lane3' not in self._done:
-                self._place('lane3', self._lane_path('lane3', lanes[3]), offset, ego, max_speed=limit)
+            if fall not in self._done:
+                self._place(fall, self._lane_path(fall, *lanes[fall]), offset, ego, max_speed=limit)
         # lane 1: up beside the ego car, level with it past the lane 2 obstacle, then drives off
-        if 'lane1' not in self._done:
-            car = self._cars.get('lane1')
+        if level not in self._done:
+            car = self._cars.get(level)
             offset = self._approach(elapsed, MERGE_AHEAD, MERGE_BEHIND)
             passed = self._passed() if self._passed is not None else self._gap(closure_end) < -MERGE_CLEAR_AFTER
             if self._leave is None and car is not None and passed:
                 self._leave = now
-                logging.info('Escort car in lane 1 drives off')
+                logging.info('Escort car in lane %d drives off', self._lanes[level])
             if self._leave is not None:
                 offset += 0.5 * MERGE_SLOW * (now - self._leave) ** 2
                 if car is not None and self._gap(car.get_location()) > ESCORT_GONE:
-                    self._drop('lane1')
-            offset, cap = self._give_way('lane1', lanes[1], offset, ego)
-            if 'lane1' not in self._done:
-                self._place('lane1', self._lane_path('lane1', lanes[1]), offset, ego, max_speed=cap)
-        if self._done >= {'lane1', 'lane3'}:
+                    self._drop(level)
+            offset, cap = self._give_way(level, lanes[level], offset, ego)
+            if level not in self._done:
+                self._place(level, self._lane_path(level, *lanes[level]), offset, ego, max_speed=cap)
+        if self._done >= {level, fall}:
             self.remove()
 
+    @staticmethod
+    def _merge_lane(ego_waypoint, lane):
+        """(waypoint, shift) for `lane` level with the ego car: lane 4 is lane 3 shifted a lane width
+        to the right, so it goes on straight where lane 4 itself leaves at an exit."""
+        if lane > 3:
+            return lane_waypoint(ego_waypoint, 3), (lane - 3) * LANE_WIDTH
+        return lane_waypoint(ego_waypoint, lane), 0.0
+
     def _give_way(self, name, lane, offset, ego):
-        """(offset, speed cap or None) for the escort car `name` driving `lane` (a waypoint level with
-        the ego car) while the ego car is in that lane or partly in it (changing lanes): a car well
+        """(offset, speed cap or None) for the escort car `name` driving `lane` ((waypoint, shift) level
+        with the ego car) while the ego car is in that lane or partly in it (changing lanes): a car well
         ahead stays ahead, any other falls back MERGE_YIELD m behind, slower than the ego car, so it
         never runs into it."""
-        right = lane.transform.get_right_vector()
-        middle = lane.transform.location
+        waypoint, shift = lane
+        right = waypoint.transform.get_right_vector()
+        middle = waypoint.transform.location + carla.Location(right.x * shift, right.y * shift, 0.0)
         lateral = ((self._ego_location.x - middle.x) * right.x + (self._ego_location.y - middle.y) * right.y)
         if abs(lateral) >= MERGE_SIDE_CLEAR:
             return offset, None
@@ -1648,14 +1813,22 @@ class EscortCars(object):
     # -- paths: where a car should be at `gap` m ahead of the ego car --------------------------
 
     @staticmethod
-    def _at(waypoint, gap):
+    def _at(waypoint, gap, shift=0.0):
         points = waypoint.next(gap) if gap > 0.1 else waypoint.previous(max(-gap, 0.1))
-        return points[0].transform if points else None
+        if not points:
+            return None
+        transform = points[0].transform
+        if shift:
+            right = transform.get_right_vector()
+            transform = carla.Transform(transform.location + carla.Location(right.x * shift, right.y * shift, 0.0),
+                                        transform.rotation)
+        return transform
 
-    def _lane_path(self, name, lane):
-        """In `lane` (a waypoint level with the ego car), else (None) in the car's own lane."""
+    def _lane_path(self, name, lane, shift=0.0):
+        """In `lane` (a waypoint level with the ego car; shift: m to the right of it), else (None) in
+        the car's own lane."""
         if lane is not None:
-            return lambda gap: self._at(lane, gap)
+            return lambda gap: self._at(lane, gap, shift)
         car = self._cars.get(name)
         if car is None:
             return lambda gap: None
@@ -1851,7 +2024,7 @@ def spawn_traffic(sim_world, routes, args, traffic_manager, lanes, start=0):
     # Each car's path starts where the car is: before a tick the client does not know new cars'
     # positions yet, and a path from the wrong place sends cars into the guardrail.
     advance(sim_world, args)
-    traffic = [TrafficVehicle(vehicle, routes[lane], traffic_manager, args.npc_speed) for vehicle, lane in spawned]
+    traffic = [TrafficVehicle(vehicle, routes[lane], traffic_manager, args.npc_speed, lane) for vehicle, lane in spawned]
     logging.info('Traffic: %d of %d vehicles placed (%.0f km/h)', len(traffic), args.vehicles, args.npc_speed)
     return traffic
 
@@ -2412,7 +2585,7 @@ class TrialRecorder(object):
     COLUMNS = ['trial', 'wall_time', 't_prealert_s', 't_tor_s', 'phase', 'event',
                'x', 'y', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',
                'driver_steer', 'driver_throttle', 'driver_brake', 'lane_id', 'lane_offset_m',
-               'lead_gap_m', 'lead_speed_kmh', 'ttc_s', 'collisions', 'event_dist_m', 'fog_density',
+               'lead_gap_m', 'lead_speed_kmh', 'ttc_s', 'collisions', 'event_dist_m',
                'frame_ms', 'latency_ms', 'scenario', 'intervention', 'input', 'lane', 'vehicles',
                'takeover_type', 'tot_s', 'tor_reaction_s', 'first_input_s',
                'speed_prealert_kmh', 'speed_takeover_kmh', 'window_complete',
@@ -2427,16 +2600,17 @@ class TrialRecorder(object):
         self._half_length = world.player.bounding_box.extent.x  # bounding_box is a server round trip
         self._input = driver_input
         self._window = window
-        self._constant = {'scenario': args.scenario, 'intervention': args.intervention, 'input': args.input,
+        self._constant = {'scenario': args.scenario_id, 'intervention': args.intervention, 'input': args.input,
                           'lane': args.lane, 'vehicles': args.vehicles}
-        self.dir = os.path.join(LOG_DIR, started.strftime('%y%m%d_%H%M%S'))
-        self.path = os.path.join(self.dir, 'raw.csv')
+        self.dir = os.path.join(LOG_DIR, started.strftime('%y%m%d_%H%M%S'))  # the run's folder
+        self.driving_dir = os.path.join(self.dir, 'driving')  # raw.csv, summary.csv, figure.png
+        self.ndrt_dir = os.path.join(self.dir, 'ndrt')        # the NDRT chat's logs
+        self.path = os.path.join(self.driving_dir, 'raw.csv')
         self._file = None
         self._writer = None
         self._trial = 0
         self._active = False
         self._event_dist = None
-        self._fog = None
         self._enabled = not args.no_log
 
     @property
@@ -2500,17 +2674,16 @@ class TrialRecorder(object):
             return
         try:
             import analyze_takeover  # next to this script
-            analyze_takeover.report(self.dir, self._window)
+            analyze_takeover.report(self.driving_dir, self._window)
         except Exception as error:  # the raw log is already safe on disk
             logging.error('Could not write summary.csv and figure.png: %s', error)
 
     # -- per frame -------------------------------------------------------------
 
-    def sample(self, now, mode, event_dist=None, fog=None):
+    def sample(self, now, mode, event_dist=None):
         if not self._active:
             return
         self._event_dist = event_dist
-        self._fog = fog
         keys = pygame.key.get_pressed()
         if self._first_input is None and self._input.driver_active(keys):
             self._first_input = now - self._t0
@@ -2573,7 +2746,6 @@ class TrialRecorder(object):
             'lane_id': '' if lane_id is None else lane_id, 'lane_offset_m': _fmt(lane_offset),
             'lead_gap_m': _fmt(gap), 'lead_speed_kmh': _fmt(lead_speed), 'ttc_s': _fmt(ttc),
             'collisions': self._collisions, 'event_dist_m': _fmt(self._event_dist, 1),
-            'fog_density': _fmt(self._fog, 1),
             'frame_ms': _fmt(None if self._last_sample is None else (now - self._last_sample) * 1000.0, 1),
             'latency_ms': _fmt(self._latency and self._latency.latest, 1),
         }
@@ -2611,7 +2783,7 @@ class TrialRecorder(object):
 
     def _write(self, row):
         if self._writer is None:
-            os.makedirs(self.dir, exist_ok=True)
+            os.makedirs(self.driving_dir, exist_ok=True)
             self._file = open(self.path, 'w', newline='', encoding='utf-8')
             self._writer = csv.DictWriter(self._file, fieldnames=self.COLUMNS, restval='')
             self._writer.writeheader()
@@ -2674,19 +2846,21 @@ class Scenario(object):
 
     manual_only = False  # True: the driver drives from the start, no autonomous mode
     escort_sides = ('left', 'right')  # EscortCars after the takeover: lanes next to the car to fill
-    closure = None                    # (start, end) in lane 3 where lanes 3 and 4 are closed: EscortCars' merge plan
+    closure = None                    # (start, end) along the road where lanes 3 and 4 are closed: EscortCars' merge plan
+    merge_lanes = (1, 3)              # ... its lanes: the car that stays level, the one that falls back
     obstacle = None                   # carla.Location of the lane 2 obstacle after the closure (EscortCars)
+    side = 1                          # -1: variant b of a scene, mirrored (the lanes next to the median close)
     has_scene = False                 # objects on the road that are removed once passed (SceneScenario)
+    clearance = None                  # TrafficClearance: the cars in the lanes a scene closes leave first
     scene_cleared = False             # ... and they have been: the NDRT follow-up messages can come
     ego_index = None                  # the car's route index, set by TakeoverExperiment every frame
 
     def __init__(self, number, args):
         self.number = number
+        self.variant = args.variant
         self.name, self.message, tor_lead = SCENARIOS[number]
         if args.alert_lead is not None:
             self.lead = args.alert_lead
-        elif tor_lead is None:  # the event point starts the fog, the pre-alert follows its density
-            self.lead = 0.0
         else:
             self.lead = (tor_lead if args.tor_lead is None else args.tor_lead) + args.pre_alert
         self.event_index = None
@@ -2727,11 +2901,14 @@ class Scenario(object):
                                              os.path.join(SIGN_IMAGE_DIR, image[0]), SIGN_IMAGE_WIDTH,
                                              post_from=plate.top))
 
+    def _arrow_board_image(self):
+        return os.path.join(SIGN_IMAGE_DIR, ARROW_BOARD_IMAGE if self.side > 0 else ARROW_BOARD_MIRRORED)
+
     def _place_arrow_board(self, route, index):
-        """The arrow board where lanes 3 and 4 start to close, at route `index`; route: lane 3."""
-        self._new_signs.append(ImageSign(route[index % len(route)], ARROW_BOARD_OFFSET, ARROW_BOARD_HEIGHT,
-                                         os.path.join(SIGN_IMAGE_DIR, ARROW_BOARD_IMAGE), ARROW_BOARD_WIDTH,
-                                         pixels=ARROW_BOARD_PIXELS))
+        """The arrow board where lanes 3 and 4 start to close, at route `index`; route: lane 3
+        (mirrored: lanes 2 and 1, lane 2, the arrow to the right)."""
+        self._new_signs.append(ImageSign(route[index % len(route)], ARROW_BOARD_OFFSET * self.side, ARROW_BOARD_HEIGHT,
+                                         self._arrow_board_image(), ARROW_BOARD_WIDTH, pixels=ARROW_BOARD_PIXELS))
 
     def tick(self, now, laps):
         pass
@@ -2760,9 +2937,6 @@ class Scenario(object):
     def on_engage(self, now):
         pass
 
-    def fog_density(self):
-        return None
-
     def cleanup(self, client):
         pass
 
@@ -2773,7 +2947,8 @@ class PracticeScenario(Scenario):
     the P key gives a takeover sequence to practise. No event point, so no automatic pre-alert. In
     bright daylight (PRACTICE_WEATHER); the server's weather comes back afterwards."""
 
-    manual_only = True  # until the car is on the highway
+    manual_only = True  # until the car has driven one lap of the loop by hand
+    entry_progress = None  # TakeoverExperiment._progress when the car came onto the loop
     escort_sides = ()
 
     def __init__(self, args, sim_world):
@@ -2790,7 +2965,8 @@ class PracticeScenario(Scenario):
 
 class ExitScenario(Scenario):
     """1: the car reaches the end of its autonomous stretch (an exit point). Signs 1 km and 500 m
-    before it and at it; the exit lane is lane 4, the ramp leaves at the junction after it."""
+    before it and at it; the exit lane is lane 4, the ramp leaves at the junction after it. 1-b: on
+    the opposite carriageway (routes built there, game_loop), at its exit REVERSE_EXIT_AT."""
 
     escort_sides = ()  # the driver leaves the highway at the exit
 
@@ -2798,12 +2974,18 @@ class ExitScenario(Scenario):
         super(ExitScenario, self).__init__(1, args)
         if args.exit_at is not None and args.exit_at < 0:
             return
-        index = overpass_end_index(route) if args.exit_at is None else int(args.exit_at / ROUTE_RESOLUTION)
+        if args.exit_at is not None:
+            index = int(args.exit_at / ROUTE_RESOLUTION)
+        elif args.variant == 'b':
+            index = int(REVERSE_EXIT_AT / ROUTE_RESOLUTION)
+        else:
+            index = overpass_end_index(route)
         if index is None:
             index = int(FALLBACK_EXIT / ROUTE_RESOLUTION)
         self.event_index = index % len(route)
         location = route[self.event_index].transform.location
-        logging.info('Scenario 1, highway exit: exit point %.0f m from the start (x %.0f, y %.0f)',
+        logging.info('Scenario %s, highway exit%s: exit point %.0f m from the start (x %.0f, y %.0f)',
+                     scenario_id(1, args.variant), ' on the opposite carriageway' if args.variant == 'b' else '',
                      self.event_index * ROUTE_RESOLUTION, location.x, location.y)
         self._place_signs(lane3_route, self.event_index, EXIT_SIGNS, GREEN)
 
@@ -2811,17 +2993,28 @@ class ExitScenario(Scenario):
 class SceneScenario(Scenario):
     has_scene = True
     """A scenario with objects on the road (work zone, accident). After the takeover a van stands in
-    lane 2 LANE2_OBSTACLE_AFTER m past the end of the scene (_spawn_obstacle). Once the driver has
-    driven SCENE_CLEAR_BEHIND m past it, the scene, the van and the signs are removed for good: no
+    lane 2 LANE2_OBSTACLE_AFTER (scenario 3: ACCIDENT_OBSTACLE_AFTER) m past the end of the scene
+    (_spawn_obstacle). Once the driver has driven SCENE_CLEAR_BEHIND m past it, the scene, the van and
+    the signs are removed for good: no
     more pre-alerts for it on later laps.
+
+    The scene is placed along _scene, the route of the lane that closes next to the open ones: lane
+    3; variant b (side -1) mirrors it all, along lane 2 (lanes 2 and 1 closed, the van in lane 3, the
+    escort car in lane 4). The signs stay on the right shoulder (_lane3).
 
     Subclasses set _index (route index of the scene) and call _plan_obstacle(m from _index to the
     scene's end)."""
 
-    def __init__(self, number, args, client, route):
+    def __init__(self, number, args, client, routes):
         super(SceneScenario, self).__init__(number, args)
         self._client = client
-        self._count = len(route)
+        self._lane3 = routes[3]
+        if args.variant == 'b':
+            self.side = -1
+            self.merge_lanes = (4, 2)
+        self._scene = routes[3 if self.side > 0 else MIRRORED_LANE]
+        self.closed = closed_lanes(number, args.variant)
+        self._count = len(self._scene)
         self._test = args.test
         self._actors = []
         self._end_index = None       # route index where the scene is removed from behind (the obstacle)
@@ -2829,19 +3022,25 @@ class SceneScenario(Scenario):
         self._obstacle_spawned = False
         self._van = None             # the obstacle, until its doors are opened (the frame after it appears)
         # the pictures of the image signs, traced now rather than when they appear while driving
-        preload(os.path.join(SIGN_IMAGE_DIR, ARROW_BOARD_IMAGE), ARROW_BOARD_PIXELS)
+        preload(self._arrow_board_image(), ARROW_BOARD_PIXELS)
         preload(os.path.join(SIGN_IMAGE_DIR, LANE2_TRIANGLE), LANE2_TRIANGLE_PIXELS)
         for _, _, _, *image in WORKZONE_SIGNS + ACCIDENT_SIGNS:
             if image:
                 preload(os.path.join(SIGN_IMAGE_DIR, image[0]))
         self._done = False
 
-    def _plan_obstacle(self, scene_length):
-        self._obstacle_index = (self._index + int((scene_length + LANE2_OBSTACLE_AFTER) / ROUTE_RESOLUTION)) % self._count
+    def _clear_lanes(self, now, force=False):
+        """The traffic in the lanes the scene closes leaves (SCENE_TRAFFIC_LEAD m before the scene appears),
+        force: the cars still there are removed (it appears now)."""
+        if self.clearance is not None:
+            self.clearance.clear_lanes(now, self.closed, force)
+
+    def _plan_obstacle(self, scene_length, after=LANE2_OBSTACLE_AFTER):
+        self._obstacle_index = (self._index + int((scene_length + after) / ROUTE_RESOLUTION)) % self._count
         self._end_index = self._obstacle_index
-        waypoint = self._lane3[self._obstacle_index % len(self._lane3)].transform
+        waypoint = self._scene[self._obstacle_index % len(self._scene)].transform
         right = waypoint.get_right_vector()
-        self.obstacle = waypoint.location - carla.Location(right.x, right.y, 0.0) * LANE_WIDTH
+        self.obstacle = waypoint.location - carla.Location(right.x, right.y, 0.0) * (LANE_WIDTH * self.side)
 
     @property
     def scene_cleared(self):
@@ -2882,15 +3081,17 @@ class SceneScenario(Scenario):
         self._obstacle_spawned = True
         hazards = int(carla.VehicleLightState.LeftBlinker | carla.VehicleLightState.RightBlinker |
                       carla.VehicleLightState.Position)
-        put = _route_placer(self._world, self._lane3, self._obstacle_index, self._actors)
+        put = _route_placer(self._world, self._scene, self._obstacle_index, self._actors, self.side)
+        lane = 2 if self.side > 0 else 3
         self._van = put(LANE2_OBSTACLE, 0.0, -LANE_WIDTH, lift=0.3, hold=True, lights=hazards)
         if self._van is None:
-            logging.warning('Lane 2 obstacle: could not spawn it %.0f m ahead', ahead)
+            logging.warning('Lane %d obstacle: could not spawn it %.0f m ahead', lane, ahead)
             return
-        waypoint = self._lane3[(self._obstacle_index - int(LANE2_TRIANGLE_BEHIND / ROUTE_RESOLUTION)) % len(self._lane3)]
-        self._new_signs.append(ImageSign(waypoint, -LANE_WIDTH, 0.02, os.path.join(SIGN_IMAGE_DIR, LANE2_TRIANGLE),
+        waypoint = self._scene[(self._obstacle_index - int(LANE2_TRIANGLE_BEHIND / ROUTE_RESOLUTION)) % len(self._scene)]
+        self._new_signs.append(ImageSign(waypoint, -LANE_WIDTH * self.side, 0.02,
+                                         os.path.join(SIGN_IMAGE_DIR, LANE2_TRIANGLE),
                                          LANE2_TRIANGLE_WIDTH, post_from=None, pixels=LANE2_TRIANGLE_PIXELS))
-        logging.info('Lane 2 obstacle: a van with hazard lights and open doors %.0f m ahead', ahead)
+        logging.info('Lane %d obstacle: a van with hazard lights and open doors %.0f m ahead', lane, ahead)
 
     def _clear_when_passed(self):
         if not self._actors or not self._taken_over or self.ego_index is None:
@@ -2914,27 +3115,31 @@ class SceneScenario(Scenario):
 
 
 class WorkzoneScenario(SceneScenario):
-    """2: after the first lap a work zone closes lanes 3 and 4 further ahead."""
+    """2: after the first lap a work zone closes lanes 3 and 4 further ahead (2-b: lanes 2 and 1)."""
 
-    def __init__(self, args, client, sim_world, route, lane3_route):
-        super(WorkzoneScenario, self).__init__(2, args, client, route)
+    def __init__(self, args, client, sim_world, routes):
+        super(WorkzoneScenario, self).__init__(2, args, client, routes)
         self._world = sim_world
-        self._lane3 = lane3_route
+        scene = self._scene
         at = args.workzone_at if args.workzone_at is not None else WORKZONE_AT
-        self._index = int(at / ROUTE_RESOLUTION) % len(route)
+        self._index = int(at / ROUTE_RESOLUTION) % len(scene)
         self._plan_obstacle(WORKZONE_TAPER + WORKZONE_LENGTH + WORKZONE_END_TAPER)
         self._plan_block(0.0, WORKZONE_TAPER)
-        # lane 3 centerline along the zone, from just before the first cone to past the last one
+        # the closing lane's centerline along the zone, from just before the first cone to past the last one
         first = self._index - int(20.0 / ROUTE_RESOLUTION)
         last = self._index + int((WORKZONE_TAPER + WORKZONE_LENGTH + WORKZONE_END_TAPER + 30.0) / ROUTE_RESOLUTION)
-        self._zone_points = [lane3_route[i % len(lane3_route)].transform.location for i in range(first, last + 1)]
+        self._zone_points = [scene[i % len(scene)].transform.location for i in range(first, last + 1)]
         self._due = None              # time the work zone became due (waiting for a clear road)
-        logging.info('Scenario 2, work zone: appears after lap %d, %.0f m from the start',
+        logging.info('Scenario %s, work zone: lanes %d and %d, appears after lap %d, %.0f m from the start',
+                     scenario_id(2, args.variant), self.closed[0], self.closed[1],
                      0 if self._test else WORKZONE_AFTER_LAPS, self._index * ROUTE_RESOLUTION)
 
     def tick(self, now, laps):
         self._spawn_obstacle()
         self._clear_when_passed()
+        if (self.event_index is None and not self._done and self.ego_index is not None and
+                laps == WORKZONE_AFTER_LAPS - 1 and self.ego_index >= self._count - SCENE_TRAFFIC_LEAD / ROUTE_RESOLUTION):
+            self._clear_lanes(now)  # the end of the lap before: the closed lanes' traffic leaves
         if self.event_index is None and not self._done and (self._test or laps >= WORKZONE_AFTER_LAPS):
             if self._due is None:
                 self._due = now
@@ -2946,13 +3151,14 @@ class WorkzoneScenario(SceneScenario):
                                 blocking.id, WORKZONE_MAX_WAIT)
             elif now - self._due > 0.5:
                 logging.info('Work zone: waited %.1f s for passing cars', now - self._due)
-            self._actors = spawn_workzone(self._world, self._lane3, self._index)
+            self._clear_lanes(now, force=True)
+            self._actors = spawn_workzone(self._world, self._scene, self._index, self.side)
             self._place_signs(self._lane3, self._index, WORKZONE_SIGNS, ORANGE)
-            self._place_arrow_board(self._lane3, self._index)
+            self._place_arrow_board(self._scene, self._index)
             self.event_index = self._block_index
             zone = WORKZONE_TAPER + WORKZONE_LENGTH + WORKZONE_END_TAPER
-            self.closure = (self._lane3[self._index].transform.location,
-                            self._lane3[(self._index + int(zone / ROUTE_RESOLUTION)) % len(self._lane3)].transform.location)
+            self.closure = (self._scene[self._index].transform.location,
+                            self._scene[(self._index + int(zone / ROUTE_RESOLUTION)) % len(self._scene)].transform.location)
 
 
 def _car_near(sim_world, points, clearance=WORKZONE_CLEARANCE):
@@ -2966,33 +3172,37 @@ def _car_near(sim_world, points, clearance=WORKZONE_CLEARANCE):
 
 
 class AccidentScenario(SceneScenario):
-    """4: a crash closes lanes 3 and 4 ahead (spawn_accident), on a straight ACCIDENT_AT (880) m from the start.
+    """3: a crash closes lanes 3 and 4 ahead (spawn_accident; 3-b: lanes 2 and 1), on a straight
+    ACCIDENT_AT (780) m from the start.
 
     The scene appears once the car is ACCIDENT_SPAWN_AHEAD m from it (so on its second pass, out of
     view and before the pre-alert is due), as soon as no car is next to it or after ACCIDENT_MAX_WAIT s.
     From then on the pre-alert and the TOR come like the work zone's. Test run: it appears at the start."""
 
-    def __init__(self, args, client, sim_world, route, lane3_route):
-        super(AccidentScenario, self).__init__(4, args, client, route)
+    def __init__(self, args, client, sim_world, routes):
+        super(AccidentScenario, self).__init__(3, args, client, routes)
         self._world = sim_world
-        self._lane3 = lane3_route
+        scene = self._scene
         at = args.accident_at if args.accident_at is not None else ACCIDENT_AT
-        self._index = int(at / ROUTE_RESOLUTION) % len(route)
-        self._plan_obstacle(ACCIDENT_END)
+        self._index = int(at / ROUTE_RESOLUTION) % len(scene)
+        self._plan_obstacle(ACCIDENT_END, ACCIDENT_OBSTACLE_AFTER)
         self._plan_block(ACCIDENT_TAPER_FROM, ACCIDENT_TAPER_TO)
         first = self._index + int((ACCIDENT_START - 10.0) / ROUTE_RESOLUTION)
         last = self._index + int((ACCIDENT_END + 20.0) / ROUTE_RESOLUTION)
-        self._zone_points = [lane3_route[i % len(lane3_route)].transform.location for i in range(first, last + 1)]
+        self._zone_points = [scene[i % len(scene)].transform.location for i in range(first, last + 1)]
         self._due = None
-        logging.info('Scenario 4, accident: lanes 3 and 4 closed %.0f m from the start; the scene appears '
-                     '%.0f m ahead of the car', self._index * ROUTE_RESOLUTION, ACCIDENT_SPAWN_AHEAD)
+        logging.info('Scenario %s, accident: lanes %d and %d closed %.0f m from the start; the scene appears '
+                     '%.0f m ahead of the car', scenario_id(3, args.variant), self.closed[0], self.closed[1],
+                     self._index * ROUTE_RESOLUTION, ACCIDENT_SPAWN_AHEAD)
 
     def tick(self, now, laps):
         self._spawn_obstacle()
         self._clear_when_passed()
         if self.event_index is not None or self.ego_index is None or self._done:
             return
-        ahead = ((self._index - self.ego_index) % len(self._lane3)) * ROUTE_RESOLUTION
+        ahead = ((self._index - self.ego_index) % len(self._scene)) * ROUTE_RESOLUTION
+        if not self._test and ACCIDENT_SPAWN_AHEAD - 400.0 < ahead <= ACCIDENT_SPAWN_AHEAD + SCENE_TRAFFIC_LEAD:
+            self._clear_lanes(now)  # the closed lanes' traffic leaves before the scene appears
         # a window that the car crosses once per lap (the scene is closer than this at the start)
         if not self._test and not ACCIDENT_SPAWN_AHEAD - 400.0 < ahead <= ACCIDENT_SPAWN_AHEAD:
             self._due = None
@@ -3005,135 +3215,24 @@ class AccidentScenario(SceneScenario):
         if blocking is not None:
             logging.warning('Accident: car %d still next to the scene after %.0f s, spawning anyway',
                             blocking.id, ACCIDENT_MAX_WAIT)
-        self._actors = spawn_accident(self._world, self._lane3, self._index)
+        self._clear_lanes(now, force=True)
+        self._actors = spawn_accident(self._world, self._scene, self._index, self.side)
         self._place_signs(self._lane3, self._index, ACCIDENT_SIGNS, ORANGE)
-        self._place_arrow_board(self._lane3, self._index + int(ACCIDENT_TAPER_FROM / ROUTE_RESOLUTION))
+        self._place_arrow_board(self._scene, self._index + int(ACCIDENT_TAPER_FROM / ROUTE_RESOLUTION))
         self.event_index = self._block_index
-        self.closure = tuple(self._lane3[(self._index + int(at / ROUTE_RESOLUTION)) % len(self._lane3)].transform.location
+        self.closure = tuple(self._scene[(self._index + int(at / ROUTE_RESOLUTION)) % len(self._scene)].transform.location
                              for at in (ACCIDENT_TAPER_FROM, ACCIDENT_END))
-
-
-class FogScenario(Scenario):
-    """3: fog thickens gradually from the fog point on.
-
-    density 0 --(rise)--> threshold: pre-alert --> TOR --> takeover --> max, FOG_PEAK_AFTER s
-    after the takeover. The rate up to the pre-alert is threshold / rise. From the pre-alert on
-    it is scaled by FOG_PRE_ALERT / --pre-alert, so the density at the TOR is the same for
-    any pre-alert duration (45 + 2.25 * 5 = 56.25 with the defaults). At the takeover it changes
-    so the fog reaches its maximum exactly peak_after seconds later.
-    """
-
-    def __init__(self, args, sim_world, route):
-        super(FogScenario, self).__init__(3, args)
-        self._world = sim_world
-        self._original = sim_world.get_weather()
-        self._threshold = args.fog_threshold
-        self._max = args.fog_max
-        self._rise = max(args.fog_rise, 0.1)
-        self._peak_after = max(args.fog_peak_after, 0.1)
-        self._pre_alert = args.pre_alert
-        # test run: the fog thickens from the start so it is at the threshold at the (timed) pre-alert
-        self._test_after = getattr(args, 'test_alert_after', None) if args.test else None
-        at = args.fog_at if args.fog_at is not None else FOG_AT
-        self.event_index = int(at / ROUTE_RESOLUTION) % len(route)
-        self._state = 'idle'          # idle, rising, clearing
-        self._density = 0.0
-        self._rate = 0.0
-        self._alerted = False
-        self._last = None
-        self._last_sent = None
-        self._apply(None)             # no fog until the fog point
-        logging.info('Scenario 3, sudden fog: fog point %.0f m from the start; density 0 -> %.0f in %.0f s '
-                     '(pre-alert), %.0f %.0f s after the takeover', self.event_index * ROUTE_RESOLUTION,
-                     self._threshold, self._rise, self._max, self._peak_after)
-
-    def _apply(self, now):
-        """Send the density to the server (at most 10 times a second)."""
-        if now is not None and self._last_sent is not None and now - self._last_sent < 0.1:
-            return
-        self._last_sent = now
-        weather = self._world.get_weather()
-        weather.fog_density = self._density
-        weather.fog_distance = 0.0
-        weather.fog_falloff = FOG_FALLOFF
-        self._world.set_weather(weather)
-
-    def _start(self, now):
-        self._state = 'rising'
-        self._rate = self._threshold / self._rise
-        self._alerted = False
-        self._last = now
-        logging.info('Fog starts to thicken')
-
-    def on_event(self, now):
-        if self._state != 'rising':
-            self._start(now)
-        return False  # the pre-alert waits for the threshold
-
-    def alert_due(self):
-        return self._state == 'rising' and not self._alerted and self._density >= self._threshold
-
-    def seconds_to_alert(self, event_dist, speed):
-        """The pre-alert follows the fog density, not the position."""
-        if self._state != 'rising' or self._alerted or self._rate <= 0.0:
-            return None
-        return max(self._threshold - self._density, 0.0) / self._rate
-
-    def on_alert(self, now):
-        self._alerted = True
-        if self._state != 'rising':  # P key before the fog point: start the fog too
-            self._start(now)
-        self._rate = self._threshold / self._rise * FOG_PRE_ALERT / self._pre_alert
-        logging.info('Pre-alert at fog density %.1f: %.2f per s for the %.1f s pre-alert',
-                     self._density, self._rate, self._pre_alert)
-
-    def on_takeover(self, now):
-        if self._state == 'rising':
-            self._rate = max(self._max - self._density, 0.0) / self._peak_after
-            logging.info('Takeover at fog density %.1f: %.0f in %.0f s', self._density, self._max, self._peak_after)
-
-    def on_engage(self, now):
-        if self._density > 0.0:
-            self._state = 'clearing'
-            self._rate = self._max / FOG_CLEAR
-            self._last = now
-
-    def tick(self, now, laps):
-        if self._test_after is not None:
-            self._start(now)
-            self._rate = self._threshold / self._test_after
-            self._test_after = None
-            logging.info('Test run: fog from the start, at %.0f when the pre-alert comes', self._threshold)
-        if self._state == 'idle':
-            return
-        dt = 0.0 if self._last is None else max(now - self._last, 0.0)
-        self._last = now
-        if self._state == 'rising':
-            self._density = min(self._density + self._rate * dt, self._max)
-        else:
-            self._density = max(self._density - self._rate * dt, 0.0)
-            if self._density == 0.0:
-                self._state = 'idle'
-        self._apply(now)
-
-    def fog_density(self):
-        return self._density
-
-    def cleanup(self, client):
-        self._world.set_weather(self._original)
 
 
 def test_start_index(scenario, route, args, alert_after):
     """Test run: the route index to start at, so that with the pre-alert `alert_after` s after the start
     the TOR still comes the scenario's TOR lead before the event point (speeding up from standstill
-    at AUTO_ACCEL, then at --speed). Scenario 3: the fog starts with the pre-alert, at the fog point."""
+    at AUTO_ACCEL, then at --speed)."""
     event = scenario.test_event_index()
     if event is None:
         return 0
-    tor_lead = SCENARIOS[scenario.number][2]
-    if tor_lead is not None and args.tor_lead is not None:
-        tor_lead = args.tor_lead
-    seconds = alert_after + (0.0 if tor_lead is None else args.pre_alert + tor_lead)
+    tor_lead = SCENARIOS[scenario.number][2] if args.tor_lead is None else args.tor_lead
+    seconds = alert_after + args.pre_alert + tor_lead
     speed = args.speed / 3.6
     distance = max(speed * seconds - speed ** 2 / (2.0 * AUTO_ACCEL), 50.0)
     index = (event - int(distance / ROUTE_RESOLUTION)) % len(route)
@@ -3179,31 +3278,35 @@ def make_scenario(args, client, sim_world, routes, route):
     if args.scenario == 0:
         return PracticeScenario(args, sim_world)
     if args.scenario == 2:
-        return WorkzoneScenario(args, client, sim_world, route, routes[3])
+        return WorkzoneScenario(args, client, sim_world, routes)
     if args.scenario == 3:
-        return FogScenario(args, sim_world, route)
-    if args.scenario == 4:
-        return AccidentScenario(args, client, sim_world, route, routes[3])
+        return AccidentScenario(args, client, sim_world, routes)
     return ExitScenario(args, route, routes[3])
 
 
 class Intervention(object):
     """Text the glasses show during the pre-alert, set in intervention_config.json.
 
-    Its lines come from NDRT_scripts/scenario<N>_<intervention>_<format>.txt. From delay_seconds
+    Its lines come from NDRT_scripts/scenario<N>-<V>_<intervention>_<format>.txt (the variant's own,
+    e.g. scenario2-b_driving_summary.txt), else scenario<N>_<intervention>_<format>.txt. From delay_seconds
     after the pre-alert on, one line at a time, each for question_seconds (summary and question
-    alike). Then the text goes away until the TOR. With the defaults:
+    alike). Then the text goes away until the TOR. "modality": "auditory" speaks each line when it
+    is due instead (InterventionSpeech), nothing is shown. With the defaults:
         0-5 s pre-alert only, 5-15 / 15-25 / 25-35 s SA level or ready-to-resume step 1 / 2 / 3,
         35-60 s pre-alert only again, 60 s TOR
     """
 
-    def __init__(self, path, scenario_number):
+    def __init__(self, path, scenario_number, variant='a'):
         with open(path, encoding='utf-8-sig') as handle:
             config = json.load(handle)
         self.kind = config.get('intervention', 'none')
         self.format = config.get('format', 'summary')
+        self.modality = config.get('modality', 'visual')
         self.delay = float(config.get('delay_seconds', 5.0))
         self.question_seconds = float(config.get('question_seconds', 10.0))
+        # NDRT: first a line on what the participant was doing (NDRT_INTRO), this long, then the lines
+        self.intro_seconds = float(config.get('intro_seconds', 5.0)) if self.kind == 'NDRT' and scenario_number else 0.0
+        self.room = None  # the NDRT chat room's name, for the intro
         # test run (see TEST_ALERT_AFTER): None, or (s from the start to the pre-alert, s pre-alert)
         self.test = None
         if config.get('test'):
@@ -3213,6 +3316,8 @@ class Intervention(object):
             raise ValueError('%s: "intervention" must be one of %s' % (path, ', '.join(INTERVENTIONS)))
         if self.format not in INTERVENTION_FORMATS:
             raise ValueError('%s: "format" must be one of %s' % (path, ', '.join(INTERVENTION_FORMATS)))
+        if self.modality not in INTERVENTION_MODALITIES:
+            raise ValueError('%s: "modality" must be one of %s' % (path, ', '.join(INTERVENTION_MODALITIES)))
         self.lines = []
         # the participant's own RtR summary (kakao_ndrt.py); self.lines is the fallback
         self.live = self.kind == 'NDRT' and self.format == 'summary' and scenario_number != 0
@@ -3220,32 +3325,61 @@ class Intervention(object):
             self.name = 'none'
             logging.info('Intervention: none (pre-alert only)')
             return
-        self.name = '%s_%s' % (self.kind, self.format)
-        script = os.path.join(INTERVENTION_DIR, 'scenario%d_%s.txt' % (scenario_number, self.name))
+        text_name = '%s_%s' % (self.kind, self.format)
+        self.name = text_name + ('_auditory' if self.auditory else '')  # logged with every trial
+        script = os.path.join(INTERVENTION_DIR, 'scenario%s_%s.txt' % (scenario_id(scenario_number, variant), text_name))
+        if not os.path.exists(script):
+            script = os.path.join(INTERVENTION_DIR, 'scenario%d_%s.txt' % (scenario_number, text_name))
         with open(script, encoding='utf-8-sig') as handle:
             self.lines = [line.strip() for line in handle if line.strip() and not line.lstrip().startswith('#')]
         if not self.lines:
             raise ValueError('%s has no text' % script)
-        logging.info('Intervention: %s, %s (%d lines, after %.1f s)', self.name, os.path.basename(script),
-                     len(self.lines), self.delay)
+        if self.intro_seconds:
+            try:
+                from kakao_ndrt import load_set  # next to this script
+                self.room = load_set(scenario_number)['room']
+            except (OSError, ValueError, KeyError) as error:
+                logging.warning('NDRT intro without the room name: %s', error)
+        logging.info('Intervention: %s, %s (%d lines, after %.1f s%s)', self.name, os.path.basename(script),
+                     len(self.lines), self.delay, ', after a %.0f s intro line' % self.intro_seconds if self.intro_seconds else '')
+
+    @property
+    def auditory(self):
+        """The lines are spoken (InterventionSpeech), not shown."""
+        return self.modality == 'auditory'
+
+    @property
+    def first(self):
+        """Seconds after the pre-alert when the first line is due (after the intro)."""
+        return self.delay + self.intro_seconds
 
     @property
     def end(self):
         """Seconds after the pre-alert when the text is over (as if three lines with no text)."""
-        return self.delay + (len(self.lines) or 3) * self.question_seconds
+        return self.first + (len(self.lines) or 3) * self.question_seconds
+
+    def intro(self, name):
+        """The intro line for the participant `name` (None: not known), or None without one."""
+        if not self.intro_seconds or not self.lines:
+            return None
+        if self.room is None:
+            return '공지를 작성 중이셨습니다.'
+        return (NDRT_INTRO if name else NDRT_INTRO_NO_NAME).format(name=name, room=self.room)
 
     def due(self, elapsed):
-        """True while a text is shown `elapsed` seconds after the pre-alert."""
-        page = int((elapsed - self.delay) // self.question_seconds) if self.lines else -1
+        """True while a line (not the intro) is shown `elapsed` seconds after the pre-alert."""
+        page = int((elapsed - self.first) // self.question_seconds) if self.lines else -1
         return 0 <= page < len(self.lines)
 
-    def text(self, elapsed, lines=None):
+    def text(self, elapsed, lines=None, intro=None):
         """Line to show `elapsed` seconds after the pre-alert, as a list ([] for none). lines: the
-        summary to show instead of the file's (the same number of lines)."""
+        summary to show instead of the file's (the same number of lines). intro: the intro line."""
+        if intro and self.delay <= elapsed < self.first:
+            return [intro]
         if not self.due(elapsed):
             return []
         lines = lines or self.lines
-        page = int((elapsed - self.delay) // self.question_seconds)
+        page = int((elapsed - self.first) // self.question_seconds)
         return [lines[page]] if page < len(lines) else []
 
 
@@ -3254,10 +3388,117 @@ class Intervention(object):
 # ==============================================================================
 
 
+class InterventionSpeech(object):
+    """The auditory intervention: each line spoken on this PC when it is due, with OpenAI's TTS
+    (TTS_MODEL, TTS_VOICE; the same API key as kakao_ndrt.py). The speech of a line is made as soon as
+    the line is known (prepare: the fixed lines at the start, the RtR summary when it arrives, a few
+    seconds before it is due) and kept in TTS_CACHE_DIR, so say() plays it right away. A line still
+    being made is played when ready, up to SPEECH_MAX_WAIT s late (logged); a later one is dropped."""
+
+    def __init__(self):
+        from kakao_ndrt import API_KEY_FILE  # next to this script
+        self._key = os.environ.get('OPENAI_API_KEY', '')
+        if not self._key:
+            try:
+                with open(API_KEY_FILE, encoding='utf-8') as handle:
+                    self._key = handle.read().strip()
+            except OSError:
+                pass
+        if not self._key:
+            logging.error('Auditory intervention: no OpenAI API key (OPENAI_API_KEY or %s): nothing is spoken',
+                          os.path.basename(API_KEY_FILE))
+        os.makedirs(TTS_CACHE_DIR, exist_ok=True)
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=44100, size=-16, channels=2)
+        self._lock = threading.Lock()
+        self._ready = {}       # line -> threading.Event, set when its file is there (or failed)
+        self._playing = None   # pygame.mixer.Channel of the line being spoken
+        self._said = 0         # counts say() calls: a newer line cancels a late older one
+
+    @staticmethod
+    def _path(line):
+        digest = hashlib.sha1('\n'.join((TTS_MODEL, TTS_VOICE, TTS_INSTRUCTIONS, line)).encode('utf-8'))
+        return os.path.join(TTS_CACHE_DIR, digest.hexdigest()[:20] + '.mp3')
+
+    def prepare(self, lines):
+        """Make the speech of `lines` in the background (once each)."""
+        for line in lines:
+            with self._lock:
+                if line in self._ready:
+                    continue
+                self._ready[line] = threading.Event()
+            thread = threading.Thread(target=self._make, args=(line,), name='intervention-tts')
+            thread.daemon = True
+            thread.start()
+
+    def _make(self, line):
+        path = self._path(line)
+        try:
+            if not os.path.exists(path):
+                if not self._key:
+                    return
+                started = time.monotonic()
+                body = {'model': TTS_MODEL, 'voice': TTS_VOICE, 'input': line, 'response_format': 'mp3',
+                        'instructions': TTS_INSTRUCTIONS}
+                request = urllib.request.Request('https://api.openai.com/v1/audio/speech',
+                                                 data=json.dumps(body).encode('utf-8'), method='POST',
+                                                 headers={'Content-Type': 'application/json',
+                                                          'Authorization': 'Bearer ' + self._key})
+                with urllib.request.urlopen(request, timeout=TTS_TIMEOUT) as response:
+                    data = response.read()
+                with open(path + '.part', 'wb') as handle:
+                    handle.write(data)
+                os.replace(path + '.part', path)
+                logging.info('Intervention speech made in %.1f s: %s', time.monotonic() - started, line)
+        except (urllib.error.URLError, OSError, ValueError) as error:
+            logging.error('Intervention speech failed (%s): %s', error, line)
+        finally:
+            self._ready[line].set()
+
+    def say(self, line, elapsed):
+        """Speak `line` now (or as soon as its speech is ready); elapsed: s after the pre-alert, logged."""
+        self.prepare([line])
+        with self._lock:
+            self._said += 1
+            number = self._said
+        thread = threading.Thread(target=self._play, args=(line, number, elapsed, time.monotonic()),
+                                  name='intervention-say')
+        thread.daemon = True
+        thread.start()
+
+    def _play(self, line, number, elapsed, asked):
+        ready = self._ready[line].wait(SPEECH_MAX_WAIT)
+        late = time.monotonic() - asked
+        path = self._path(line)
+        if number != self._said:
+            return  # a newer line is due already
+        if not ready or not os.path.exists(path):
+            logging.error('Intervention speech not ready %.1f s after it was due: not spoken: %s', late, line)
+            return
+        try:
+            sound = pygame.mixer.Sound(path)
+        except pygame.error as error:
+            logging.error('Intervention speech could not be played (%s): %s', error, line)
+            return
+        sound.set_volume(SPEECH_VOLUME)
+        self.stop()
+        self._playing = sound.play()
+        logging.info('Intervention speech %.1f s after the pre-alert%s (%.1f s long): %s', elapsed + late,
+                     ' (%.1f s late)' % late if late > 0.2 else '', sound.get_length(), line)
+
+    def stop(self):
+        """Cut the line being spoken short (the pre-alert is over)."""
+        with self._lock:
+            self._said += 1  # also cancels one still waiting for its speech
+        if self._playing is not None:
+            self._playing.stop()
+            self._playing = None
+
+
 class AlertSound(object):
-    """Alert sounds made in code: a chime for the pre-alert, repeating beeps for the TOR. With
-    `glasses` (GlassesLink) TORApp plays them on the glasses instead, while their display runs;
-    when it does not, they play here, so an alert is never silent."""
+    """Alert sounds made in code: a chime for the pre-alert, repeating beeps for the TOR. The
+    experiment plays them on this PC, also with the glasses (TORApp's own sounds are off by default).
+    With `glasses` (GlassesLink) they play here only while the glasses' display does not run."""
 
     def __init__(self, enabled=True, glasses=None):
         self._ok = False
@@ -3381,13 +3622,17 @@ class TakeoverExperiment(object):
     def __init__(self, world, follower, driver_input, recorder, route, scenario, sound, auto_alert=True,
                  pre_alert=PRE_ALERT_SECONDS, glasses=None, intervention=None, clearance=None, cruise_kmh=None,
                  escort=None, rtr=None, test_alert_after=None, ndrt=None, phone_cluster=None, test_driver=None,
-                 followers=None, routes=None, reengage=True, navigator=None, loop_map=None):
+                 followers=None, routes=None, reengage=True, navigator=None, loop_map=None, speed_hold=False,
+                 speech=None):
         self._world = world
         self._navigator = navigator         # NavigationMap: the way to the highway (practice, until on it)
+        self._message_font = None           # Korean font for on-screen messages (_draw_practice_lap)
+        self._text_fonts = None             # fonts of the intervention text on the screen (_draw_text)
         self._loop_map = loop_map           # NavigationMap of the loop (--minimap)
         self._followers = followers or {}   # lane -> LoopFollower: autonomous driving goes on in the car's lane
         self._routes = routes or {}         # lane -> route of the loop, to tell which lane the car is in
         self._reengage = reengage           # autonomous driving comes back REENGAGE_AFTER s after the takeover
+        self._hold_after_takeover = speed_hold  # SpeedHold at the takeover (--speed-hold)
         self._reengage_at = None            # time.monotonic() it comes back; None: not known yet
         self._reengage_due = False          # a takeover happened and autonomous driving has not come back
         self._next_lane_check = 0.0
@@ -3395,6 +3640,8 @@ class TakeoverExperiment(object):
         self._phone_cluster = phone_cluster  # PhoneCluster: the gauges on a phone instead of the monitor
         self._ndrt = ndrt                   # KakaoNdrtLink: the NDRT chat on the NDRT laptop
         self._nudged = set()                # NDRT nudges posted (once each per run, _nudge_tick)
+        self._started_at = None             # time.monotonic() of the first frame (_start_kakao_tick)
+        self._start_kakao_done = False
         self._hazard_passed = None          # time.monotonic() the car got past the lane 2 hazard (_track_hazard)
         self._takeover_time = None
         self._clearance = clearance         # TrafficClearance: the traffic leaves after the pre-alert
@@ -3403,10 +3650,13 @@ class TakeoverExperiment(object):
         self._cruise_kmh = cruise_kmh       # autonomous driving speed
         self._glasses = glasses             # GlassesLink: alerts on the glasses instead of the screen
         self._intervention = intervention   # Intervention: text on the glasses during the pre-alert
+        self._speech = speech               # InterventionSpeech: the auditory intervention (None: shown)
+        self._spoken_text = []
         self._shown_text = []
         self._rtr = rtr                     # RtrBridge: the NDRT summary is the participant's own RtR summary
         self._rtr_since = None              # time.monotonic() of this trial's summary request (None: not yet)
         self._rtr_lines = None              # the summary lines shown in this trial, fixed once shown
+        self._intro = None                  # this trial's intro line (Intervention.intro), set at the pre-alert
         self._speed_hold = None             # SpeedHold: after the takeover, until the driver presses a pedal
         self._speed_kmh = 0.0               # shown on the instrument cluster (_draw_cluster)
         self._pedal = 0.0                   # throttle pedal travel the driver gives, 0..1
@@ -3479,6 +3729,10 @@ class TakeoverExperiment(object):
         self._scenario.on_alert(now)
         self._mark('prealert')
         self._rtr_lines = None
+        if self._intervention is not None:
+            self._intro = self._intervention.intro(self._ndrt.name if self._ndrt is not None else None)
+            if self._intro and self._speech is not None:
+                self._speech.prepare([self._intro])
         if self._rtr is not None and (manual or self._rtr_since is None):  # none requested ahead
             self._rtr_since = now
             self._rtr.request('p_key' if manual else 'prealert')
@@ -3506,10 +3760,13 @@ class TakeoverExperiment(object):
         self._sound.stop(confirm=True)
         self._control = carla.VehicleControl()
         self._input.reset()
-        # the engine keeps pulling at the takeover speed until the driver presses a pedal (_parse_manual_keys)
-        self._speed_hold = SpeedHold(self._world.player.get_velocity().length() * 3.6)
         self._world.hud.notification('Manual driving: ' + reason, seconds=4.0)
-        logging.info('Manual driving: %s (holding %.0f km/h until a pedal)', reason, self._speed_hold.target)
+        if self._hold_after_takeover:
+            # the engine keeps pulling at the takeover speed until the driver presses a pedal (_parse_manual_keys)
+            self._speed_hold = SpeedHold(self._world.player.get_velocity().length() * 3.6)
+            logging.info('Manual driving: %s (holding %.0f km/h until a pedal)', reason, self._speed_hold.target)
+        else:  # only the driver's pedals from here: the car rolls on until they press one
+            logging.info('Manual driving: %s (no speed hold)', reason)
 
     # -- per frame -------------------------------------------------------------
 
@@ -3613,13 +3870,14 @@ class TakeoverExperiment(object):
         return best
 
     def _escort_tick(self, now):
-        """Start the escort cars after the takeover (the merge plan where lanes 3 and 4 are closed
-        ahead, else beside the car), and move them."""
+        """Start the escort cars after the takeover (the merge plan where lanes are closed ahead, else
+        beside the car), and move them."""
         if self._escort_due and self.mode == MANUAL:
             self._escort_due = False
             if self._scenario.closure is not None:
                 self._escort.start_merge(now, self._scenario.closure,
-                                         self._scenario.obstacle_passed if self._scenario.obstacle else None)
+                                         self._scenario.obstacle_passed if self._scenario.obstacle else None,
+                                         self._scenario.merge_lanes)
             else:
                 self._escort.start(now, self._scenario.escort_sides)
         self._escort.tick(now, self._world.player)
@@ -3685,8 +3943,8 @@ class TakeoverExperiment(object):
         return best[0] if best else None
 
     def _reengage_tick(self, now):
-        """Autonomous driving back REENGAGE_AFTER s after the takeover (scenarios 2 and 4: after the car
-        is past the lane 2 obstacle), once the car is in a loop lane (not after leaving at the exit)."""
+        """Autonomous driving back REENGAGE_AFTER s after the takeover (scenarios 2 and 3: after the car
+        is past the van), once the car is in a loop lane (not after leaving at the exit)."""
         if not self._reengage_due or self.mode != MANUAL:
             return
         scenario = self._scenario
@@ -3694,7 +3952,7 @@ class TakeoverExperiment(object):
             if scenario.has_scene and scenario.obstacle is not None:
                 if not scenario.obstacle_passed():
                     return
-                logging.info('Past the lane 2 obstacle: autonomous driving again in %.0f s', REENGAGE_AFTER)
+                logging.info('Past the van: autonomous driving again in %.0f s', REENGAGE_AFTER)
                 self._reengage_at = now + REENGAGE_AFTER
             else:
                 self._reengage_at = self._takeover_time + REENGAGE_AFTER
@@ -3708,15 +3966,28 @@ class TakeoverExperiment(object):
         self._engage_autonomous(lane)
 
     def _practice_tick(self, now):
-        """Practice: once the car is on the highway, autonomous driving starts."""
-        if self._scenario.number != 0 or not self._scenario.manual_only or now < self._next_lane_check:
+        """Practice: once on the highway the driver drives one lap of the loop by hand (counted from
+        where the car came on), then autonomous driving starts in the lane the car is in."""
+        scenario = self._scenario
+        if scenario.number != 0 or not scenario.manual_only or now < self._next_lane_check:
             return
         self._next_lane_check = now + 0.5
+        if scenario.entry_progress is None:
+            lane = self._loop_lane()
+            if lane is None:
+                return
+            scenario.entry_progress = self._progress
+            self._world.hud.notification('Highway: one lap by hand', seconds=4.0)
+            logging.info('Practice: on the highway (lane %d), one lap (%.0f m) by hand', lane,
+                         len(self._route) * ROUTE_RESOLUTION)
+            return
+        if self._progress - scenario.entry_progress < len(self._route):
+            return
         lane = self._loop_lane()
         if lane is None:
-            return
-        self._scenario.manual_only = False
-        logging.info('Practice: on the highway (lane %d), autonomous driving starts', lane)
+            return  # between lanes: tried again
+        scenario.manual_only = False
+        logging.info('Practice: one lap by hand done, autonomous driving starts in lane %d', lane)
         self._engage_autonomous(lane)
 
     def _mark(self, event, **fields):
@@ -3726,7 +3997,7 @@ class TakeoverExperiment(object):
 
     def _ndrt_tick(self, now):
         """The team's follow-up messages in the NDRT chat, once after the takeover: when the car is
-        past the scene (scenarios 2 and 4), else NDRT_FOLLOWUP_AFTER s after the takeover."""
+        past the scene (scenarios 2 and 3), else NDRT_FOLLOWUP_AFTER s after the takeover."""
         if self._ndrt is None or self._ndrt.followup_released or self._takeover_time is None:
             return
         after = now - self._takeover_time
@@ -3738,11 +4009,23 @@ class TakeoverExperiment(object):
             return
         self._ndrt.release_followup(reason)
 
+    def _start_kakao_tick(self, now):
+        """With the NDRT chat: one KakaoTalk sound START_KAKAO_AFTER s after the start, so the
+        participant turns to the chat (logged in ndrt.jsonl as start_kakao)."""
+        if self._started_at is None:
+            self._started_at = now
+        if self._start_kakao_done or self._ndrt is None or now - self._started_at < START_KAKAO_AFTER:
+            return
+        self._start_kakao_done = True
+        self._sound.kakao()
+        self._ndrt.mark('start_kakao')
+        logging.info('KakaoTalk sound %.0f s after the start: the participant turns to the NDRT chat', START_KAKAO_AFTER)
+
     def _nudge_tick(self, now):
         """The team pressing for the notice in the NDRT chat, each with the KakaoTalk sound on this
         PC. kakao_sets "nudges": s after the pre-alert, only from NUDGE_FROM s (the participant has
         left the NDRT) until the intervention text is over. "late_nudges": s after the car has
-        passed the lane 2 hazard (scenarios 2 and 4; else LATE_NUDGE_NO_HAZARD s after the takeover)."""
+        passed the van (scenarios 2 and 3; else LATE_NUDGE_NO_HAZARD s after the takeover)."""
         if self._ndrt is None:
             return
         self._track_hazard(now)
@@ -3754,7 +4037,7 @@ class TakeoverExperiment(object):
             if nudge['when'] == 'hazard':
                 if self._hazard_passed is None or now - self._hazard_passed < after:
                     continue
-                since = 'the lane 2 hazard'
+                since = 'the van'
             elif self.mode != PRE_ALERT:
                 continue
             elif not NUDGE_FROM <= after <= end:
@@ -3778,9 +4061,9 @@ class TakeoverExperiment(object):
         if self._scenario.has_scene:
             if self.mode != MANUAL or not (self._scenario.obstacle_passed() or self._scenario.scene_cleared):
                 return
-            logging.info('Past the lane 2 hazard: the late NDRT nudges start')
+            logging.info('Past the van: the late NDRT nudges start')
         elif now - self._takeover_time >= LATE_NUDGE_NO_HAZARD:
-            logging.info('%.0f s after the takeover (no lane 2 hazard): the late NDRT nudges start',
+            logging.info('%.0f s after the takeover (no van): the late NDRT nudges start',
                          LATE_NUDGE_NO_HAZARD)
         else:
             return
@@ -3820,6 +4103,7 @@ class TakeoverExperiment(object):
         self._reengage_tick(now)
         self._practice_tick(now)
         self._nudge_tick(now)
+        self._start_kakao_tick(now)
         if self.mode in AUTONOMOUS_MODES:
             if self.mode in TAKEOVER_MODES and self._input.driver_active(keys):
                 self._take_over(now)
@@ -3854,30 +4138,50 @@ class TakeoverExperiment(object):
             self._phone_cluster.update(self._speed_kmh, self._pedal, *self._mode_label(), blinker=blinker)
         self._input.force_feedback(speed_kmh)
         self._update_lights(control)
-        self._recorder.sample(now, self.mode, self._event_dist, self._scenario.fog_density())
+        self._recorder.sample(now, self.mode, self._event_dist)
+        self._update_text(now)
         if self._glasses is not None:
             self._update_glasses(now)
+
+    def _update_text(self, now):
+        """The intervention text due now (during the pre-alert), for the glasses or the screen; with the
+        auditory intervention it is spoken instead and nothing is shown."""
+        if self.mode != PRE_ALERT:
+            self._shown_text = []
+            if self._spoken_text:
+                self._spoken_text = []
+                self._speech.stop()
+            return
+        elapsed = now - self._alert_time
+        if self._speech is not None and self._rtr is not None and self._rtr_since is not None:
+            result = self._rtr.result_since(self._rtr_since)  # its speech made before it is due
+            if result is not None:
+                self._speech.prepare(result['lines'])
+        if self._rtr is not None and self._rtr_lines is None and self._intervention.due(elapsed):
+            self._rtr_lines = self._summary_lines(now)
+        text = self._intervention.text(elapsed, self._rtr_lines, self._intro) if self._intervention is not None else []
+        if self._speech is not None:
+            if text != self._spoken_text:
+                self._spoken_text = text
+                if text:
+                    self._speech.say(text[0], elapsed)
+            return
+        if text != self._shown_text:
+            self._shown_text = text
+            logging.info('Intervention text %.1f s after the pre-alert: %s', elapsed, ' / '.join(text))
 
     def _update_glasses(self, now):
         """The overlay of render() on the glasses: the mode box label and the PRE-ALERT / TOR banner."""
         label = self._mode_label()[0]
         if self.mode == PRE_ALERT:
             elapsed = now - self._alert_time
-            if self._rtr is not None and self._rtr_lines is None and self._intervention.due(elapsed):
-                self._rtr_lines = self._summary_lines(now)
-            text = self._intervention.text(elapsed, self._rtr_lines) if self._intervention is not None else []
-            if text != self._shown_text:
-                self._shown_text = text
-                logging.info('Intervention text %.1f s after the pre-alert: %s', elapsed, ' / '.join(text))
-            self._glasses.update(PRE_ALERT, self._scenario.message, self._pre_alert - elapsed, self._pre_alert,
-                                 label, text)
+            self._glasses.update(PRE_ALERT, PRE_ALERT_MESSAGE, self._pre_alert - elapsed, self._pre_alert,
+                                 label, self._shown_text)
         elif self.mode == TOR:
-            self._glasses.update(TOR, self._scenario.message, TOR_SECONDS - (now - self._tor_time), TOR_SECONDS,
+            self._glasses.update(TOR, TOR_MESSAGE, TOR_SECONDS - (now - self._tor_time), TOR_SECONDS,
                                  label)
         else:
             self._glasses.update(self.mode, label=label)
-        if self.mode != PRE_ALERT:
-            self._shown_text = []
 
     def _parse_manual_keys(self, keys, milliseconds, speed_kmh, incline):
         self._input.update(self._control, keys, milliseconds, speed_kmh, incline)
@@ -3918,9 +4222,11 @@ class TakeoverExperiment(object):
 
         self._draw_cluster(display)
         if self._world.camera_manager.transform_index == 0:
-            shown = self._navigator if self._navigator is not None and self._scenario.manual_only else self._loop_map
+            before_highway = self._scenario.number == 0 and getattr(self._scenario, 'entry_progress', 0) is None
+            shown = self._navigator if self._navigator is not None and before_highway else self._loop_map
             if shown is not None:
                 shown.draw(display, self._world.camera_manager, self._world.player.get_transform(), now)
+        self._draw_practice_lap(display)
         # the mode at the lower right corner of the window (the right monitor): white on its color
         label, color = self._mode_label()
         box_width, box_height = small.size(label)[0] + 36, 34
@@ -3931,18 +4237,64 @@ class TakeoverExperiment(object):
 
         if self._glasses is not None:
             return  # the pre-alert and the TOR are on the glasses
+        # Without glasses the middle monitor shows what they would: the pre-alert banner while there is
+        # no intervention text (no time left), the text instead of it, the TOR banner blinking.
         if self.mode == PRE_ALERT:
-            remaining = self._pre_alert - (now - self._alert_time)
-            self._draw_banner(display, big, small, width, 'PRE-ALERT',
-                              '%s - takeover request in %.1f s' % (self._scenario.message, max(remaining, 0.0)),
-                              (240, 180, 20), (30, 30, 30), remaining / self._pre_alert)
+            if self._shown_text:
+                self._draw_text(display, width, self._shown_text)
+            else:
+                self._draw_banner(display, big, small, width, PRE_ALERT_MESSAGE, '',
+                                  (240, 180, 20), (30, 30, 30), None)
         elif self.mode == TOR:
-            remaining = TOR_SECONDS - (now - self._tor_time)
-            flash = int(now * 4) % 2 == 0
-            self._draw_banner(display, big, small, width, 'TAKE OVER NOW!',
-                              'Manual driving in %.1f s' % max(remaining, 0.0),
-                              (220, 30, 30) if flash else (150, 20, 20), (255, 255, 255),
-                              remaining / TOR_SECONDS)
+            if int((now - self._tor_time) * 2 * TOR_BLINK_HZ) % 2 == 0:
+                self._draw_banner(display, big, small, width, TOR_MESSAGE, '', (220, 30, 30), (255, 255, 255), None)
+
+    def _draw_text(self, display, width, lines):
+        """The intervention text as on the glasses: a "label:" in light cyan on its own line, the
+        sentence below it in bold white, on a dark band at the top of the middle monitor."""
+        height = self._world.camera_manager.screen_size[1]
+        if self._text_fonts is None:
+            name = pygame.font.match_font('malgungothic,applesdgothicneo,notosanscjkkr') or pygame.font.get_default_font()
+            self._text_fonts = (pygame.font.Font(name, max(16, int(height * 0.03))),
+                                pygame.font.Font(name, max(20, int(height * 0.042))))
+            self._text_fonts[1].set_bold(True)
+        label_font, text_font = self._text_fonts
+        rows = []
+        for line in lines:
+            head, sep, rest = line.partition(':')
+            if sep and len(head) <= 12:
+                rows.append(label_font.render(head.strip(), True, (110, 225, 255)))
+                line = rest.strip()
+            rows.append(text_font.render(line, True, (255, 255, 255)))
+        box_w = max(r.get_width() for r in rows) + 80
+        box_h = sum(r.get_height() for r in rows) + 12 * (len(rows) - 1) + 40
+        box = pygame.Rect(width // 2 - box_w // 2, int(height * 0.06), box_w, box_h)
+        shade = pygame.Surface(box.size, pygame.SRCALPHA)
+        shade.fill((8, 10, 14, 200))
+        display.blit(shade, box)
+        y = box.top + 20
+        for row in rows:
+            display.blit(row, row.get_rect(midtop=(box.centerx, y)))
+            y += row.get_height() + 12
+
+    def _draw_practice_lap(self, display):
+        """Practice, the lap by hand: how far it is to autonomous driving, at the top of the middle monitor."""
+        scenario = self._scenario
+        if scenario.number != 0 or not scenario.manual_only or getattr(scenario, 'entry_progress', None) is None:
+            return
+        left = max(0.0, (len(self._route) - (self._progress - scenario.entry_progress)) * ROUTE_RESOLUTION)
+        if self._message_font is None:
+            name = pygame.font.match_font('malgungothic,applesdgothicneo,notosanscjkkr') or pygame.font.get_default_font()
+            self._message_font = pygame.font.Font(name, 30)
+        text = self._message_font.render('자율주행 전환까지  %s' % _distance_text(left), True, (255, 255, 255))
+        manager = self._world.camera_manager
+        middle = manager.screens // 2 * manager.screen_size[0] + manager.screen_size[0] // 2
+        box = text.get_rect(midtop=(middle, 24)).inflate(48, 20)
+        shade = pygame.Surface(box.size, pygame.SRCALPHA)
+        shade.fill((40, 110, 200, 235))
+        display.blit(shade, box)
+        pygame.draw.rect(display, (255, 255, 255), box, 2)
+        display.blit(text, text.get_rect(center=box.center))
 
     def _draw_cluster(self, display):
         """Driver's seat view: a tablet at the bottom middle of the middle monitor with two round gauges
@@ -4051,15 +4403,15 @@ class TakeoverExperiment(object):
         readout = (int(rx + rw * 0.5), int(ry + rh * 0.22))  # at the top, between the dials
 
         # turn signal arrows, left and right of the speed digits
-        size = radius * 0.32
+        arrow = radius * 0.32
         arrows = []
         for side in (-1, 1):
             tip_x = readout[0] + side * radius * 1.0
-            base_x = tip_x - side * size
+            base_x = tip_x - side * arrow
             y = readout[1]
-            arrows.append([(tip_x, y), (base_x, y - size * 0.62), (base_x, y - size * 0.24),
-                           (base_x - side * size * 0.8, y - size * 0.24), (base_x - side * size * 0.8, y + size * 0.24),
-                           (base_x, y + size * 0.24), (base_x, y + size * 0.62)])
+            arrows.append([(tip_x, y), (base_x, y - arrow * 0.62), (base_x, y - arrow * 0.24),
+                           (base_x - side * arrow * 0.8, y - arrow * 0.24), (base_x - side * arrow * 0.8, y + arrow * 0.24),
+                           (base_x, y + arrow * 0.24), (base_x, y + arrow * 0.62)])
 
         # light on the glass: a faint band across the upper left of the screen
         glare = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
@@ -4089,6 +4441,7 @@ class TakeoverExperiment(object):
         display.blit(label, label.get_rect(center=(rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)))
 
     def _draw_banner(self, display, big, small, width, title, subtitle, background, foreground, fraction):
+        """fraction: share of the time left, as a bar under the banner (None: no bar)."""
         banner_width = max(520, big.size(title)[0] + 60, small.size(subtitle)[0] + 60)
         rect = (width // 2 - banner_width // 2, 56, banner_width, 110)
         surface = pygame.Surface(rect[2:])
@@ -4096,11 +4449,13 @@ class TakeoverExperiment(object):
         surface.fill(background)
         display.blit(surface, rect[:2])
         title_surface = big.render(title, True, foreground)
-        display.blit(title_surface, title_surface.get_rect(center=(width // 2, rect[1] + 35)))
-        subtitle_surface = small.render(subtitle, True, foreground)
-        display.blit(subtitle_surface, subtitle_surface.get_rect(center=(width // 2, rect[1] + 72)))
-        bar_width = int((rect[2] - 40) * min(max(fraction, 0.0), 1.0))
-        pygame.draw.rect(display, foreground, (rect[0] + 20, rect[1] + 92, bar_width, 8))
+        display.blit(title_surface, title_surface.get_rect(center=(width // 2, rect[1] + (35 if subtitle else 55))))
+        if subtitle:
+            subtitle_surface = small.render(subtitle, True, foreground)
+            display.blit(subtitle_surface, subtitle_surface.get_rect(center=(width // 2, rect[1] + 72)))
+        if fraction is not None:
+            bar_width = int((rect[2] - 40) * min(max(fraction, 0.0), 1.0))
+            pygame.draw.rect(display, foreground, (rect[0] + 20, rect[1] + 92, bar_width, 8))
 
 
 # ==============================================================================
@@ -4127,6 +4482,7 @@ def game_loop(args):
     glasses = None
     rtr = None
     ndrt = None
+    ndrt_server = None  # KakaoNdrt: the chat itself, with --ndrt here
     phone_cluster = None
     collision_sensor = None
 
@@ -4135,7 +4491,7 @@ def game_loop(args):
             sys.path.append(GLASSES_DIR)
             from tor_glasses import GlassesLink, resolve_host  # pylint: disable=import-error
             glasses = GlassesLink(resolve_host(args.glasses), args.glasses_port)
-        intervention = Intervention(args.intervention_config, args.scenario)
+        intervention = Intervention(args.intervention_config, args.scenario, args.variant)
         args.intervention = intervention.name  # logged with every trial
         args.test = intervention.test is not None and args.scenario != 0
         if args.test:
@@ -4143,8 +4499,8 @@ def game_loop(args):
             args.test_alert_after = intervention.test[0]
             logging.info('Test run: pre-alert %.0f s after the start, TOR %.0f s after the pre-alert',
                          intervention.test[0], args.pre_alert)
-        if intervention.lines and glasses is None:
-            logging.warning('Intervention %s is shown only on the glasses (--glasses)', intervention.name)
+        if intervention.lines and glasses is None and not intervention.auditory:
+            logging.info('Intervention %s on the middle monitor (no glasses)', intervention.name)
         driver_input = WheelInput(args) if args.input == 'wheel' else KeyboardInput()
         client = connect_server(args.host, args.port)
 
@@ -4192,14 +4548,17 @@ def game_loop(args):
         add_driver_view(world, args)
         soften_engine_braking(world.player)
 
-        # Put the vehicle on the figure-8 highway.
+        # Put the vehicle on the figure-8 highway (practice: in the town, see PRACTICE_SPAWN_INDEX).
         carla_map = world.map
         anchor = carla_map.get_waypoint(carla_map.get_spawn_points()[START_SPAWN_INDEX].location)
+        reverse = args.scenario == 1 and args.variant == 'b'
+        if reverse:  # 1-b: the opposite carriageway, the loop the other way round from the same place
+            anchor = opposite_waypoint(anchor)
         routes = {lane: build_loop_route(carla_map, lane_waypoint(anchor, lane)) for lane in LANES}
         route = routes[args.lane]
-        logging.info('Figure-8 route, lane %d: %d waypoints, ~%.0f m',
-                     args.lane, len(route), len(route) * ROUTE_RESOLUTION)
-        green_lights = hold_loop_lights_green(sim_world, routes)
+        logging.info('Loop route (%s%s), lane %d: %d waypoints, ~%.0f m', carla_map.name.split('/')[-1],
+                     ', opposite carriageway' if reverse else '', args.lane, len(route), len(route) * ROUTE_RESOLUTION)
+        green_lights = hold_lights_green(sim_world)
         scenario = make_scenario(args, client, sim_world, routes, route)
         start_index = test_start_index(scenario, route, args, intervention.test[0]) if args.test else 0
         start = route[start_index].transform
@@ -4217,23 +4576,48 @@ def game_loop(args):
         followers = {lane: follower if lane == args.lane else
                      LoopFollower(world.player, routes[lane], args.speed, carla_map, route_planner, quiet=True)
                      for lane in LANES}
-        # in scenarios 2 and 4 cars driving a lane that gets closed would run into the obstacle
-        traffic_lanes = tuple(lane for lane in LANES if lane not in CLOSED_LANES.get(args.scenario, ()))
+        # scenarios 2 and 3: the cars in the lanes that get closed leave before the scene appears
+        # (Scene._clear_lanes); a test run has it from the start, so none there
+        closed = closed_lanes(args.scenario, args.variant)
+        traffic_lanes = tuple(lane for lane in LANES if not args.test or lane not in closed)
         traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes, start_index)
         last_refresh = time.monotonic()
         latency = LatencyMeter()
         recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window, latency)
-        if args.lane in CLOSED_LANES.get(args.scenario, ()):
+        if args.record:
+            if glasses is None:
+                logging.warning('--record needs the glasses (--glasses): no recording')
+            else:  # until glasses.close(): the run's name, as its Data folder
+                name = os.path.basename(recorder.dir)
+                # fetched from the phone over Wi-Fi when the run ends (glasses.close()), into video/
+                glasses.set_record(name, None if args.no_log else os.path.join(recorder.dir, 'video'))
+                logging.info('Recording on the phone: Movies/TORApp/%s.mp4 (glasses camera, display, microphone)',
+                             name)
+        if args.lane in closed:
             logging.info('The car drives in lane %d, which the %s closes: the takeover includes '
-                         'a lane change to the left', args.lane, SCENARIOS[args.scenario][0])
+                         'a lane change to the %s', args.lane, SCENARIOS[args.scenario][0],
+                         'left' if args.variant == 'a' else 'right')
         road_signs = RoadSigns(sim_world)
         clearance = TrafficClearance(client, traffic, args.npc_speed)
+        scenario.clearance = clearance
         escort = EscortCars(client, sim_world, carla_map)
         # always on this PC too (with --glasses TORApp also plays them on the glasses)
         sound = AlertSound(not args.no_sound)
+        speech = None
+        if intervention.auditory and intervention.lines and not args.no_sound:
+            speech = InterventionSpeech()  # the lines spoken instead of shown
+            speech.prepare(intervention.lines)  # the fixed lines (also the RtR summary's fallback)
+            logging.info('Intervention %s: spoken on this PC (%s, voice %s)', intervention.name, TTS_MODEL, TTS_VOICE)
         if args.ndrt:
-            from kakao_ndrt import KakaoNdrtLink  # next to this script
-            ndrt = KakaoNdrtLink(args.ndrt, args.scenario, args.ndrt_port, None if args.no_log else recorder.dir,
+            from kakao_ndrt import KakaoNdrt, KakaoNdrtLink, own_address  # next to this script
+            address = args.ndrt
+            if args.ndrt.lower() == 'here':  # the chat runs in this program; the laptop only opens the page
+                ndrt_server = KakaoNdrt(args.scenario, args.ndrt_port,
+                                        None if args.no_log else recorder.ndrt_dir, on_laptop=False)
+                address = '127.0.0.1'
+                logging.info('NDRT laptop: open http://%s:%d/ in its browser (the page can stay open between runs)',
+                             own_address() or '<this PC IP>', args.ndrt_port)
+            ndrt = KakaoNdrtLink(address, args.scenario, args.ndrt_port, None if args.no_log else recorder.ndrt_dir,
                                  on_change=glasses.set_rtr if glasses is not None and intervention.live else None)
         elif args.scenario != 0:
             logging.warning('No NDRT laptop (--ndrt IP): no follow-up messages, no RtR summaries')
@@ -4246,7 +4630,7 @@ def game_loop(args):
                 glasses.on_rtr_request = lambda: rtr.request('glasses')
         test_driver = None
         if args.test_driver:
-            test_driver = TestDriver(world.player, routes, args.speed, carla_map, route_planner, scenario)
+            test_driver = TestDriver(world.player, routes, args.speed, carla_map, route_planner, scenario, args.lane)
         if args.phone_cluster:
             from phone_cluster import PhoneCluster  # next to this script
             phone_cluster = PhoneCluster(args.phone_cluster_port)
@@ -4257,9 +4641,11 @@ def game_loop(args):
                                         test_alert_after=intervention.test[0] if args.test else None, ndrt=ndrt,
                                         phone_cluster=phone_cluster, test_driver=test_driver,
                                         followers=followers, routes=routes, reengage=not args.no_reengage,
+                                        speed_hold=args.speed_hold, speech=speech,
                                         navigator=navigator, loop_map=loop_map)
-        fonts = (pygame.font.Font(pygame.font.get_default_font(), 40),
-                 pygame.font.Font(pygame.font.get_default_font(), 24))
+        font_name = pygame.font.match_font('malgungothic,applesdgothicneo,notosanscjkkr') or pygame.font.get_default_font()
+        fonts = (pygame.font.Font(font_name, 40), pygame.font.Font(font_name, 24))  # the banners are Korean
+        fonts[0].set_bold(True)
 
         advance(sim_world, args)
         collision_sensor, collisions = log_collisions(sim_world, world.player)
@@ -4321,6 +4707,8 @@ def game_loop(args):
             glasses.close()
         if ndrt is not None:
             ndrt.close()
+        if ndrt_server is not None:
+            ndrt_server.close()
         if phone_cluster is not None:
             phone_cluster.close()
         if collision_sensor is not None:
@@ -4360,18 +4748,20 @@ def main():
                                 '(default: -2560,0, the left edge of the left monitor)')
     argparser.add_argument('--screens', metavar='N', type=int, default=3,
                            help='monitors side by side in the window, one camera each (default: 3)')
-    argparser.add_argument('--screen-fov', metavar='DEG', type=float, default=60.0,
+    argparser.add_argument('--screen-fov', metavar='DEG', type=float, default=43.0,
                            help='horizontal field of view per monitor in the driver views; the side cameras '
-                                'are turned by this much (default: 60)')
+                                'are turned by this much (default: 43, a 32 inch 16:9 monitor, 70.8 cm wide, seen '
+                                'from 90 cm: the scene at its real size, so speed looks right; 60 shrank it 1.4 x)')
     argparser.add_argument('--no-mirrors', action='store_true',
                            help='do not show the camera images in the car\'s side and rear-view mirrors')
     argparser.add_argument('--render-scale', metavar='F', type=float, default=1.0,
                            help='cameras render at F x the monitor resolution and are scaled up, '
                                 'e.g. 0.5 for more FPS (default: 1.0)')
-    argparser.add_argument('--fps', metavar='N', type=float, default=30.0,
-                           help='most frames per second: the server runs in synchronous mode, one step per '
-                                'frame, which keeps the traffic cars steady; each step is as long as the frame, '
-                                'so the simulation keeps real time. 0 = asynchronous (default: 30)')
+    argparser.add_argument('--fps', metavar='N', type=float, default=60.0,
+                           help='most frames per second (the monitors refresh rate): the server runs in '
+                                'synchronous mode, one step per frame, which keeps the traffic cars steady; each '
+                                'step is as long as the frame, so the simulation keeps real time. 0 = asynchronous '
+                                '(default: 60; it was 30, a cap the faster Low quality server could reach)')
     argparser.add_argument('--filter', metavar='PATTERN', default=DEFAULT_VEHICLE,
                            help='vehicle blueprint (default: "%s")' % DEFAULT_VEHICLE)
     argparser.add_argument('--view', choices=['driver', 'windshield', 'chase'], default='driver',
@@ -4380,49 +4770,40 @@ def main():
     argparser.add_argument('--speed', metavar='KMH', default=80.0, type=float,
                            help='autonomous target speed in km/h (default: 80)')
     argparser.add_argument('--gamma', default=2.2, type=float, help='camera gamma correction (default: 2.2)')
-    argparser.add_argument('--lane', type=int, choices=LANES, default=DEFAULT_LANE,
-                           help='lane to drive in, 1 = next to the median (default: %d)' % DEFAULT_LANE)
+    argparser.add_argument('--lane', type=int, choices=LANES, default=None,
+                           help='lane to drive in, 1 = next to the median (default: %d; 2-b and 3-b: %d, the '
+                                'lane that closes)' % (DEFAULT_LANE, MIRRORED_LANE))
     argparser.add_argument('--vehicles', metavar='N', type=int, default=10,
                            help='number of traffic vehicles to place on the highway (default: 10; they '
                                 'leave after the pre-alert)')
     argparser.add_argument('--npc-speed', metavar='KMH', type=float, default=70.0,
                            help='traffic vehicle speed in km/h (default: 70)')
-    argparser.add_argument('--scenario', type=int, choices=sorted(SCENARIOS), default=1,
+    argparser.add_argument('--scenario', metavar='N-V', type=parse_scenario, default='1-a',
                            help='0 practice (manual driving only), 1 highway exit, 2 work zone after the '
-                                'first lap, 3 sudden fog (default: 1)')
+                                'first lap, 3 accident; variant a, or b mirrored (1-b: the opposite '
+                                'carriageway, 2-b and 3-b: lanes 1 and 2 close), e.g. 2-b; 2 = 2-a (default: 1-a)')
     argparser.add_argument('--tor-lead', metavar='SEC', type=float, default=None,
                            help='seconds before the event point at which the TOR comes; the pre-alert starts '
-                                '--pre-alert seconds earlier (default: 5; scenarios 2 and 4: before the cones reach lane 3)')
+                                '--pre-alert seconds earlier (default: 5; scenarios 2 and 3: before the cones reach '
+                                'the car\'s lane)')
     argparser.add_argument('--alert-lead', metavar='SEC', type=float, default=None,
                            help='seconds before the event point at which the pre-alert starts, instead of '
-                                '--tor-lead + --pre-alert (scenario 3: the fog point, default 0)')
+                                '--tor-lead + --pre-alert')
     argparser.add_argument('--intervention-config', metavar='FILE', default=INTERVENTION_CONFIG,
                            help='which intervention text the glasses show during the pre-alert '
                                 '(default: intervention_config.json next to this script)')
     argparser.add_argument('--exit-at', metavar='METERS', type=float, default=None,
                            help='scenario 1: exit point, m from the start (default: end of the overpass; '
-                                '-1: no exit point)')
+                                '1-b: the exit ramp %d m from the start; -1: no exit point)' % REVERSE_EXIT_AT)
     argparser.add_argument('--workzone-at', metavar='METERS', type=float, default=None,
                            help='scenario 2: where the work zone taper starts, m from the start '
                                 '(default: %d)' % WORKZONE_AT)
     argparser.add_argument('--trees', action='store_true',
                            help='show the trees and bushes (hidden by default: about 26 -> 29 FPS, fewer slow frames)')
     argparser.add_argument('--accident-at', metavar='METERS', type=float, default=None,
-                           help='scenario 4: where the crashed cars are, m from the start (default: %d)' % ACCIDENT_AT)
-    argparser.add_argument('--fog-at', metavar='METERS', type=float, default=None,
-                           help='scenario 3: where the fog starts to thicken, m from the start (default: %d)' % FOG_AT)
-    argparser.add_argument('--fog-threshold', metavar='DENSITY', type=float, default=FOG_THRESHOLD,
-                           help='scenario 3: fog density that starts the pre-alert (default: %g)' % FOG_THRESHOLD)
-    argparser.add_argument('--fog-max', metavar='DENSITY', type=float, default=FOG_MAX,
-                           help='scenario 3: densest fog, 0-100 (default: %g)' % FOG_MAX)
-    argparser.add_argument('--fog-rise', metavar='SEC', type=float, default=FOG_RISE,
-                           help='scenario 3: seconds from the fog point to the threshold (default: %g)' % FOG_RISE)
-    argparser.add_argument('--fog-peak-after', metavar='SEC', type=float, default=FOG_PEAK_AFTER,
-                           help='scenario 3: the fog is densest this many seconds after the takeover '
-                                '(default: %g)' % FOG_PEAK_AFTER)
+                           help='scenario 3: where the crashed cars are, m from the start (default: %d)' % ACCIDENT_AT)
     argparser.add_argument('--pre-alert', metavar='SEC', type=float, default=PRE_ALERT_SECONDS,
-                           help='seconds from the pre-alert to the TOR; scenario 3 scales the fog rate after the '
-                                'pre-alert so the density at the TOR stays the same (default: %g)' % PRE_ALERT_SECONDS)
+                           help='seconds from the pre-alert to the TOR (default: %g)' % PRE_ALERT_SECONDS)
     argparser.add_argument('--no-sound', action='store_true', help='no alert sounds')
     argparser.add_argument('--no-audio-engine', action='store_true',
                            help='do not start the vehicle sounds of carla-audio-engine')
@@ -4435,6 +4816,9 @@ def main():
     argparser.add_argument('--minimap', action='store_true',
                            help='a navigation map of the loop at the top right (practice: the way to the highway '
                                 'is shown anyway, until the car is on it)')
+    argparser.add_argument('--speed-hold', action='store_true',
+                           help='after the takeover the car keeps its speed until the driver presses a pedal '
+                                '(default: off, only the driver pedals move the car, for MALAT / MALON)')
     argparser.add_argument('--no-reengage', action='store_true',
                            help='autonomous driving does not come back by itself after the takeover (E still works)')
     argparser.add_argument('--duration', metavar='SEC', type=float, default=None,
@@ -4446,10 +4830,18 @@ def main():
                                 'logged address in its browser (phone_cluster.py)')
     argparser.add_argument('--phone-cluster-port', metavar='P', type=int, default=5009,
                            help='HTTP port of the phone cluster page (default: 5009)')
+    argparser.add_argument('--record', action='store_true',
+                           help='with --glasses: TORApp records the glasses camera with the glasses display drawn '
+                                'over it and the glasses microphone, on the phone in Movies/TORApp/<run>.mp4')
+    argparser.add_argument('--no-glasses', action='store_true',
+                           help='no glasses, also with --wireless: the pre-alert, the intervention text and the TOR '
+                                'on the middle monitor, as the glasses would show them')
     argparser.add_argument('--wireless', action='store_true',
-                           help='over Wi-Fi: --glasses phone --ndrt laptop (addresses in devices.json), unless given')
+                           help='over Wi-Fi: --glasses phone (address in devices.json) --ndrt here, unless given')
     argparser.add_argument('--ndrt', metavar='IP[:PORT]', default=None,
-                           help='the NDRT laptop running kakao_ndrt.py (follow-up messages, RtR summaries)')
+                           help='"here": the NDRT chat (kakao_ndrt.py) runs in this program and the NDRT laptop '
+                                'only opens http://<this PC>:PORT/ in its browser (the default with --wireless); '
+                                'else the address of the laptop running kakao_ndrt.py itself (laptop: devices.json)')
     argparser.add_argument('--ndrt-port', '--rtr-port', dest='ndrt_port', metavar='P', type=int, default=5008,
                            help='kakao_ndrt.py\'s port on the NDRT laptop when --ndrt has none (default: 5008)')
     argparser.add_argument('--pc-sound', action='store_true',  # kept for old commands: the PC always plays them now
@@ -4499,11 +4891,21 @@ def main():
                            help='press the wheel buttons one by one when asked (reverse, turn signals, horn, ...); '
                                 'saves them to wheel_buttons.json next to this script, then exits')
     args = argparser.parse_args()
+    if isinstance(args.scenario, str):  # the default
+        args.scenario = parse_scenario(args.scenario)
+    args.scenario, args.variant = args.scenario
+    if args.scenario == 0:
+        args.variant = 'a'
+    args.scenario_id = scenario_id(args.scenario, args.variant)
+    if args.lane is None:  # the lane that closes, in the mirrored scenes too
+        args.lane = MIRRORED_LANE if args.variant == 'b' and args.scenario in CLOSED_LANES else DEFAULT_LANE
     if args.pre_alert <= 0:
         argparser.error('--pre-alert must be greater than 0')
     if args.wireless:
         args.glasses = args.glasses or 'phone'
-        args.ndrt = args.ndrt or 'laptop'
+        args.ndrt = args.ndrt or 'here'
+    if args.no_glasses:  # e.g. with --wireless: the alerts and the intervention text on the monitor
+        args.glasses = None
     try:
         args.glasses = device_address(args.glasses, 'phone', 'phone')
         args.ndrt = device_address(args.ndrt, 'laptop', 'ndrt_laptop')

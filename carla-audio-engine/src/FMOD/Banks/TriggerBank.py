@@ -8,8 +8,11 @@
 
 import os
 import time
+from ctypes import c_float
 from pathlib import Path
 from .config import *
+
+CRASH_VOLUME = 0.5  # of the crash event's own loudness (FMOD Studio bank)
 
 
 os.environ["PYFMODEX_DLL_PATH"] = FMOD_CORE_DLL
@@ -112,6 +115,8 @@ class TriggerBank:
         temp_handBranke_event = self.studio_system.get_event(HANDBRAKE_EVENT_PATH)
         self.warning_sound = temp_warning_event.create_instance()
         self.crash_sound = temp_crash_event.create_instance()
+        # pyfmodex has no volume property for event instances: FMOD_Studio_EventInstance_SetVolume
+        self.crash_sound._call("SetVolume", c_float(CRASH_VOLUME))
         self.honk_sound = temp_honk_event.create_instance()
         self.handBrake_sound = temp_handBranke_event.create_instance()
     

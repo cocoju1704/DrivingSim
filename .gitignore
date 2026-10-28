@@ -6,7 +6,13 @@
 !/_Experiment/
 /_Experiment/wheel_buttons.json
 /_Experiment/openai_api_key.txt
-/_Experiment/Data/
+/_Experiment/launcher_last.json
+/_Experiment/intervention_launcher.json
+/_Experiment/tts_cache/
+# the runs' data is tracked, but not the glasses recordings (100+ MB each)
+/_Experiment/Data/*/video/
+/_Experiment/Data/**/*.mp4
+/_Experiment/Data/**/*.part
 !/carla-audio-engine/
 /carla-audio-engine/logs/
 !/TORApp/

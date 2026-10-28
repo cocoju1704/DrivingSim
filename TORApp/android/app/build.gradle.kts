@@ -54,4 +54,5 @@ dependencies {
   implementation(libs.androidx.material3)
   implementation(libs.mwdat.core)
   implementation(libs.mwdat.display)
+  implementation(libs.mwdat.camera) // the glasses' camera, for the recording (GlassesRecorder)
 }

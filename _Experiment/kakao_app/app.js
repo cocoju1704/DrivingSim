@@ -168,7 +168,16 @@
       const body = el('div', 'msg-body');
       body.appendChild(el('div', 'sender', m.from));
       const line = el('div', 'line');
-      line.appendChild(el('div', 'bubble', m.text));
+      const bubble = el('div', 'bubble');
+      // a leading @name is a mention, shown bold and blue as in KakaoTalk
+      const mention = /^@\S+/.exec(m.text);
+      if (mention) {
+        bubble.appendChild(el('span', 'mention', mention[0]));
+        bubble.appendChild(document.createTextNode(m.text.slice(mention[0].length)));
+      } else {
+        bubble.textContent = m.text;
+      }
+      line.appendChild(bubble);
       line.appendChild(el('span', 'time', timeText(m.time)));
       body.appendChild(line);
       row.appendChild(avatar);
@@ -218,6 +227,10 @@
     } else {
       banner.hidden = true;
     }
+    showSummary(data.summary);
+    deadlineAt = data.deadline ? new Date(data.deadline).getTime() : null;
+    clockOffset = new Date(data.now).getTime() - Date.now();
+    tickCountdown();
     if (!draftLoaded) {
       draftLoaded = true;
       if (data.draft && !draftEl.value) draftEl.value = data.draft;
@@ -226,6 +239,57 @@
     }
     if (!data.name && !nameAsked) askName();
   }
+
+  // -- the time left to the notice deadline, in the editor header, to the second --------
+
+  let deadlineAt = null;   // ms, on the experiment PC's clock
+  let clockOffset = 0;     // experiment PC's clock minus this laptop's
+  function tickCountdown() {
+    const box = $('countdown');
+    if (deadlineAt === null) {
+      box.hidden = true;
+      return;
+    }
+    const left = Math.max(0, Math.ceil((deadlineAt - (Date.now() + clockOffset)) / 1000));
+    const mm = String(Math.floor(left / 60)).padStart(2, '0');
+    const ss = String(left % 60).padStart(2, '0');
+    box.textContent = `마감까지 ${mm}:${ss}`;
+    box.classList.toggle('urgent', left <= 60);
+    box.hidden = false;
+  }
+  setInterval(tickCountdown, 250);
+
+  // -- the RtR summary: from the TOR on, folded above the editor (kakao_ndrt.py _reveal_summary) --
+
+  let summaryShown = null;
+  function showSummary(summary) {
+    const panel = $('summary-panel');
+    if (!summary || !summary.lines || !summary.lines.length) {
+      panel.hidden = true;
+      summaryShown = null;
+      return;
+    }
+    const key = summary.time + summary.lines.join('|');
+    if (key === summaryShown) return;
+    summaryShown = key;
+    const list = $('summary-lines');
+    list.textContent = '';
+    for (const line of summary.lines) {
+      const item = el('li');
+      const colon = line.indexOf(':');
+      if (colon > 0 && colon <= 12) {
+        item.appendChild(el('b', '', line.slice(0, colon + 1) + ' '));
+        item.appendChild(document.createTextNode(line.slice(colon + 1).trim()));
+      } else {
+        item.textContent = line;
+      }
+      list.appendChild(item);
+    }
+    panel.open = false;
+    panel.hidden = false;
+    event('summary_shown');
+  }
+  $('summary-panel').addEventListener('toggle', () => event($('summary-panel').open ? 'summary_open' : 'summary_close'));
 
   // -- name --------------------------------------------------------------------
 

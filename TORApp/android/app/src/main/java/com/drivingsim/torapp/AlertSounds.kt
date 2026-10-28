@@ -31,8 +31,9 @@ class AlertSounds(private val onOutput: (String?) -> Unit) {
 
   private val request = AtomicReference<Request?>(null)
   @Volatile private var running = true
+  // off by default: the simulator PC plays the alert sounds; the switch in the app turns these on
   @Volatile
-  var enabled = true
+  var enabled = false
     set(value) {
       field = value
       if (!value) stop()

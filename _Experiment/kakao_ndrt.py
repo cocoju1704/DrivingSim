@@ -2,9 +2,13 @@
 
 """
 NDRT: a team group chat that looks like KakaoTalk (kakao_app/), in which the participant writes
-the room's notice from what the team said (kakao_sets/scenario<N>.json).
+the room's notice from what the team said (kakao_sets/scenario<N>.json; both variants of a
+scenario, e.g. 2-a and 2-b, have the same one).
 
-It runs on the NDRT laptop, apart from the simulator PC: start it there before the drive and open
+Usually the experiment runs it on the simulator PC (takeover_experiment.py --ndrt here, the default
+with --wireless) and the NDRT laptop only opens http://<simulator PC>:5008/ in its browser; the page
+can stay open between runs (it reloads when a new run starts the chat). It can also run on the NDRT
+laptop itself, apart from the simulator PC: start it there before the drive and open
 http://localhost:5008/ in the laptop's browser (a phone works too: the page fits narrow screens).
 The participant enters their name, reads the chat and writes the notice. After the takeover the
 experiment (takeover_experiment.py --ndrt <laptop address>, KakaoNdrtLink) releases the follow-up
@@ -27,17 +31,17 @@ The laptop's firewall has to let the simulator PC in on the port (5008).
     GET  /ndrt/nudge        ?index=K: post nudge K (kakao_sets "nudges" during the pre-alert, then
                             "late_nudges" after the lane 2 hazard)
     GET  /ndrt/mark         ?event=prealert etc.: the experiment's events, logged on this clock
-    GET  /ndrt/info         scenario and title, for the experiment to check
+    GET  /ndrt/info         scenario, title, the participant's name and the room, for the experiment
     GET  /rtr/request       request an RtR summary now (?source=NAME)
     GET  /rtr/status        the latest RtR request and result
 
-Logs, in Data/YYMMDD_HHMMSS_ndrt/ (--log-dir): ndrt.jsonl (name, draft changes, posts, follow-up
+Logs, in _Experiment/Data/YYMMDD_HHMMSS_ndrt/ (--log-dir; run by the experiment: its run's ndrt/): ndrt.jsonl (name, draft changes, posts, follow-up
 messages, page events, the experiment's pre-alert / TOR / takeover) and rtr.jsonl (summary requests
 and results).
 
 On the NDRT laptop, from the CARLA_0.9.16 folder (or wherever _Experiment is):
 
-    python _Experiment\\kakao_ndrt.py --scenario 4
+    python _Experiment\\kakao_ndrt.py --scenario 3
     python _Experiment\\kakao_ndrt.py --scenario 0 --followup-after 120   (practice, no simulator)
 """
 
@@ -60,7 +64,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_ROOT = os.path.join(HERE, '..', 'Data')
+LOG_ROOT = os.path.join(HERE, 'Data')  # _Experiment/Data, as the experiment's runs
 APP_DIR = os.path.join(HERE, 'kakao_app')
 SET_DIR = os.path.join(HERE, 'kakao_sets')
 API_KEY_FILE = os.path.join(HERE, 'openai_api_key.txt')
@@ -128,7 +132,7 @@ def load_set(scenario):
         return json.load(handle)
 
 
-def _own_address():
+def own_address():
     """This laptop's address on the network toward the internet (a UDP socket only picks the
     route, nothing is sent), or None."""
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -146,10 +150,11 @@ def _now_iso():
 
 
 class KakaoNdrt(object):
-    def __init__(self, scenario, port=DEFAULT_PORT, log_dir=None, on_change=None):
+    def __init__(self, scenario, port=DEFAULT_PORT, log_dir=None, on_change=None, on_laptop=True):
         """scenario: which kakao_sets file. log_dir: folder for ndrt.jsonl and rtr.jsonl (None: no
         files). on_change(status): called when the latest RtR request or result changes, e.g. to
-        show it in TORApp."""
+        show it in TORApp. on_laptop: False when the experiment runs it (takeover_experiment.py
+        --ndrt here)."""
         self._set = load_set(scenario)
         self._scenario = scenario
         self._lock = threading.Lock()
@@ -170,6 +175,9 @@ class KakaoNdrt(object):
         self._next_id = 1
         self._latest = None                 # latest request dict: id, source, time (monotonic)
         self._result = None                 # latest result dict, with 'since' (monotonic)
+        # the RtR summary on the page (a folded panel above the editor), only from the TOR on: the
+        # newest summary there was when the experiment marked the TOR ({'lines', 'time'})
+        self._shown_summary = None
         self._reported = None
         self._simulators = set()            # addresses the experiment has called from (_seen_simulator)
         self._running = True
@@ -197,11 +205,14 @@ class KakaoNdrt(object):
                             entry['lines'] = json.loads(entry['lines'])
                         except ValueError:
                             pass
-                    ndrt.log_ndrt(dict(entry, event='experiment_' + entry.pop('event', 'mark')))
+                    event = entry.pop('event', 'mark')
+                    ndrt.log_ndrt(dict(entry, event='experiment_' + event))
+                    if event == 'tor':
+                        ndrt._reveal_summary()
                     self._json({'ok': True})
                 elif url.path == '/ndrt/info':
-                    self._json({'scenario': ndrt._scenario, 'title': ndrt._set['title'],
-                                'followup': ndrt._followup, 'nudges': ndrt.nudge_plan})
+                    self._json({'scenario': ndrt._scenario, 'title': ndrt._set['title'], 'name': ndrt._name,
+                                'room': ndrt._set['room'], 'followup': ndrt._followup, 'nudges': ndrt.nudge_plan})
                 elif url.path == '/rtr/request':
                     self._json({'id': ndrt.request(query.get('source', ['http'])[0])})
                 elif url.path == '/rtr/status':
@@ -271,9 +282,10 @@ class KakaoNdrt(object):
             watcher.start()
         self.log_ndrt({'event': 'start', 'scenario': scenario, 'title': self._set['title']})
         logging.info('NDRT chat (%s): open http://localhost:%d/ in the browser', self._set['title'], port)
-        address = _own_address()
-        logging.info('Simulator PC: takeover_experiment.py --scenario %d --ndrt %s  (this laptop now; the '
-                     'address can change when the Wi-Fi reconnects)', scenario, address or '<this laptop IP>')
+        if on_laptop:
+            address = own_address()
+            logging.info('Simulator PC: takeover_experiment.py --scenario %d --ndrt %s  (this laptop now; the '
+                         'address can change when the Wi-Fi reconnects)', scenario, address or '<this laptop IP>')
         if not self._api_key:
             logging.warning('NDRT chat: no OpenAI API key (OPENAI_API_KEY or %s): no RtR summaries',
                             os.path.basename(API_KEY_FILE))
@@ -310,6 +322,17 @@ class KakaoNdrt(object):
     def _changed_page(self):
         self._seq += 1
 
+    def _reveal_summary(self):
+        """The TOR: the page shows the newest RtR summary from now on (none yet: nothing)."""
+        with self._lock:
+            result = self._result
+            if result is None or not result.get('lines'):
+                return
+            self._shown_summary = {'lines': list(result['lines']), 'time': _now_iso()}
+            self._changed_page()
+        self.log_ndrt({'event': 'summary_revealed', 'request_id': result['request_id'], 'lines': result['lines']})
+        logging.info('NDRT chat: the RtR summary is on the page now (TOR)')
+
     def _fill(self, text):
         return text.replace('{name}', self._name or NO_NAME).replace('{deadline}', self._deadline)
 
@@ -328,6 +351,11 @@ class KakaoNdrt(object):
                 'notice': self._notice,
                 'draft': self._draft,
                 'placeholder': self._set.get('placeholder'),  # grey template in the empty editor
+                'summary': self._shown_summary,
+                # the countdown above the editor: the deadline once the name is entered, and this PC's
+                # time now (the laptop's clock may differ)
+                'deadline': self._deadline_at if self._name else None,
+                'now': datetime.datetime.now().isoformat(timespec='milliseconds'),
             }
 
     def _start_clock(self, now):
@@ -335,7 +363,8 @@ class KakaoNdrt(object):
         {deadline} (NOTICE_DEADLINE min after `now`). Set again when the name is entered."""
         for message, source in zip(self._messages, self._set['messages']):
             message['time'] = (now + datetime.timedelta(minutes=source['t'])).isoformat(timespec='seconds')
-        deadline = now + datetime.timedelta(minutes=NOTICE_DEADLINE)
+        deadline = (now + datetime.timedelta(minutes=NOTICE_DEADLINE)).replace(second=0, microsecond=0)
+        self._deadline_at = deadline.isoformat(timespec='seconds')  # the minute the messages name
         self._deadline = '%s %d시%s' % ('오전' if deadline.hour < 12 else '오후', deadline.hour % 12 or 12,
                                        ' %d분' % deadline.minute if deadline.minute else '')
 
@@ -625,7 +654,17 @@ class KakaoNdrtLink(object):
         self._reported = None
         self._online = None
         self._running = True
-        self.nudges = []            # [{'after', 'when'}] by index, from the laptop's /ndrt/info
+        self.name = None            # the participant's name once entered (/ndrt/info), for the intervention's intro
+        self._info_at = 0.0
+        # [{'after', 'when'}] by index: from the laptop's /ndrt/info once it answers, until then from the
+        # same kakao_sets file here, so the KakaoTalk sound still plays when the laptop is off
+        try:
+            kakao_set = load_set(scenario)
+            self.nudges = ([{'after': float(n['after']), 'when': 'prealert'} for n in kakao_set.get('nudges', [])] +
+                           [{'after': float(n['after']), 'when': 'hazard'} for n in kakao_set.get('late_nudges', [])])
+        except (OSError, ValueError, KeyError) as error:
+            logging.warning('NDRT chat: no nudges from kakao_sets for scenario %d: %s', scenario, error)
+            self.nudges = []
         thread = threading.Thread(target=self._poll, name='kakao-ndrt-link')
         thread.daemon = True
         thread.start()
@@ -728,6 +767,8 @@ class KakaoNdrtLink(object):
                     self._check_scenario()
                 else:
                     logging.warning('NDRT chat: the NDRT laptop (%s) is not reachable', self._base)
+            elif online and self.name is None and time.monotonic() - self._info_at > 2.0:
+                self._check_scenario(quiet=True)  # until the participant has entered a name
             with self._lock:
                 self._status = status
                 pending = self._pending
@@ -749,12 +790,18 @@ class KakaoNdrtLink(object):
                 self._on_change(status)
             time.sleep(self.POLL)
 
-    def _check_scenario(self):
+    def _check_scenario(self, quiet=False):
+        self._info_at = time.monotonic()
         try:
             info = self._get('/ndrt/info')
         except (OSError, ValueError):
             return
         self.nudges = info.get('nudges', [])
+        if info.get('name') and info['name'] != self.name:
+            self.name = info['name']
+            logging.info('NDRT chat: the participant is %s', self.name)
+        if quiet:
+            return
         if info.get('scenario') != self._scenario:
             logging.warning('NDRT chat: the laptop runs scenario %s (%s), the drive is scenario %d',
                             info.get('scenario'), info.get('title'), self._scenario)
@@ -762,7 +809,7 @@ class KakaoNdrtLink(object):
             logging.info('NDRT chat: connected to the NDRT laptop (%s)', info.get('title'))
 
     def log(self, entry):
-        """One line in the experiment's rtr.jsonl (the laptop keeps its own). The summary the
+        """One line in the experiment's rtr_experiment.jsonl (the chat keeps its own rtr.jsonl). The summary the
         glasses showed ('shown': the LLM's or the fixed fallback) goes to the laptop's ndrt.jsonl too."""
         if entry.get('event') == 'shown':
             self.mark('rtr_shown', trial=entry.get('trial'), source=entry.get('source'),
@@ -772,10 +819,10 @@ class KakaoNdrtLink(object):
         entry = dict(entry, wall_time=datetime.datetime.now().isoformat(timespec='milliseconds'))
         try:
             os.makedirs(self._log_dir, exist_ok=True)
-            with open(os.path.join(self._log_dir, 'rtr.jsonl'), 'a', encoding='utf-8') as handle:
+            with open(os.path.join(self._log_dir, 'rtr_experiment.jsonl'), 'a', encoding='utf-8') as handle:
                 handle.write(json.dumps(entry, ensure_ascii=False) + '\n')
         except OSError as error:
-            logging.error('NDRT chat: could not write rtr.jsonl: %s', error)
+            logging.error('NDRT chat: could not write rtr_experiment.jsonl: %s', error)
 
     def close(self):
         self._running = False
@@ -783,13 +830,14 @@ class KakaoNdrtLink(object):
 
 def main():
     argparser = argparse.ArgumentParser(description='NDRT group chat, on the NDRT laptop')
-    argparser.add_argument('--scenario', type=int, default=1, help='kakao_sets/scenario<N>.json (default: 1)')
+    argparser.add_argument('--scenario', type=int, default=1,
+                           help='kakao_sets/scenario<N>.json, the scenario number without its variant (default: 1)')
     argparser.add_argument('--port', type=int, default=DEFAULT_PORT, help='HTTP port (default: %d)' % DEFAULT_PORT)
     argparser.add_argument('--followup-after', metavar='SEC', type=float, default=None,
                            help='release the follow-up messages this many seconds after the start '
                                 '(else: GET /ndrt/followup, or press Enter)')
     argparser.add_argument('--log-dir', metavar='DIR',
-                           help='write ndrt.jsonl and rtr.jsonl here (default: Data/YYMMDD_HHMMSS_ndrt)')
+                           help='write ndrt.jsonl and rtr.jsonl here (default: _Experiment/Data/YYMMDD_HHMMSS_ndrt)')
     argparser.add_argument('--no-log', action='store_true', help='no log files')
     args = argparser.parse_args()
     logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)

@@ -1,0 +1,2 @@
+run,trial,scenario,intervention,input,lane,vehicles,takeover_type,tot,tor_reaction,first_input,input_type,speed_prealert,speed_takeover,window_s,window_complete,malat,malon,clean_malat,clean_malon,sdlp,max_offset,lane_changes,speed_min,speed_mean,min_ttc,min_gap,collisions,collisions_total,fps,frame_ms_p95,latency_ms,latency_ms_p95
+261027_193101,1,4,NDRT_summary,wheel,3,10,after_tor,62.047,2.047,62.047,steer+throttle,80.01,79.872,9.985,True,2.025,1.924,2.025,1.924,0.6188,1.742,1,69.307,74.6027,,,0,0,26.8654,94.0,91.7563,125.0

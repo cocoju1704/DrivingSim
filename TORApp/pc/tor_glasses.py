@@ -15,6 +15,12 @@ Message, JSON in one UDP packet to the phone (port 5007):
     rtr        only with the NDRT RtR summary (set_rtr): the latest summary request, for the app's
                RtR section: {"id": 3, "state": "pending", "source": "auto", "lines": [], "error": ""}
                state idle, pending, done, error or timeout (see _Experiment/kakao_ndrt.py)
+    record     only while recording (set_record): the recording's name, e.g. the run "261027_172314".
+               The app records the glasses' camera with the display's image over it and the
+               glasses' microphone into Movies/TORApp/<name>.mp4 on the phone while the packets
+               carry it, and finishes the file when they stop (or after 10 s without packets).
+               The PC then fetches it over Wi-Fi: GET http://<phone>:5012/video?name=<name>
+               (TORApp's VideoServer; the PC needs no open port for it)
 The state is resent every RESEND seconds, so a lost packet only delays it.
 
 The app answers every packet with
@@ -23,6 +29,7 @@ The app answers every packet with
     display    state of the glasses display (STARTED when it can show content)
     rtr_request  presses of the app's RtR button since the app started: each increase is a
                request for an RtR summary (on_rtr_request)
+    recording  OFF, STARTING, RECORDING, STOPPING or ERROR (logged when it changes)
 The first answer with a new "shown" gives the latency: PC send -> on the glasses ->
 answer back on the PC (one extra Wi-Fi hop).
 
@@ -43,12 +50,15 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import socket
 import subprocess
 import threading
 import time
+import urllib.request
 
 DEFAULT_PORT = 5007
+VIDEO_PORT = 5012     # TCP: TORApp's VideoServer, the finished recordings
 RESEND = 0.2          # seconds between resends of the current state
 ALIVE_TIMEOUT = 2.0   # no answer for this long: the app is not running or not reachable
 MODES = ('AUTO', 'PRE_ALERT', 'TOR', 'MANUAL', 'OFF')
@@ -108,6 +118,9 @@ class GlassesLink(object):
         self._warned_silent = False
         self._rtr = None                 # RtR summary status for the app, None: not sent
         self._rtr_requests = None        # the app's last rtr_request count
+        self._record = None              # name of the recording the app makes, None: none
+        self._recorded = (None, None)    # (name, save_dir) of the last recording, fetched by close()
+        self.recording = None            # the app's recording state (its answer)
         self.on_rtr_request = on_rtr_request  # can be set later
         self.latencies = []              # (mode, seconds) from send to shown on the glasses
         self._threads = [threading.Thread(target=self._send_loop, name='glasses-send'),
@@ -145,13 +158,54 @@ class GlassesLink(object):
             self._rtr = status
         self._wake.set()
 
+    def set_record(self, name, save_dir=None):
+        """Record the glasses' camera, display and microphone on the phone as `name` (see record in
+        the message above); None stops it. save_dir: close() then fetches the file from the phone
+        over Wi-Fi (TORApp's VideoServer) into this folder."""
+        with self._lock:
+            self._record = name
+            if name is not None:
+                self._recorded = (name, save_dir)
+        self._wake.set()
+
+    def download(self, name, save_dir, timeout=10.0):
+        """Fetch Movies/TORApp/<name>.mp4 from the phone into save_dir; its path, or None."""
+        url = 'http://%s:%d/video?name=%s' % (self._address[0], VIDEO_PORT, name)
+        path = os.path.join(save_dir, name + '.mp4')
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            with urllib.request.urlopen(url, timeout=timeout) as response, open(path + '.part', 'wb') as out:
+                size = int(response.headers.get('Content-Length') or 0)
+                started = time.monotonic()
+                logging.info('Glasses: fetching the recording from the phone (%.0f MB)...', size / 1e6)
+                shutil.copyfileobj(response, out, 1 << 20)
+            os.replace(path + '.part', path)
+        except (OSError, ValueError) as error:
+            logging.warning('Glasses: could not fetch the recording (%s): it stays on the phone in '
+                            'Movies/TORApp/%s.mp4', error, name)
+            return None
+        logging.info('Glasses: recording saved in %s (%.0f MB, %.0f s)', path, size / 1e6,
+                     time.monotonic() - started)
+        return path
+
     @property
     def alive(self):
         return self._last_answer is not None and time.monotonic() - self._last_answer < ALIVE_TIMEOUT
 
     def close(self):
+        recording = self._record is not None
+        self.set_record(None)
         self.update('OFF')
         time.sleep(3 * RESEND)  # a few sends, so the glasses clear even if one is lost
+        if recording:  # the app finishes the file: wait for it to say so (a few seconds at most)
+            deadline = time.monotonic() + 8.0
+            while self.recording not in (None, 'OFF', 'ERROR') and time.monotonic() < deadline:
+                time.sleep(RESEND)
+            logging.info('Glasses: recording %s', 'saved on the phone (Movies/TORApp)'
+                         if self.recording == 'OFF' else 'state %s' % self.recording)
+            name, save_dir = self._recorded
+            if save_dir is not None and self.recording == 'OFF':
+                self.download(name, save_dir)
         self._running = False
         self._wake.set()
         for thread in self._threads:
@@ -174,6 +228,8 @@ class GlassesLink(object):
                       'total': total, 'label': label, 'text': list(text)}
             if self._rtr is not None:
                 packet['rtr'] = self._rtr
+            if self._record is not None:
+                packet['record'] = self._record
         return json.dumps(packet, ensure_ascii=False).encode('utf-8')
 
     def _send_loop(self):
@@ -203,8 +259,13 @@ class GlassesLink(object):
                 shown = int(answer.get('shown', -1))
                 display = answer.get('display')
                 rtr_requests = answer.get('rtr_request')
+                recording = answer.get('recording')
             except (ValueError, TypeError, AttributeError):
                 continue
+            if recording != self.recording:
+                if self._record is not None or recording not in (None, 'OFF'):  # quiet when not recording
+                    (logging.warning if recording == 'ERROR' else logging.info)('Glasses: recording %s', recording)
+                self.recording = recording
             now = time.monotonic()
             if self._last_answer is None or self._warned_silent:
                 logging.info('Glasses: phone app answering')

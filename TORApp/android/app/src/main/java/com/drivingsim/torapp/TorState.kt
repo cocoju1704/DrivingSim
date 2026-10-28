@@ -53,6 +53,7 @@ data class TorState(
     val label: String, // mode box text of the simulator screen, "" for the default
     val text: List<String>, // intervention lines under the PRE-ALERT banner
     val rtr: RtrStatus?, // null: the PC does not use the RtR summary
+    val record: String?, // name of the recording to make now (GlassesRecorder), null: none
 ) {
   companion object {
     fun parse(text: String): TorState? =
@@ -70,6 +71,7 @@ data class TorState(
                     List(lines.length()) { lines.optString(it) }.filter { it.isNotBlank() }
                   } ?: emptyList(),
               rtr = RtrStatus.parse(json.optJSONObject("rtr")),
+              record = json.optString("record", "").ifBlank { null },
           )
         } catch (_: JSONException) {
           null
@@ -93,7 +95,7 @@ data class GlassesView(
     val total: Double? = null,
     val label: String = "",
     val text: List<String> = emptyList(), // intervention lines under the PRE-ALERT banner
-    val dim: Boolean = false, // TOR banner in its dark flash color (blink test)
+    val dim: Boolean = false, // TOR message in its off half of the blink
     val test: DisplayTest? = null,
 ) {
   companion object {

@@ -32,8 +32,13 @@
     <header id="editor-header">
       <button id="close-editor" class="icon">‹ 대화</button>
       <div class="editor-title">공지 작성</div>
+      <div id="countdown" hidden></div>
       <button id="post" disabled>등록</button>
     </header>
+    <details id="summary-panel" hidden>
+      <summary>작성 중이던 공지 요약 (AI)</summary>
+      <ol id="summary-lines"></ol>
+    </details>
     <div id="editor-body">
       <textarea id="draft" autocomplete="off" placeholder="공지 내용을 입력하세요." spellcheck="false"></textarea>
     </div>

@@ -25,7 +25,6 @@ private const val PADDING = 32f
 private const val IMAGE_SCALE = 0.5f // images are drawn at half the display resolution
 private val ORANGE = Color.rgb(255, 140, 0) // PRE-ALERT, as on the simulator screen
 private val RED = Color.rgb(255, 0, 0) // TOR: the brightest red the display can show
-private val DARK_RED = Color.rgb(150, 0, 0) // blink test: the dark half of the flash
 private val MODE_AUTO = Color.rgb(0, 190, 70) // mode badge background: saturated, bright on the additive
 private val MODE_MANUAL = Color.rgb(30, 110, 255) // display, dark enough for the white text on it
 private const val MODE_ON_RIGHT = true // mode badge at the bottom right; false: bottom left
@@ -37,9 +36,9 @@ private const val TEXT_HEIGHT = 480 // intervention text: from the top, above th
  * backgrounds so the road stays visible. The display is 600x600, additive (black is see-through)
  * and in the right lens only; its top edge is at the center of the field of view.
  *   AUTO / MANUAL   small oval badge (white text on green / blue) at the bottom right
- *   PRE_ALERT       first seconds (TorViewModel): "PRE-ALERT" and the message in orange in the
- *                   center, no time left; then the intervention text at the top
- *   TOR             "TAKE OVER" in red at the top, countdown digits and bar at the bottom
+ *   PRE_ALERT       the message (the PC's, "곧 자율주행 구간이 끝납니다") in orange in the center
+ *                   while there is no intervention text, the text at the top instead of it
+ *   TOR             the message ("지금 직접 운전하세요") in red in the center, blinking (dim: off)
  */
 fun ContentScope.torContent(view: GlassesView) {
   when (view.test) {
@@ -63,48 +62,41 @@ fun ContentScope.torContent(view: GlassesView) {
   }
 }
 
+/** The image the glasses show for `view` (transparent where they are see-through), for the recording. */
+fun glassesImage(view: GlassesView): Bitmap = frame(view)
+
 private fun frame(view: GlassesView): Bitmap {
-  val showText = view.mode == TorMode.PRE_ALERT && view.seconds == null && view.text.isNotEmpty()
-  // full resolution only with the Korean text, which is unreadable at IMAGE_SCALE
-  val (bitmap, canvas) = blank(WIDTH, scale = if (showText) 1f else IMAGE_SCALE)
+  val showText = view.mode == TorMode.PRE_ALERT && view.text.isNotEmpty()
+  // full resolution: the Korean text is unreadable at IMAGE_SCALE
+  val (bitmap, canvas) = blank(WIDTH, scale = 1f)
   if (view.mode == TorMode.TOR) {
-    drawTor(canvas, view)
+    if (!view.dim) drawAlert(canvas, view.message, RED)
     return bitmap
   }
   if (showText) drawText(canvas, view.text)
-  if (view.mode == TorMode.PRE_ALERT && view.seconds != null) drawPreAlert(canvas, view.message)
+  else if (view.mode == TorMode.PRE_ALERT) drawAlert(canvas, view.message, ORANGE)
   drawMode(canvas, view)
   return bitmap
 }
 
-/** "TAKE OVER" in red at the top, the countdown digits and bar in red at the bottom. */
-private fun drawTor(canvas: Canvas, view: GlassesView) {
-  val color = if (view.dim) DARK_RED else RED
-  val center = WIDTH / 2f
-  val maxWidth = WIDTH - 2 * PADDING
-  val words = textPaint(84f, bold = true).apply { this.color = color; textAlign = Paint.Align.CENTER }
-  canvas.drawText("TAKE OVER", center, 100f, fit(words, "TAKE OVER", maxWidth))
-  val seconds = "${view.seconds ?: 0}"
-  val digits = textPaint(80f, bold = true).apply { this.color = color; textAlign = Paint.Align.CENTER }
-  canvas.drawText(seconds, center, 520f, fit(digits, seconds, maxWidth))
-  val fraction = view.seconds?.let { s -> view.total?.let { (s / it).toFloat() } }
-  if (fraction != null) {
-    val barWidth = (WIDTH - 2 * PADDING) * fraction.coerceIn(0f, 1f)
-    canvas.drawRect(PADDING, 556f, PADDING + barWidth, 576f, fillPaint(color))
-  }
-}
-
-/** "PRE-ALERT" and the message in orange in the center, like TAKE OVER. No time left. */
-private fun drawPreAlert(canvas: Canvas, message: String) {
-  val center = WIDTH / 2f
-  val maxWidth = WIDTH - 2 * PADDING
-  val title = textPaint(84f, bold = true).apply { color = ORANGE; textAlign = Paint.Align.CENTER }
-  canvas.drawText("PRE-ALERT", center, 300f, fit(title, "PRE-ALERT", maxWidth))
-  if (message.isNotEmpty()) {
-    val subtitle = message.replaceFirstChar { it.uppercase() }
-    val small = textPaint(40f, bold = true).apply { color = ORANGE; textAlign = Paint.Align.CENTER }
-    canvas.drawText(subtitle, center, 360f, fit(small, subtitle, maxWidth))
-  }
+/** The alert message, large and bold in `color`, wrapped and centered in the middle of the display. */
+private fun drawAlert(canvas: Canvas, message: String, color: Int) {
+  val width = (WIDTH - 2 * PADDING).toInt()
+  val paint =
+      TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        textSize = 76f
+        typeface = Typeface.DEFAULT_BOLD
+      }
+  val layout =
+      StaticLayout.Builder.obtain(message, 0, message.length, paint, width)
+          .setAlignment(Layout.Alignment.ALIGN_CENTER)
+          .setLineSpacing(10f, 1f)
+          .build()
+  canvas.save()
+  canvas.translate(PADDING, (WIDTH - layout.height) / 2f - 40f)
+  layout.draw(canvas)
+  canvas.restore()
 }
 
 /**
@@ -235,11 +227,3 @@ private fun textPaint(size: Float, bold: Boolean) =
       textSize = size
       typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
     }
-
-/** Shrinks the text until it fits in maxWidth. */
-private fun fit(paint: Paint, text: String, maxWidth: Float = WIDTH - 2 * PADDING): Paint {
-  while (paint.measureText(text) > maxWidth && paint.textSize > 20f) {
-    paint.textSize -= 2f
-  }
-  return paint
-}

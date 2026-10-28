@@ -3,11 +3,14 @@
 """
 Analyze the takeover logs written by _Experiment/takeover_experiment.py.
 
-Every run leaves a folder Data/YYMMDD_HHMMSS/ (the start time of the run) with
+Every run leaves a folder _Experiment/Data/YYMMDD_HHMMSS/ (the start time of the run) with, in driving/
+(runs before 2026-10-27: in the run folder itself)
 
     raw.csv      one row per frame from the pre-alert on, plus a TRIAL_END row per trial
     summary.csv  takeover metrics per trial
     figure.png   speed, acceleration, lane offset and driver input of every trial
+
+and the NDRT chat's logs in ndrt/.
 
 takeover_experiment.py writes summary.csv and figure.png when it ends. This script
 makes them again from raw.csv (for example after a crash, or with another --window)
@@ -25,7 +28,7 @@ collision (0.1 s before to 1 s after it).
 Run from the CARLA_0.9.16 root folder:
 
     python _Experiment\\analyze_takeover.py                       newest run in Data
-    python _Experiment\\analyze_takeover.py Data\\261006_173529   chosen run(s)
+    python _Experiment\\analyze_takeover.py _Experiment\\Data\\261006_173529   chosen run(s)
     python _Experiment\\analyze_takeover.py --all                 every run in Data
     python _Experiment\\analyze_takeover.py --window 15           other takeover period
 """
@@ -38,8 +41,7 @@ import os
 import statistics
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))  # CARLA_0.9.16
-DATA_DIR = os.path.join(ROOT, 'Data')
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Data')  # _Experiment/Data
 
 NUMERIC = ['t_prealert_s', 't_tor_s', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',
            'driver_steer', 'driver_throttle', 'driver_brake', 'lane_offset_m', 'lead_gap_m',
@@ -340,9 +342,21 @@ def plot_trials(path, name, trials, results, window):
 # ==============================================================================
 
 
+def driving_dir(path):
+    """The folder with raw.csv of a run: its driving/ folder (older runs: the run folder itself);
+    `path` can also be that folder or raw.csv. None if there is no raw.csv."""
+    if os.path.basename(path) == 'raw.csv':
+        path = os.path.dirname(path)
+    for folder in (os.path.join(path, 'driving'), path):
+        if os.path.isfile(os.path.join(folder, 'raw.csv')):
+            return folder
+    return None
+
+
 def report(run_dir, window=10.0, save=True):
-    """Print the metrics of a run folder and write summary.csv and figure.png into it."""
-    name = os.path.basename(os.path.normpath(run_dir))
+    """Print the metrics of a run (the folder with raw.csv) and write summary.csv and figure.png into it."""
+    folder = os.path.normpath(run_dir)
+    name = os.path.basename(os.path.dirname(folder) if os.path.basename(folder) == 'driving' else folder)
     trials = load_trials(os.path.join(run_dir, 'raw.csv'))
     results = {trial: analyze_trial(rows, window) for trial, rows in trials.items()}
     print_trials(name, results)
@@ -357,7 +371,7 @@ def find_runs():
     if not os.path.isdir(DATA_DIR):
         return []
     return [os.path.join(DATA_DIR, d) for d in sorted(os.listdir(DATA_DIR))
-            if os.path.isfile(os.path.join(DATA_DIR, d, 'raw.csv'))]
+            if driving_dir(os.path.join(DATA_DIR, d)) is not None]
 
 
 def main():
@@ -370,7 +384,7 @@ def main():
     args = parser.parse_args()
 
     if args.runs:
-        runs = [os.path.dirname(r) if os.path.basename(r) == 'raw.csv' else r for r in args.runs]
+        runs = args.runs
     else:
         runs = find_runs()
         if not runs:
@@ -380,10 +394,11 @@ def main():
 
     all_results = []
     for run in runs:
-        if not os.path.isfile(os.path.join(run, 'raw.csv')):
-            print('Skipping %s: no raw.csv in it' % run)
+        folder = driving_dir(run)
+        if folder is None:
+            print('Skipping %s: no raw.csv in it (or in its driving folder)' % run)
             continue
-        all_results.append(report(run, args.window, save=not args.no_save))
+        all_results.append(report(folder, args.window, save=not args.no_save))
     print_groups(all_results)
 
 
