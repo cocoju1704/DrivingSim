@@ -119,6 +119,14 @@ notice has to take in: once the car is past the scene (scenarios 2 and 4; at the
 NDRT_FOLLOWUP_LATEST s after the takeover), else NDRT_FOLLOWUP_AFTER s after the takeover; K: now.
 The pre-alert, the TOR and the takeover are logged in the laptop's ndrt.jsonl too, on its clock.
 
+--gaze judges in real time which object the driver looks at on the middle monitor (gaze_tracking.py;
+set up and start gaze_bridge.py for the Tobii Pro Nano). raw.csv gets gaze_* columns, the run folder
+gaze_samples.csv and gaze_events.csv. --gaze-debug draws all boxes and the gaze for the experimenter.
+What the car perceives (all objects but --unperceived) is shown in one of two ways, or not at all:
+--gaze-box: boxes on all perceived objects, all the time (--gaze-box vehicle walker: only those).
+--gaze-query: no boxes; the wheel's query button (--wheel-setup; G key too) asks about the gaze: "인식함"
+with the object's box, or "인식된 물체 없음" (gaze_queries.csv). Both include --gaze.
+
 NDRT + summary: the text is the participant's own ready-to-resume summary instead: kakao_ndrt.py on
 the laptop sends the notice draft to ChatGPT (OpenAI API key there: OPENAI_API_KEY or
 _Experiment/openai_api_key.txt).
@@ -137,6 +145,7 @@ Run from the CARLA_0.9.16 root folder:
     python _Experiment\\takeover_experiment.py --glasses usb   (USB tethering)
     python _Experiment\\takeover_experiment.py --scenario 4 --wireless   (phone and NDRT laptop over Wi-Fi, devices.json)
     python _Experiment\\takeover_experiment.py --phone-cluster   (gauges on a phone, phone_cluster.py)
+    python _Experiment\\takeover_experiment.py --gaze   (eye tracker on the middle monitor, gaze_bridge.py running)
     python _Experiment\\takeover_experiment.py --wheel-test   (find axis numbers)
 """
 
@@ -182,6 +191,7 @@ try:
     from pygame.locals import K_d
     from pygame.locals import K_e
     from pygame.locals import K_i
+    from pygame.locals import K_g
     from pygame.locals import K_k
     from pygame.locals import K_l
     from pygame.locals import K_m
@@ -1705,6 +1715,9 @@ class KeyboardInput(object):
     def horn_event(self, event):
         return False
 
+    def is_query_event(self, event):
+        return event.type == pygame.KEYDOWN and event.key == K_g
+
     def close(self):
         pass
 
@@ -1915,6 +1928,9 @@ class WheelInput(object):
         self._handbrake_button = buttons['handbrake']
         self._reverse_button = buttons['reverse']
         self._horn_button = buttons['horn']
+        self._query_button = buttons['query']
+        if args.gaze_query and self._query_button < 0:
+            logging.warning('--gaze-query without a query button: run --wheel-setup or use --query-button (G key works)')
         self._light_buttons = {buttons['left_blinker']: 'left', buttons['right_blinker']: 'right',
                                buttons['lights']: 'lights', buttons['high_beam']: 'high_beam',
                                buttons['interior']: 'interior'}
@@ -1965,6 +1981,11 @@ class WheelInput(object):
 
     def is_takeover_event(self, event):
         return False
+
+    def is_query_event(self, event):
+        if event.type == pygame.JOYBUTTONDOWN:
+            return event.button == self._query_button
+        return event.type == pygame.KEYDOWN and event.key == K_g
 
     def is_reverse_event(self, event):
         return (event.type == pygame.JOYBUTTONDOWN and self._reverse_button >= 0 and
@@ -2089,6 +2110,7 @@ WHEEL_ACTIONS = [
     ('high_beam', 'high_beam_button', 'TRIANGLE', 'high beam on/off'),
     ('interior', 'interior_button', 'CIRCLE', 'interior light on/off'),
     ('handbrake', 'handbrake_button', 'L2', 'hand-brake (while held)'),
+    ('query', 'query_button', 'R1', 'ask the car whether it perceives what the driver looks at (--gaze-query)'),
 ]
 
 
@@ -2213,14 +2235,17 @@ class TrialRecorder(object):
                'x', 'y', 'speed_kmh', 'a_lon', 'a_lat', 'steer', 'throttle', 'brake',
                'driver_steer', 'driver_throttle', 'driver_brake', 'lane_id', 'lane_offset_m',
                'lead_gap_m', 'lead_speed_kmh', 'ttc_s', 'collisions', 'event_dist_m', 'fog_density',
-               'frame_ms', 'latency_ms', 'scenario', 'intervention', 'input', 'lane', 'vehicles',
+               'frame_ms', 'latency_ms', 'gaze_valid', 'gaze_fixating', 'gaze_x', 'gaze_y', 'gaze_pupil_mm',
+               'gaze_object_id', 'gaze_object_class', 'gaze_object_dist_m', 'gaze_dwell_s', 'gaze_confirmed',
+               'gaze_ambiguous', 'gaze_query', 'scenario', 'intervention', 'input', 'lane', 'vehicles',
                'takeover_type', 'tot_s', 'tor_reaction_s', 'first_input_s',
                'speed_prealert_kmh', 'speed_takeover_kmh', 'window_complete',
                'malat', 'malon', 'sdlp', 'max_lane_offset', 'lane_changes',
                'speed_min_kmh', 'speed_mean_kmh', 'min_ttc_s', 'min_gap_m', 'collisions_window']
 
-    def __init__(self, world, traffic, driver_input, args, started, window=POST_WINDOW, latency=None):
+    def __init__(self, world, traffic, driver_input, args, started, window=POST_WINDOW, latency=None, gaze=None):
         self._world = world
+        self._gaze = gaze
         self._latency = latency
         self._last_sample = None
         self._traffic = traffic
@@ -2378,6 +2403,8 @@ class TrialRecorder(object):
             'latency_ms': _fmt(self._latency and self._latency.latest, 1),
         }
         self._last_sample = now
+        if self._gaze is not None:
+            row.update(self._gaze.log_fields())
         row.update(self._constant)
         self._pending = ''
         return row, {'lane_id': lane_id, 'lane_offset': lane_offset, 'gap': gap, 'ttc': ttc}
@@ -3059,6 +3086,8 @@ class AlertSound(object):
             self._chime = self._sound([(880, 0.18), (0, 0.06), (1175, 0.30)], 0.5)
             self._beeps = self._sound([(1000, 0.15), (0, 0.08), (1000, 0.15), (0, 0.45)], 0.7)
             self._click = self._sound([(660, 0.10)], 0.4)
+            self._query_sounds = {'perceived': self._sound([(880, 0.12)], 0.25),
+                                  'none': self._sound([(440, 0.14), (0, 0.05), (330, 0.22)], 0.7)}
             self._ok = True
         except Exception as error:  # no audio device: run silently
             logging.warning('No sound: %s', error)
@@ -3096,6 +3125,11 @@ class AlertSound(object):
     def tor(self):
         if self._ok and self._here():
             self._beeps.play(loops=-1)
+
+    def query_answer(self, kind):
+        """--gaze-query: a soft tone for 'perceived', a clearly different warning for 'none'."""
+        if self._ok and kind in self._query_sounds:
+            self._query_sounds[kind].play()
 
     def stop(self, confirm=False):
         if self._ok:
@@ -3716,6 +3750,7 @@ def game_loop(args):
     rtr = None
     ndrt = None
     phone_cluster = None
+    gaze = None
     collision_sensor = None
 
     try:
@@ -3802,7 +3837,12 @@ def game_loop(args):
         traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes, start_index)
         last_refresh = time.monotonic()
         latency = LatencyMeter()
-        recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window, latency)
+        if args.gaze:
+            from gaze_tracking import GazeTracker  # next to this script
+            gaze = GazeTracker(sim_world, world, args.gaze_port, args.gaze_tolerance, args.unperceived)
+        recorder = TrialRecorder(world, traffic, driver_input, args, started, args.post_window, latency, gaze)
+        if gaze is not None and not args.no_log:
+            gaze.log_to(recorder.dir)
         if args.lane in CLOSED_LANES.get(args.scenario, ()):
             logging.info('The car drives in lane %d, which the %s closes: the takeover includes '
                          'a lane change to the left', args.lane, SCENARIOS[args.scenario][0])
@@ -3862,8 +3902,14 @@ def game_loop(args):
                         next_view(world)
                     elif event.key == K_F1:
                         world.hud.toggle_info()
+                if args.gaze_query and driver_input.is_query_event(event):
+                    if world.camera_manager.transform_index in DRIVER_VIEWS:
+                        sound.query_answer(gaze.query(now))
+                    continue
                 experiment.handle_event(event, now)
             prune_traffic(traffic, sim_world)
+            if gaze is not None:  # before experiment.tick, which logs it
+                gaze.tick(now, world.camera_manager.transform_index in DRIVER_VIEWS)
             experiment.tick(clock, now)
             for sign in scenario.take_signs():
                 road_signs.add(sign)
@@ -3879,7 +3925,13 @@ def game_loop(args):
                 ticker.start()
             world.tick(clock)
             world.render(display)
+            if args.gaze_box is not None:  # under the banners and gauges
+                gaze.render_perceived(display, pygame, args.gaze_box)
+            elif args.gaze_query:
+                gaze.render_query(display, pygame)
             experiment.render(display, fonts, now)
+            if gaze is not None and args.gaze_debug:
+                gaze.render_debug(display, pygame)
             pygame.display.flip()
             latency.shown(getattr(world.camera_manager, 'surface_image', None), time.monotonic())
 
@@ -3901,6 +3953,8 @@ def game_loop(args):
             ndrt.close()
         if phone_cluster is not None:
             phone_cluster.close()
+        if gaze is not None:
+            gaze.close()
         if collision_sensor is not None:
             collision_sensor.stop()
             collision_sensor.destroy()
@@ -4031,6 +4085,26 @@ def main():
                            help='do not start the pre-alert automatically, only with the P key')
     argparser.add_argument('--post-window', metavar='SEC', type=float, default=POST_WINDOW,
                            help='seconds after the takeover that are scored as the takeover period (default: %g)' % POST_WINDOW)
+    argparser.add_argument('--gaze', action='store_true',
+                           help='judge in real time which object the driver looks at on the middle monitor '
+                                '(gaze_tracking.py; gaze_bridge.py sends the eye tracker\'s gaze)')
+    argparser.add_argument('--gaze-port', metavar='PORT', type=int, default=5010,
+                           help='UDP port for gaze_bridge.py (default: 5010)')
+    argparser.add_argument('--gaze-tolerance', metavar='PX', type=float, default=45.0,
+                           help='how far from an object the gaze still counts as on it, and how far a fixation '
+                                'may spread, in monitor pixels (default: 45, about 1 degree)')
+    argparser.add_argument('--gaze-box', metavar='CLASS', nargs='*', default=None,
+                           choices=('vehicle', 'walker', 'cone', 'barrier', 'sign', 'prop'),
+                           help='box condition: a box on every object the car perceives, all the time, of these '
+                                'classes: vehicle walker cone barrier sign prop (default: all of them)')
+    argparser.add_argument('--gaze-query', action='store_true',
+                           help='query condition: no boxes; the query button asks whether the car perceives what '
+                                'the driver looks at')
+    argparser.add_argument('--unperceived', metavar='PATTERN', nargs='+', default=(),
+                           help='what the car does not perceive: patterns of blueprint ids or role names, e.g. '
+                                'workzone "static.prop.trafficcone*" (default: it perceives everything)')
+    argparser.add_argument('--gaze-debug', action='store_true',
+                           help='draw the object boxes and the gaze on the screen (not for participants)')
     argparser.add_argument('--no-log', action='store_true', help='do not write the Data/*.csv log')
     argparser.add_argument('--input', choices=['auto', 'keyboard', 'wheel'], default='auto',
                            help='driver input device; auto: the wheel if one is connected, else the keyboard '
@@ -4064,6 +4138,8 @@ def main():
                            help='wheel button for the high beam (default: from --wheel-setup, SHIFT+L always works)')
     argparser.add_argument('--interior-button', metavar='N', type=int,
                            help='wheel button for the interior light (default: from --wheel-setup, I key always works)')
+    argparser.add_argument('--query-button', metavar='N', type=int,
+                           help='wheel button for --gaze-query (default: from --wheel-setup, G key always works)')
     argparser.add_argument('--horn-button', metavar='N', type=int,
                            help='wheel button for the horn (default: from --wheel-setup, H key always works)')
     argparser.add_argument('--wheel-test', action='store_true',
@@ -4084,6 +4160,11 @@ def main():
         argparser.error(str(error))
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
+    if args.gaze_box is not None and args.gaze_query:
+        argparser.error('--gaze-box and --gaze-query are separate conditions')
+    if args.gaze_box is not None and not args.gaze_box:
+        args.gaze_box = ('vehicle', 'walker', 'cone', 'barrier', 'sign', 'prop')
+    args.gaze = args.gaze or args.gaze_box is not None or args.gaze_query
     if os.name == 'nt':
         try:
             # real pixels: without this, Windows display scaling would enlarge the window past the monitors
