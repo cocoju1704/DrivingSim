@@ -22,8 +22,10 @@ The participant answers nothing but the SAGAT questions: the events are measured
 (Tobii Pro Glasses 2 with its event markers; analysed afterwards). For that, every frame logs in
 which mirror inset each car is visible (its bounding box inside the mirror camera's field of view),
 and each event gets its gaze window (gaze_windows.csv):
-    S, SD   its side mirror, from the first frame the car is visible in it to T+7
-    R       the rear-view mirror, from its first frame there to 2 s after it falls back past 10 m
+    S, SD   its side mirror, from the first frame the car is big enough there to make out (RECOGNIZE_PX
+            tall) to T+7
+    R       the rear-view mirror, from the first frame it is big enough there to 2 s after it falls
+            back past 10 m
     F       the car ahead, T .. T+5
 At the end the monitors only say that the drive is over; the experimenter gives the video score
 (feedback.txt has the line). SAGAT scores are kept in the data, not told.
@@ -76,6 +78,7 @@ RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variabl
 FRONT_CELLS = ('1_front', '2_front', '3_front')
 APPROACH_ANSWER = {'left': 1, 'behind': 2, 'right': 3}
 SAFE_ANSWER = {'left': '1', 'right': '3', 'both': 'both', 'none': 'none'}
+WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the blocks (the server's comes back after)
 GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
 VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 ○○점입니다.'  # said by the experimenter after the video test
@@ -93,9 +96,11 @@ class DataLog(object):
     COLUMNS = {
         'frames.csv': ('t_sim', 'wall_time', 'frame', 'mode', 'ego_x', 'ego_y', 'ego_z', 'ego_yaw', 'speed_kmh',
                        'steer', 'throttle', 'brake', 'fps'),
-        'vehicles.csv': ('t_sim', 'id', 'kind', 'event', 'lane', 'dx_plan', 'dx', 'dv_kmh', 'lights', 'in_mirror'),
+        'vehicles.csv': ('t_sim', 'id', 'kind', 'event', 'lane', 'dx_plan', 'dx', 'dv_kmh', 'lights', 'in_mirror',
+                         'mirror_px'),
         'events.csv': ('t_sim', 'wall_time', 'id', 'what'),
-        'gaze_windows.csv': ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'window_start', 'window_end'),
+        'gaze_windows.csv': ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'first_recognizable', 'window_start',
+                             'window_end'),
     }
 
     def __init__(self, directory):
@@ -168,14 +173,16 @@ class MirrorVisibility(object):
     """Which mirror insets show a car: its bounding box corners projected into each mirror camera
     (carla_base's mirror views: left, right side mirror, rear-view mirror), a corner inside the
     image = visible. Nothing hides anything (other cars, the car's own body): close enough for the
-    mirrors. A car counts once it is MIN_PX tall in the inset (at 1440 px monitors; scaled to the
-    window): far behind it is a few pixels, there but not something to see. Only in the driver views
+    mirrors. Sizes are the car's height in the inset in pixels of 1440 px monitors (scaled from the
+    window): MIN_PX it is there at all (in_mirror), RECOGNIZE_PX it is big enough to make out as a
+    car (about 50 m behind in a side mirror; the gaze windows start there). Only in the driver views
     (the mirrors are there)."""
 
     MIN_PX = 4.0
+    RECOGNIZE_PX = 30.0
 
     def __init__(self, world, screen_height=1440):
-        self._min_px = self.MIN_PX * screen_height / 1440.0
+        self._scale = 1440.0 / screen_height  # window pixels -> 1440 px monitor pixels
         self._manager = world.camera_manager
         self._ego = world.player
         self._boxes = {}     # actor id -> its bounding box (read once: a server round trip)
@@ -199,15 +206,15 @@ class MirrorVisibility(object):
             self._cameras.append((name, camera, tan_x, tan_y, rect.height / 2.0 / tan_y))
 
     def of(self, actor):
-        """'left', 'right', 'rear' or several joined by '+'; '' if in none."""
+        """{'left' / 'right' / 'rear': the car's height in that inset, px at 1440p} of the insets it is in."""
         self._setup()
         if not self._cameras:
-            return ''
+            return {}
         box = self._boxes.get(actor.id)
         if box is None:
             box = self._boxes[actor.id] = actor.bounding_box
         corners = box.get_world_vertices(actor.get_transform())
-        seen = []
+        seen = {}
         for name, camera, tan_x, tan_y, focal in self._cameras:
             inverse = camera.get_transform().get_inverse_matrix()
             us, vs = [], []
@@ -222,10 +229,10 @@ class MirrorVisibility(object):
             # the box's projection overlaps the image, and is tall enough there to be seen
             if max(us) < -tan_x or min(us) > tan_x or max(vs) < -tan_y or min(vs) > tan_y:
                 continue
-            tall = (min(max(vs), tan_y) - max(min(vs), -tan_y)) * focal
-            if tall >= self._min_px:
-                seen.append(name)
-        return '+'.join(seen)
+            tall = (min(max(vs), tan_y) - max(min(vs), -tan_y)) * focal * self._scale
+            if tall >= self.MIN_PX:
+                seen[name] = round(tall, 1)
+        return seen
 
 
 # ==============================================================================
@@ -364,7 +371,8 @@ class Block(object):
         self.qt = self.config['templates']['Q']
         self.log = DataLog(output_dir(args))
         self.questions = []
-        self.first_visible = {}  # event id -> first time its car was in its mirror
+        self.first_visible = {}  # event id -> first time its car was in its mirror (MIN_PX)
+        self.first_recognizable = {}  # ... big enough to make out (RECOGNIZE_PX): its gaze window starts
         self.mode = AUTO
         self.frozen = False
         self.exit_times = {}    # R id -> time it fell back past 10 m (measured)
@@ -406,22 +414,28 @@ class Block(object):
         """[start, end] of an event's gaze window (None where not known yet)."""
         if e['type'] == 'F':
             return [e['t'] + F_GAZE[0], e['t'] + F_GAZE[1]]
-        start = self.first_visible.get(e['id'])
+        start = self.first_recognizable.get(e['id'])
         if e['type'] == 'R':
             exit_t = self.exit_times.get(e['id'], e.get('t_exit'))
             return [start, round(exit_t + self.config['templates']['R']['window_after_exit_s'], 3)]
         return [start, e['t'] + GAZE_AFTER[e['type']]]
 
     def track_visible(self, t, mirrors):
-        """mirrors: {course id: 'left+rear' ...} this frame. The first frame an event's car is in
-        its own mirror starts its gaze window."""
+        """mirrors: {course id: {mirror: px}} this frame. The first frame an event's car is big enough
+        to make out in its own mirror starts its gaze window."""
         for e in self.schedule['events']:
-            if e['type'] not in ('S', 'SD', 'R') or e['id'] in self.first_visible:
+            if e['type'] not in ('S', 'SD', 'R') or e['id'] in self.first_recognizable:
                 continue
             want = self.aoi(e).split('_')[0]
-            if want in mirrors.get(e['id'], '').split('+'):
+            px = mirrors.get(e['id'], {}).get(want)
+            if px is None:
+                continue
+            if e['id'] not in self.first_visible:
                 self.first_visible[e['id']] = round(t, 3)
-                self.mark(t, 'visible in the %s mirror (gaze window start)' % want, e['id'])
+                self.mark(t, 'first in the %s mirror (%.0f px)' % (want, px), e['id'])
+            if px >= MirrorVisibility.RECOGNIZE_PX:
+                self.first_recognizable[e['id']] = round(t, 3)
+                self.mark(t, 'big enough in the %s mirror, %.0f px (gaze window start)' % (want, px), e['id'])
 
     def track_rear(self, t, state):
         """R: the time it really falls back past 10 m bumper to bumper (onset_dx_m), for its window."""
@@ -455,14 +469,15 @@ class Block(object):
                 continue
             start, end = self.gaze_window(e)
             row = {'id': e['id'], 'type': e['type'], 'lane': e.get('lane', 2), 't': e['t'], 'aoi': self.aoi(e),
-                   'first_visible': self.first_visible.get(e['id']), 'window_start': start, 'window_end': end}
+                   'first_visible': self.first_visible.get(e['id']),
+                   'first_recognizable': self.first_recognizable.get(e['id']), 'window_start': start, 'window_end': end}
             windows.append(row)
             self.log.row('gaze_windows.csv', [('' if row[k] is None else row[k]) for k in
-                                              ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'window_start',
-                                               'window_end')])
+                                              ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'first_recognizable',
+                                               'window_start', 'window_end')])
         answered = [q['score'] for q in self.questions if q['score'].get('answered')]
         sagat = round(100.0 * sum(s['score'] for s in answered) / len(answered)) if answered else None
-        missing = [w['id'] for w in windows if w['type'] != 'F' and w['first_visible'] is None]
+        missing = [w['id'] for w in windows if w['type'] != 'F' and w['first_recognizable'] is None]
         summary = {
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
             'participant': self.args.participant, 'test': self.args.test, 'aborted': aborted, 't_end': round(t_end, 2),
@@ -578,6 +593,7 @@ def run(args):
     pygame.font.init()
     world = client = sim_world = ticker = traffic = sagat = gaze = audio = driver_input = None
     async_settings = None
+    server_weather = None
     collision_sensor = None
     green_lights = []
     t = 0.0
@@ -597,6 +613,8 @@ def run(args):
         if not sim_world.get_map().name.endswith(base.MAP_NAME):
             logging.info('Loading %s...', base.MAP_NAME)
             sim_world = client.load_world(base.MAP_NAME)
+        server_weather = sim_world.get_weather()
+        sim_world.set_weather(getattr(carla.WeatherParameters, WEATHER))  # clear: no fog over the far cars
         trees = {tree.id for tree in sim_world.get_environment_objects(carla.CityObjectLabel.Vegetation)}
         sim_world.enable_environment_objects(trees, args.trees)
         traffic_manager = client.get_trafficmanager(base._free_port())  # pylint: disable=protected-access
@@ -749,7 +767,8 @@ def run(args):
                                                (course.event or ('F' if course.f_event else '')) if course else '',
                                                lane, '' if planned is None else round(planned[0], 2), round(dx, 2),
                                                round(dv, 2), abc_traffic._light_names(car['lights']) if car else '',
-                                               mirrors.get(cid, '')))
+                                               '+'.join(sorted(mirrors.get(cid, {}))),
+                                               ';'.join('%s:%s' % kv for kv in sorted(mirrors.get(cid, {}).items()))))
 
             ticker.start()
             world.tick(clock)
@@ -773,6 +792,11 @@ def run(args):
             block.mark(t, 'run end')
             block.g2.close()
         block.log.close()
+        if server_weather is not None:
+            try:
+                sim_world.set_weather(server_weather)
+            except RuntimeError:
+                pass
         if async_settings is not None:
             try:
                 sim_world.apply_settings(async_settings)

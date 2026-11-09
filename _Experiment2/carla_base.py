@@ -304,6 +304,8 @@ REAR_MIRROR_SIZE = (0.2311, 0.0820)  # m
 REAR_MIRROR_OUTLINE = [(0.0, 0.57), (0.03, 0.14), (0.05, 0.02), (0.13, 0.01), (0.93, 0.38), (0.97, 0.44), (0.98, 0.53),
                        (1.0, 0.9), (0.99, 0.97), (0.94, 0.99), (0.09, 0.76), (0.01, 0.69), (0.0, 0.58)]
 REAR_MIRROR_FOV = 45.0             # degrees
+REAR_CAMERA_X = -0.55              # _Experiment2: the rear-view mirror camera, x share of the half length (behind the rear seats)
+REAR_CAMERA_Z = 2.1                # ... and height share of the half height (just above the roof)
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 # The gauges (throttle pedal, speed) on a tablet standing at the bottom middle of the middle monitor,
 # where a car's instrument cluster sits (the car's own cluster is below the view, DRIVER_VIEW_PITCH).
@@ -762,7 +764,10 @@ def car_mirrors(extent, view):
             MIRROR_INSET_FOV, view),
         (carla.Location(x=eye_x + REAR_MIRROR[0], y=REAR_MIRROR[1], z=eye_z + REAR_MIRROR[2]), REAR_MIRROR_SIZE,
          REAR_MIRROR_OUTLINE,
-         carla.Transform(carla.Location(x=-extent.x - 0.2, z=eye_z + 0.1), carla.Rotation(pitch=-2.0, yaw=180.0)),
+         # _Experiment2: on the roof above the rear window (behind the rear bumper, cars right behind in
+         # the next lanes filled its edges; at the mirror inside, the headrests hid most of the road)
+         carla.Transform(carla.Location(x=REAR_CAMERA_X * extent.x, z=REAR_CAMERA_Z * extent.z),
+                         carla.Rotation(pitch=-2.0, yaw=180.0)),
          REAR_MIRROR_FOV, 0),
     ]
 
