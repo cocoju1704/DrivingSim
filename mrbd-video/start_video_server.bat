@@ -10,5 +10,5 @@ set PY=python
 py -3.12 -c "" >nul 2>&1 && set PY=py -3.12
 
 start "mrbd-video server" cmd /k %PY% server.py
-start "mrbd-video tunnel" cmd /k cloudflared tunnel run mrbd-video
+start "mrbd-video tunnel" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tunnel_watchdog.ps1"
 echo 서버: http://localhost:8080   안경: https://video.cocoju.dev

@@ -28,6 +28,8 @@ import urllib.error
 import urllib.request
 
 TIMEOUT = 2.0
+# Cloudflare (https://video.cocoju.dev) answers urllib's default "Python-urllib/x.y" with 403 (error 1010)
+HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
 
 class VideoLink(object):
@@ -48,14 +50,14 @@ class VideoLink(object):
 
     def _post(self, path, data):
         request = urllib.request.Request(self.base + path, data=json.dumps(data).encode('utf-8'), method='POST',
-                                         headers={'Content-Type': 'application/json'})
+                                         headers=dict(HEADERS, **{'Content-Type': 'application/json'}))
         with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
             return json.loads(response.read().decode('utf-8') or '{}')
 
     def state(self):
         """The glasses' last report (position t in s, paused, frozen, title), {} if none."""
         try:
-            request = urllib.request.Request(self.base + '/api/state')
+            request = urllib.request.Request(self.base + '/api/state', headers=HEADERS)
             with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
                 return json.loads(response.read().decode('utf-8') or '{}')
         except (OSError, ValueError, urllib.error.URLError):

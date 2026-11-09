@@ -1,5 +1,5 @@
 {
     "_comment": "Addresses for the launcher (its fields start with these). g2: the Tobii Pro Glasses 2 recording unit (its own Wi-Fi: 192.168.71.50). video: the mrbd-video server when it runs on another laptop (python mrbd-video/server.py there), e.g. http://192.168.0.69:8080; empty: off, or this PC with the launcher's tick.",
     "g2": "192.168.71.50",
-    "video": ""
+    "video": "https://video.cocoju.dev"
 }

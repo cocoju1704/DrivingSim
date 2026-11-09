@@ -41,7 +41,9 @@ cloudflared tunnel --url http://localhost:8080      # https://xxxx.trycloudflare
 
 인증서가 있으면 서버가 직접 HTTPS로 띄울 수도 있습니다: `python server.py --port 8443 --cert cert.pem --key key.pem`
 
-**실험용 고정 주소 (권장)**: 안경 저장소(IndexedDB)는 주소별로 따로라, 임시 터널처럼 주소가 바뀌면 받아 둔 영상이 보이지 않고 실험 연동(SAGAT 일시정지)도 끊깁니다. 그래서 이름 있는 터널 `mrbd-video` → `https://video.cocoju.dev`를 씁니다. `start_video_server.bat`이 서버와 터널을 함께 켭니다. 터널 설정은 `%USERPROFILE%\.cloudflared\config.yml`에 있고, 랩실 Wi-Fi가 UDP(QUIC)를 막아 `protocol: http2`로 둡니다. `glasses_qr.png`가 이 주소의 설치 QR입니다.
+**실험용 고정 주소 (권장)**: 안경 저장소(IndexedDB)는 주소별로 따로라, 임시 터널처럼 주소가 바뀌면 받아 둔 영상이 보이지 않고 실험 연동(SAGAT 일시정지)도 끊깁니다. 그래서 이름 있는 터널 `mrbd-video` → `https://video.cocoju.dev`를 씁니다. `start_video_server.bat`이 서버와 터널을 함께 켭니다. 터널 설정은 `%USERPROFILE%\.cloudflared\config.yml`에 있고, 랩실 Wi-Fi가 UDP(QUIC)를 막아 `protocol: http2`로 둡니다. `glasses_qr.png`가 이 주소의 설치 QR입니다. 터널은 `tunnel_watchdog.ps1`이 띄우고 지켜보다가, 공개 주소가 530(터널 끊김)을 1분 동안 돌려주거나 cloudflared가 꺼지면 다시 켭니다.
+
+서버는 이 랩탑에서 돌리고, 실험 PC는 `_Experiment2/devices.json`의 `"video": "https://video.cocoju.dev"`로 접속합니다(랩실 PC 방화벽이 터널을 막아서). 서버를 다른 랩탑으로 옮겨도 주소가 같으므로 안경에 받은 영상은 그대로 쓸 수 있습니다. `%USERPROFILE%\.cloudflared\`의 파일 3개(`cert.pem`, `<터널 ID>.json`, `config.yml`)만 옮기면 되고, 터널은 한 번에 한 대에서만 켜야 합니다.
 
 ### 안경에 설치
 
