@@ -57,3 +57,7 @@ input.item::placeholder { color: #778; }
 #osd-fill { height: 100%; width: 0; background: #4fd8ff; }
 #osd-time { font-size: 16px; color: #bbb; }
 #osd-help { font-size: 14px; color: #778; margin-top: 4px; }
+
+/* 실험 연동: SAGAT 동안 전부 가림 */
+#freeze { position: absolute; inset: 0; background: #000; z-index: 100; }
+#freeze[hidden] { display: none; }

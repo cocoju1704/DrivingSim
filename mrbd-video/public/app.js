@@ -115,6 +115,7 @@ function restoreFocus() {
 /* ---------------- 키 입력 ---------------- */
 document.addEventListener('keydown', (e) => {
   const k = e.key;
+  if (held && held.frozen) { e.preventDefault(); return; } // SAGAT 중에는 조작 불가
   if (current === 'player') return playerKey(e);
   const a = document.activeElement;
   const inInput = a && a.tagName === 'INPUT';
@@ -517,10 +518,19 @@ const P = {
     if (mode === 'yt') { if (!ytReady) return; P.paused() ? ytPlayer.playVideo() : ytPlayer.pauseVideo(); }
     else video.paused ? video.play().catch(() => {}) : video.pause();
   },
-  seek(d) {
-    const t = Math.max(0, Math.min(P.dur() || Infinity, P.time() + d));
+  seek(d) { P.seekTo(P.time() + d); },
+  seekTo(t) {
+    t = Math.max(0, Math.min(P.dur() || Infinity, t));
     if (mode === 'yt') ytReady && ytPlayer.seekTo(t, true);
     else video.currentTime = t;
+  },
+  pause() {
+    if (mode === 'yt') ytReady && ytPlayer.pauseVideo();
+    else if (mode) video.pause();
+  },
+  play() {
+    if (mode === 'yt') ytReady && ytPlayer.playVideo();
+    else if (mode) video.play().catch(() => {});
   },
   vol(d) {
     let v;
@@ -617,7 +627,52 @@ function connectEvents() {
     }
   });
   es.addEventListener('library', () => { if (current === 'lib') renderLib(); });
+  es.addEventListener('control', (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    control(d);
+  });
 }
+
+/* ================= 실험 연동 (CARLA, SAGAT) =================
+ * 실험 PC가 /api/control 로 보냄:
+ *   freeze  일시정지 + 화면 가림 (SAGAT 시작), 조작도 막음
+ *   resume  가림 해제 + freeze 전에 재생 중이었으면 이어 재생
+ *   pause / play / seek {t}   블록 시작·끝
+ * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
+let held = null; // freeze/pause 동안: { wasPlaying, frozen }
+
+function control(d) {
+  const a = d.action;
+  if (a === 'freeze' || a === 'pause') {
+    if (!held) held = { wasPlaying: !!mode && !P.paused(), frozen: false };
+    P.pause();
+    if (a === 'freeze') { held.frozen = true; $('#freeze').hidden = false; }
+  } else if (a === 'resume') {
+    const h = held;
+    held = null;
+    $('#freeze').hidden = true;
+    if (mode && (!h || h.wasPlaying)) P.play();
+  } else if (a === 'play') {
+    held = null;
+    $('#freeze').hidden = true;
+    P.play();
+  } else if (a === 'seek') {
+    P.seekTo(+d.t || 0);
+  }
+  report(a, d.id);
+}
+
+function report(action, id) {
+  const body = {
+    action: action || 'status', id: id || '', screen: current, mode: mode || '',
+    title: $('#osd-title').textContent || '', t: mode ? Math.round(P.time() * 1000) / 1000 : null,
+    paused: mode ? P.paused() : null, frozen: !!(held && held.frozen), ts: Date.now(),
+  };
+  fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), keepalive: true }).catch(() => {});
+}
+setInterval(() => report('status'), 2000);
 
 /* ================= 시작 ================= */
 history.replaceState({ s: 'home' }, '');

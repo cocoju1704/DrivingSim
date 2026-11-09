@@ -11,6 +11,9 @@
   /api/upload    업로드 (PUT /api/upload?name=<filename>, body = 파일)
   /api/push      유튜브 링크를 안경으로 전송 (POST {"url": "...", "autoplay": true})
   /api/events    안경이 구독하는 Server-Sent Events 스트림
+  /api/control   실험(CARLA) -> 안경: 재생 제어 (POST {"action": "freeze" | "resume" | "pause" | "play" | "seek",
+                 "t": 초(seek), "id": 사건 ID}). freeze = 일시정지 + 화면 가림(SAGAT), resume = 가림 해제 + 이어 재생
+  /api/state     안경 -> 서버: 플레이어 상태 보고 (POST), 실험이 읽음 (GET: 마지막 보고)
 """
 import argparse
 import json
@@ -39,6 +42,8 @@ mimetypes.add_type("text/javascript", ".js")
 
 _clients: set[queue.Queue] = set()
 _clients_lock = threading.Lock()
+_state: dict = {}  # 안경이 마지막으로 보고한 플레이어 상태 (/api/state)
+CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek"}
 
 
 def broadcast(event: str, data: dict) -> int:
@@ -75,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "MRBDVideo/1.0"
 
     def log_message(self, fmt, *args):
-        if "/api/events" not in (self.path or ""):
+        if "/api/events" not in (self.path or "") and "/api/state" not in (self.path or ""):
             super().log_message(fmt, *args)
 
     # ---------- helpers ----------
@@ -149,6 +154,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/events":
             return self.sse()
 
+        if path == "/api/state":
+            return self.send_json(dict(_state, server_ts=int(time.time() * 1000)))
+
         if path.startswith("/media/"):
             name = safe_name(path[len("/media/"):])
             p = os.path.join(MEDIA, name) if name else None
@@ -203,13 +211,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path != "/api/push":
+        if path not in ("/api/push", "/api/control", "/api/state"):
             return self.send_json({"error": "not found"}, 404)
         length = int(self.headers.get("Content-Length") or 0)
         try:
             data = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:
             return self.send_json({"error": "bad json"}, 400)
+        if path == "/api/control":
+            action = str(data.get("action", ""))
+            if action not in CONTROL_ACTIONS:
+                return self.send_json({"error": "action: " + ", ".join(sorted(CONTROL_ACTIONS))}, 400)
+            data["ts"] = int(time.time() * 1000)
+            n = broadcast("control", data)
+            return self.send_json({"ok": True, "delivered": n})
+        if path == "/api/state":
+            _state.clear()
+            _state.update(data, received_ts=int(time.time() * 1000))
+            return self.send_json({"ok": True})
         link = str(data.get("url", "")).strip()
         if not link:
             return self.send_json({"error": "url이 비어 있습니다"}, 400)

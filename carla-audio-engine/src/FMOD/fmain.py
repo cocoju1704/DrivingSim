@@ -28,7 +28,11 @@ from src.FMOD.Sounds.EVSoundEngine import *
 from src.FMOD.Sounds.EVSampleEngine import EVSampleEngine
 from src.FMOD.Sounds.ReverseBeep import *
 
+import socket
 import sys
+
+#: UDP port (127.0.0.1) for "mute" / "unmute": the EV sound paused while the simulation stands still
+MUTE_PORT = 5006
 
 #: Rain/wind ambience loops. Off: Town04's default wind (30) kept a whooshing wind loop playing all the time.
 ENVIRONMENT_SOUNDS = False
@@ -66,9 +70,28 @@ def main():
 
     model = SoundModel(bus)
 
+    # Mute control: "mute" / "unmute" on UDP 127.0.0.1:MUTE_PORT pauses every loop of the EV sound
+    # (e.g. _Experiment2 while the simulation stands still for a SAGAT question)
+    control = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    control.bind(("127.0.0.1", MUTE_PORT))
+    control.setblocking(False)
+    muted = False
+
     while True:
         model.on_tick()
         trigger_adapter.on_tick()
+        try:
+            while True:
+                command = control.recv(64).decode(errors="ignore").strip().lower()
+                if command in ("mute", "unmute") and muted != (command == "mute"):
+                    muted = command == "mute"
+                    if not muted:
+                        ev.set_paused(False)
+                    print("Sound " + ("muted" if muted else "back on"), flush=True)
+        except (BlockingIOError, ConnectionResetError):
+            pass
+        if muted:  # every tick: a new packet may have resumed the loops
+            ev.set_paused(True)
 
         time.sleep(0.05)
 

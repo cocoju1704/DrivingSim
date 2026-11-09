@@ -13,6 +13,10 @@
 /_Experiment/Data/*/video/
 /_Experiment/Data/**/*.mp4
 /_Experiment/Data/**/*.part
+!/_Experiment2/
+/_Experiment2/launcher_last.json
+# test runs (launcher "테스트") stay local
+/_Experiment2/Data/test/
 !/carla-audio-engine/
 /carla-audio-engine/logs/
 !/TORApp/

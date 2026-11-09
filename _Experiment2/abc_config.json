@@ -1,0 +1,526 @@
+{
+  "_comment": "Scenario ABC (Notion: 시나리오 ABC, section 7). Times are simulation seconds, SAGAT freezes excluded. Lanes as in the document: 1 = left of the ego car, 2 = the ego car's lane, 3 = right of it. On Town04 they are the real highway lanes 2, 3 and 4 (real lane 1, next to the median, stays empty). Q and F times are fixed here; make_schedule.py builds the background traffic so that each Q's target layout happens by itself at its time. No TOR (Notion, 2026-11-09): after the last event (by last_event_s, 9:40) the drive goes on as before until block_end_s.",
+  "time_base": "sim_seconds_excluding_sagat_freeze",
+  "real_lane": {
+    "1": 2,
+    "2": 3,
+    "3": 4
+  },
+  "ego": {
+    "speed_kmh": 95
+  },
+  "event_vehicle": "vehicle.mercedes.coupe_2020",
+  "event_colors": [
+    "255,255,255",
+    "128,128,128",
+    "20,20,20",
+    "192,192,192"
+  ],
+  "background": {
+    "n_within_50m": [
+      5,
+      7
+    ],
+    "dv_kmh": [
+      5,
+      15
+    ],
+    "anchor_dv_kmh_max": 18,
+    "spawn_dx_m": 80,
+    "min_gap_m": 15,
+    "lane2_rear_max_dx_m": -40,
+    "lane2_front_min_dx_m": 28
+  },
+  "templates": {
+    "S": {
+      "spawn_dx_m": -80,
+      "despawn_dx_m": -75,
+      "approach_dv_kmh": 20,
+      "hold_dx_m": -12,
+      "hold_s": 5,
+      "decel_mps2": 1.5,
+      "retreat_dv_kmh": -30,
+      "window_rel_s": [
+        0,
+        7
+      ],
+      "clear_rel_s": [
+        -10,
+        14
+      ],
+      "clear_dx_m": [
+        -75,
+        10
+      ]
+    },
+    "SD": {
+      "same_as": "S",
+      "blinker": false
+    },
+    "R": {
+      "spawn_dx_m": -80,
+      "despawn_dx_m": -75,
+      "approach_dv_kmh": 15,
+      "hold_dx_m": -13,
+      "onset_dx_m": -14.8,
+      "release_rel_s": 5,
+      "decel_mps2": 1.5,
+      "retreat_dv_kmh": -30,
+      "window_after_exit_s": 2,
+      "clear_rel_s": [
+        -14,
+        14
+      ],
+      "clear_dx_m": [
+        -75,
+        0
+      ]
+    },
+    "F": {
+      "lead_dx_m": [
+        36,
+        45
+      ],
+      "brake_s": 3,
+      "decel_dv_kmh": -8,
+      "min_gap_m": 25,
+      "shift_s": 15
+    },
+    "Q": {
+      "max_answer_s": 60,
+      "countdown_s": 3,
+      "cell_dx_m": {
+        "front": [
+          5,
+          50
+        ],
+        "side": [
+          -5,
+          5
+        ],
+        "rear": [
+          -50,
+          -5
+        ]
+      },
+      "target_dx_m": {
+        "front": [
+          15,
+          40
+        ],
+        "side": [
+          -3,
+          3
+        ],
+        "rear_lane1_3": [
+          -30,
+          -15
+        ],
+        "rear_lane2": [
+          -48,
+          -42
+        ]
+      },
+      "unsafe_dx_m": [
+        -30,
+        10
+      ],
+      "approach_window_s": 5,
+      "approach_dv_kmh": 3,
+      "margin_m": 2.5
+    }
+  },
+  "blocks": {
+    "A": {
+      "adaptation_end_s": 60,
+      "block_end_s": 630,
+      "seed": 101,
+      "last_event_s": 580
+    },
+    "B": {
+      "adaptation_end_s": 60,
+      "block_end_s": 630,
+      "seed": 202,
+      "last_event_s": 580
+    },
+    "C": {
+      "adaptation_end_s": 60,
+      "block_end_s": 630,
+      "seed": 303,
+      "last_event_s": 580
+    },
+    "P": {
+      "adaptation_end_s": 30,
+      "block_end_s": 180,
+      "seed": 404,
+      "practice": true,
+      "last_event_s": 160
+    }
+  },
+  "sets": {
+    "A": [
+      {
+        "t": 75,
+        "id": "A-S1",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 109,
+        "id": "A-SD1",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 155,
+        "id": "A-R1",
+        "type": "R"
+      },
+      {
+        "t": 193,
+        "id": "A-Q1",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "2_rear",
+          "3_front",
+          "3_side"
+        ],
+        "approach": [],
+        "safe": "1"
+      },
+      {
+        "t": 215,
+        "id": "A-F1",
+        "type": "F"
+      },
+      {
+        "t": 248,
+        "id": "A-S2",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 279,
+        "id": "A-SD2",
+        "type": "SD",
+        "lane": 1
+      },
+      {
+        "t": 321,
+        "id": "A-S3",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 357,
+        "id": "A-Q2",
+        "type": "Q",
+        "cells": [
+          "1_side",
+          "2_front",
+          "3_side",
+          "3_rear"
+        ],
+        "approach": [
+          3
+        ],
+        "safe": "none"
+      },
+      {
+        "t": 406,
+        "id": "A-SD3",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 439,
+        "id": "A-S4",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 483,
+        "id": "A-SD4",
+        "type": "SD",
+        "lane": 1
+      },
+      {
+        "t": 513,
+        "id": "A-Q3",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "1_side",
+          "1_rear",
+          "3_front"
+        ],
+        "approach": [
+          1
+        ],
+        "safe": "3"
+      },
+      {
+        "t": 533,
+        "id": "A-F2",
+        "type": "F"
+      },
+      {
+        "t": 565,
+        "id": "A-R2",
+        "type": "R"
+      }
+    ],
+    "B": [
+      {
+        "t": 72,
+        "id": "B-SD1",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 112,
+        "id": "B-S1",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 143,
+        "id": "B-Q1",
+        "type": "Q",
+        "cells": [
+          "1_side",
+          "1_rear",
+          "2_rear",
+          "3_side"
+        ],
+        "approach": [
+          1
+        ],
+        "safe": "none"
+      },
+      {
+        "t": 163,
+        "id": "B-F1",
+        "type": "F"
+      },
+      {
+        "t": 195,
+        "id": "B-R1",
+        "type": "R"
+      },
+      {
+        "t": 230,
+        "id": "B-S2",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 277,
+        "id": "B-SD2",
+        "type": "SD",
+        "lane": 1
+      },
+      {
+        "t": 307,
+        "id": "B-Q2",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "2_front",
+          "2_rear",
+          "3_front"
+        ],
+        "approach": [],
+        "safe": "both"
+      },
+      {
+        "t": 330,
+        "id": "B-F2",
+        "type": "F"
+      },
+      {
+        "t": 365,
+        "id": "B-S3",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 398,
+        "id": "B-R2",
+        "type": "R"
+      },
+      {
+        "t": 437,
+        "id": "B-SD3",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 481,
+        "id": "B-S4",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 512,
+        "id": "B-Q3",
+        "type": "Q",
+        "cells": [
+          "1_side",
+          "2_front",
+          "3_front",
+          "3_rear"
+        ],
+        "approach": [
+          3
+        ],
+        "safe": "none"
+      },
+      {
+        "t": 560,
+        "id": "B-SD4",
+        "type": "SD",
+        "lane": 1
+      }
+    ],
+    "C": [
+      {
+        "t": 78,
+        "id": "C-R1",
+        "type": "R"
+      },
+      {
+        "t": 114,
+        "id": "C-SD1",
+        "type": "SD",
+        "lane": 1
+      },
+      {
+        "t": 144,
+        "id": "C-S1",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 189,
+        "id": "C-SD2",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 222,
+        "id": "C-Q1",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "2_front",
+          "3_front",
+          "3_rear"
+        ],
+        "approach": [
+          3
+        ],
+        "safe": "1"
+      },
+      {
+        "t": 247,
+        "id": "C-F1",
+        "type": "F"
+      },
+      {
+        "t": 282,
+        "id": "C-S2",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 320,
+        "id": "C-SD3",
+        "type": "SD",
+        "lane": 3
+      },
+      {
+        "t": 351,
+        "id": "C-S3",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 380,
+        "id": "C-F2",
+        "type": "F"
+      },
+      {
+        "t": 401,
+        "id": "C-Q2",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "1_front",
+          "2_front",
+          "2_rear"
+        ],
+        "approach": [],
+        "safe": "both"
+      },
+      {
+        "t": 435,
+        "id": "C-S4",
+        "type": "S",
+        "lane": 3
+      },
+      {
+        "t": 477,
+        "id": "C-SD4",
+        "type": "SD",
+        "lane": 1
+      },
+      {
+        "t": 507,
+        "id": "C-Q3",
+        "type": "Q",
+        "cells": [
+          "1_rear",
+          "2_front",
+          "2_rear",
+          "3_front"
+        ],
+        "approach": [
+          1
+        ],
+        "safe": "3"
+      },
+      {
+        "t": 563,
+        "id": "C-R2",
+        "type": "R"
+      }
+    ],
+    "P": [
+      {
+        "t": 45,
+        "id": "P-S1",
+        "type": "S",
+        "lane": 1
+      },
+      {
+        "t": 90,
+        "id": "P-R1",
+        "type": "R"
+      },
+      {
+        "t": 140,
+        "id": "P-Q1",
+        "type": "Q",
+        "cells": [
+          "1_front",
+          "2_rear",
+          "3_side"
+        ],
+        "approach": [],
+        "safe": "1"
+      }
+    ]
+  }
+}

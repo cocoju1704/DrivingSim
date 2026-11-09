@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>주변 차량 질문</title>
+<style>
+  :root { --bg: #000; --panel: #15181d; --line: #2c323b; --text: #f1f3f5; --dim: #8a929c;
+          --on: #2f7cf6; --on-text: #fff; --car: #4b525c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+               -webkit-user-select: none; user-select: none; }
+  .screen { display: none; min-height: 100%; padding: 24px 28px env(safe-area-inset-bottom); }
+  .screen.on { display: block; }
+  #idle, #countdown, #sent { display: none; align-items: center; justify-content: center; min-height: 100vh; }
+  #idle.on, #countdown.on, #sent.on { display: flex; }
+  #idle p { color: #3a3f46; font-size: 18px; }
+  #countdown p { font-size: 160px; font-weight: 700; margin: 0; }
+  #sent p { font-size: 28px; color: var(--dim); }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  header h1 { font-size: 24px; margin: 0; }
+  #left { color: var(--dim); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.1fr); gap: 24px; }
+  @media (orientation: portrait) { .layout { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }
+  section h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
+  section h2 small { color: var(--dim); font-weight: 400; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: 34px repeat(3, 1fr); grid-template-rows: 26px repeat(3, 96px); gap: 8px; }
+  .grid .head { color: var(--dim); font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .cell { border: 2px dashed #3d444e; border-radius: 10px; background: #0d0f12; display: flex;
+          align-items: center; justify-content: center; font-size: 15px; color: var(--dim); }
+  .cell.on { background: var(--on); border-style: solid; border-color: var(--on); color: var(--on-text); }
+  .cell.on::after { content: "차 있음"; font-weight: 600; }
+  .cell.ego { border: none; background: transparent; }
+  .ego-car { width: 46px; height: 78px; border-radius: 12px; background: var(--car); border: 2px solid #9aa3ad;
+             display: flex; align-items: center; justify-content: center; font-size: 13px; color: #e8ebee; }
+  .options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .options.five { grid-template-columns: repeat(5, 1fr); }
+  button.opt { font: inherit; font-size: 19px; padding: 16px 8px; border-radius: 10px; border: 1px solid var(--line);
+               background: #0d0f12; color: var(--text); }
+  button.opt.on { background: var(--on); border-color: var(--on); color: var(--on-text); font-weight: 600; }
+  .scale { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; margin-top: 6px; }
+  #submit { width: 100%; font: inherit; font-size: 22px; font-weight: 700; padding: 18px; border: 0;
+            border-radius: 12px; background: #2a9d52; color: #fff; }
+  #submit:disabled { background: #2a2f36; color: #5f6670; }
+  #status { position: fixed; right: 10px; bottom: 6px; font-size: 12px; color: #3a3f46; }
+</style>
+</head>
+<body>
+<div id="idle" class="on"><p>대기 중</p></div>
+<div id="countdown"><p id="count">3</p></div>
+<div id="sent"><p>제출되었습니다</p></div>
+
+<div id="question" class="screen">
+  <header><h1>멈춘 순간의 주변 차량</h1><span id="left"></span></header>
+  <div class="layout">
+    <div>
+      <section>
+        <h2>1. 차가 있던 칸을 모두 눌러 주세요 <small>(없으면 그대로)</small></h2>
+        <div class="grid" id="grid">
+          <div></div><div class="head">왼쪽 차로</div><div class="head">내 차로</div><div class="head">오른쪽 차로</div>
+          <div class="head">앞</div>
+          <div class="cell" data-cell="1_front"></div><div class="cell" data-cell="2_front"></div><div class="cell" data-cell="3_front"></div>
+          <div class="head">옆</div>
+          <div class="cell" data-cell="1_side"></div><div class="cell ego"><div class="ego-car">내 차</div></div><div class="cell" data-cell="3_side"></div>
+          <div class="head">뒤</div>
+          <div class="cell" data-cell="1_rear"></div><div class="cell" data-cell="2_rear"></div><div class="cell" data-cell="3_rear"></div>
+        </div>
+      </section>
+    </div>
+    <div>
+      <section>
+        <h2>2. 뒤에서 다가오던 차가 있었나요? <small>(모두 선택)</small></h2>
+        <div class="options" data-group="approach" data-multi="1">
+          <button class="opt" data-value="left">왼쪽</button>
+          <button class="opt" data-value="right">오른쪽</button>
+          <button class="opt" data-value="behind">바로 뒤</button>
+          <button class="opt" data-value="none">없음</button>
+        </div>
+      </section>
+      <section>
+        <h2>3. 지금 차로를 바꾼다면 안전한 쪽은?</h2>
+        <div class="options" data-group="safe">
+          <button class="opt" data-value="left">왼쪽</button>
+          <button class="opt" data-value="right">오른쪽</button>
+          <button class="opt" data-value="both">둘 다</button>
+          <button class="opt" data-value="none">둘 다 아님</button>
+        </div>
+      </section>
+      <section>
+        <h2>4. 답에 얼마나 확신하나요?</h2>
+        <div class="options five" data-group="confidence">
+          <button class="opt" data-value="1">1</button><button class="opt" data-value="2">2</button>
+          <button class="opt" data-value="3">3</button><button class="opt" data-value="4">4</button>
+          <button class="opt" data-value="5">5</button>
+        </div>
+        <div class="scale"><span>전혀 확신 없음</span><span>매우 확신</span></div>
+      </section>
+      <button id="submit" disabled>제출</button>
+    </div>
+  </div>
+</div>
+<div id="status"></div>
+
+<script>
+(function () {
+  var current = null;       // qid on screen
+  var sentFor = null;       // qid already answered
+  var answer = {};
+  var opened = Date.now();
+
+  function show(id) {
+    ['idle', 'countdown', 'sent', 'question'].forEach(function (name) {
+      document.getElementById(name).classList.toggle('on', name === id);
+    });
+  }
+
+  function reset() {
+    answer = {cells: [], approach: [], safe: null, confidence: null};
+    opened = Date.now();
+    Array.prototype.forEach.call(document.querySelectorAll('.on[data-cell], button.opt.on'), function (el) {
+      el.classList.remove('on');
+    });
+    check();
+  }
+
+  function check() {
+    document.getElementById('submit').disabled =
+      !(answer.approach.length && answer.safe && answer.confidence);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cell]'), function (el) {
+    el.addEventListener('click', function () {
+      el.classList.toggle('on');
+      answer.cells = Array.prototype.map.call(document.querySelectorAll('[data-cell].on'),
+        function (c) { return c.getAttribute('data-cell'); });
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.options'), function (group) {
+    var name = group.getAttribute('data-group');
+    var multi = group.getAttribute('data-multi');
+    group.addEventListener('click', function (event) {
+      var button = event.target.closest('button.opt');
+      if (!button) return;
+      var value = button.getAttribute('data-value');
+      if (multi) {
+        if (value === 'none') {   // "없음" alone
+          Array.prototype.forEach.call(group.querySelectorAll('button.opt'), function (b) { b.classList.remove('on'); });
+          button.classList.add('on');
+        } else {
+          group.querySelector('[data-value="none"]').classList.remove('on');
+          button.classList.toggle('on');
+        }
+        answer[name] = Array.prototype.map.call(group.querySelectorAll('button.opt.on'),
+          function (b) { return b.getAttribute('data-value'); });
+      } else {
+        Array.prototype.forEach.call(group.querySelectorAll('button.opt'), function (b) { b.classList.remove('on'); });
+        button.classList.add('on');
+        answer[name] = name === 'confidence' ? parseInt(value, 10) : value;
+      }
+      check();
+    });
+  });
+
+  document.getElementById('submit').addEventListener('click', function () {
+    var body = {qid: current, cells: answer.cells, approach: answer.approach, safe: answer.safe,
+                confidence: answer.confidence, answer_ms: Date.now() - opened};
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/answer');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () { sentFor = body.qid; show('sent'); };
+    xhr.send(JSON.stringify(body));
+    document.getElementById('submit').disabled = true;
+  });
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/state?t=' + Date.now());
+    xhr.timeout = 2000;
+    xhr.onload = function () {
+      document.getElementById('status').textContent = '';
+      var state = JSON.parse(xhr.responseText);
+      if (state.phase === 'question') {
+        if (state.qid !== current) { current = state.qid; reset(); }
+        if (sentFor === state.qid) { show('sent'); }
+        else {
+          show('question');
+          document.getElementById('left').textContent = Math.ceil(state.left) + '초';
+        }
+      } else if (state.phase === 'countdown') {
+        document.getElementById('count').textContent = state.count;
+        show('countdown');
+      } else {
+        show('idle');
+      }
+      setTimeout(poll, 300);
+    };
+    xhr.onerror = xhr.ontimeout = function () {
+      document.getElementById('status').textContent = '연결 끊김';
+      setTimeout(poll, 1000);
+    };
+    xhr.send();
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

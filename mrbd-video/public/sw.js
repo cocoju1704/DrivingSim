@@ -1,6 +1,6 @@
 // 앱 셸 프리캐시 → 안경에서 앱이 네트워크 없이도 즉시 뜸.
 // 영상(/media)과 API는 캐시하지 않음 (영상은 앱이 IndexedDB에 직접 저장).
-const CACHE = 'mrbd-video-v1';
+const CACHE = 'mrbd-video-v2';  // v2: 실험 연동 (freeze/resume)
 const SHELL = ['/', '/index.html', '/app.js', '/style.css', '/manifest.json', '/icon.png'];
 
 self.addEventListener('install', (e) => {
