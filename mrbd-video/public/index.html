@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1, user-scalable=no">
+  <meta name="mrbd-web-app-capable" content="yes">
+  <meta name="description" content="유튜브 링크 또는 안경에 저장한 영상을 바로 재생하는 비디오 플레이어">
+  <title>MRBD Video</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <link rel="preconnect" href="https://www.youtube.com">
+  <link rel="preconnect" href="https://i.ytimg.com">
+  <link rel="preconnect" href="https://www.google.com">
+  <link rel="dns-prefetch" href="https://googlevideo.com">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- 홈 -->
+  <section id="home" class="screen">
+    <h1>▶ MRBD Video</h1>
+    <div class="list">
+      <button class="item big" data-go="yt" data-key="h-yt"><span class="ico">▶</span>유튜브 링크로 보기</button>
+      <button class="item big" data-go="lib" data-key="h-lib"><span class="ico">▣</span>안경에 저장된 영상</button>
+    </div>
+    <p class="hint">스와이프 = 이동 · 핀치 = 선택</p>
+    <p id="status" class="status"></p>
+  </section>
+
+  <!-- 유튜브 -->
+  <section id="yt" class="screen" hidden>
+    <h2>유튜브</h2>
+    <div class="row">
+      <input id="yt-input" class="item" type="url" placeholder="링크 입력 (말하기·손글씨)" autocomplete="off">
+    </div>
+    <p class="sub">최근 / 폰에서 보낸 링크</p>
+    <div id="yt-list" class="list scroll"></div>
+  </section>
+
+  <!-- 라이브러리 -->
+  <section id="lib" class="screen" hidden>
+    <h2>저장된 영상 <small id="lib-usage"></small></h2>
+    <div id="lib-list" class="list scroll"></div>
+  </section>
+
+  <!-- 플레이어 -->
+  <section id="player" class="screen" hidden>
+    <video id="video" playsinline preload="auto"></video>
+    <div id="yt-host"><div id="yt-frame"></div></div>
+    <div id="osd">
+      <div id="osd-title"></div>
+      <div id="osd-state"></div>
+      <div id="osd-bar"><div id="osd-fill"></div></div>
+      <div id="osd-time"></div>
+      <div id="osd-help">핀치 재생/정지 · ◀▶ 10초 · ▲▼ 볼륨</div>
+    </div>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>

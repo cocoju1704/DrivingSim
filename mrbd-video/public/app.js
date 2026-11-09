@@ -1,0 +1,628 @@
+'use strict';
+/* MRBD Video — Meta Ray-Ban Display용 영상 플레이어
+ * 입력: 안경 OS가 Neural Band/터치패드 제스처를 ArrowUp/Down/Left/Right + Enter 로 전달.
+ * 지연 최소화:
+ *   - 앱 셸은 서비스워커로 프리캐시 → 오프라인에서도 즉시 시작
+ *   - 유튜브 IFrame 플레이어를 앱 시작 시 미리 만들어 두고 loadVideoById 로 재사용
+ *   - "안경에 저장"한 영상은 IndexedDB의 Blob을 바로 재생 → 네트워크 버퍼링 0
+ */
+
+const $ = (s, r = document) => r.querySelector(s);
+const SCREENS = ['home', 'yt', 'lib', 'player'];
+const LS_VER = 1;
+let current = 'home';
+let lastPopAt = 0;
+const lastFocusKey = {};
+
+/* ---------------- 저장소 (localStorage, 스키마 버전 포함) ---------------- */
+const store = {
+  get(key, def) {
+    try {
+      const v = JSON.parse(localStorage.getItem(key));
+      return v && v.v === LS_VER ? v.d : def;
+    } catch { return def; }
+  },
+  set(key, d) {
+    try { localStorage.setItem(key, JSON.stringify({ v: LS_VER, d })); } catch { /* 용량 초과 등 무시 */ }
+  },
+};
+
+/* ---------------- 화면 전환 / 히스토리 ---------------- */
+function show(name) {
+  if (current === 'player' && name !== 'player') stopPlayback();
+  rememberFocus();
+  for (const s of SCREENS) $('#' + s).hidden = s !== name;
+  current = name;
+  if (name === 'yt') renderYT();
+  else if (name === 'lib') renderLib();
+  else if (name === 'player') { $('#player').focus(); return; }
+  restoreFocus();
+}
+
+function go(name) {
+  history.pushState({ s: name }, '');
+  show(name);
+}
+
+function goBack() {
+  if (!history.state || history.state.s === 'home') return; // 홈에서는 시스템 메뉴에 맡김
+  const t = Date.now();
+  // 시스템 Back이 이미 history.back()을 호출했다면 중복 실행하지 않음
+  setTimeout(() => { if (lastPopAt < t) history.back(); }, 80);
+}
+
+window.addEventListener('popstate', (e) => {
+  lastPopAt = Date.now();
+  show((e.state && e.state.s) || 'home');
+});
+
+/* ---------------- 포커스 이동 (행/열 기반) ---------------- */
+function rows() {
+  const items = [...$('#' + current).querySelectorAll('.item')].filter((el) => !el.disabled);
+  const out = [];
+  let lastRow = null;
+  for (const el of items) {
+    const row = el.closest('.row') || el;
+    if (row !== lastRow) { out.push([]); lastRow = row; }
+    out[out.length - 1].push(el);
+  }
+  return out;
+}
+
+function locate(rs, el) {
+  for (let r = 0; r < rs.length; r++) {
+    const c = rs[r].indexOf(el);
+    if (c >= 0) return [r, c];
+  }
+  return [-1, -1];
+}
+
+function focusEl(el) {
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: 'nearest' });
+}
+
+function moveV(d) {
+  const rs = rows();
+  if (!rs.length) return;
+  const [r, c] = locate(rs, document.activeElement);
+  if (r < 0) return focusEl(rs[0][0]);
+  const nr = Math.max(0, Math.min(rs.length - 1, r + d));
+  focusEl(rs[nr][Math.min(c, rs[nr].length - 1)]);
+}
+
+function moveH(d) {
+  const rs = rows();
+  const [r, c] = locate(rs, document.activeElement);
+  if (r < 0) return;
+  const nc = c + d;
+  if (nc >= 0 && nc < rs[r].length) focusEl(rs[r][nc]);
+}
+
+function rememberFocus() {
+  const a = document.activeElement;
+  if (a && a.dataset && a.dataset.key) lastFocusKey[current] = a.dataset.key;
+}
+
+function restoreFocus() {
+  const scr = $('#' + current);
+  const key = lastFocusKey[current];
+  const el = (key && scr.querySelector(`[data-key="${CSS.escape(key)}"]`)) || scr.querySelector('.item');
+  focusEl(el);
+}
+
+/* ---------------- 키 입력 ---------------- */
+document.addEventListener('keydown', (e) => {
+  const k = e.key;
+  if (current === 'player') return playerKey(e);
+  const a = document.activeElement;
+  const inInput = a && a.tagName === 'INPUT';
+
+  if (k === 'ArrowUp' || k === 'ArrowDown') {
+    e.preventDefault();
+    moveV(k === 'ArrowDown' ? 1 : -1);
+  } else if ((k === 'ArrowLeft' || k === 'ArrowRight') && !inInput) {
+    e.preventDefault();
+    moveH(k === 'ArrowRight' ? 1 : -1);
+  } else if (k === 'Enter' && a && a.tagName === 'BUTTON') {
+    e.preventDefault();
+    a.click();
+  } else if (k === 'Escape' || (k === 'Backspace' && !inInput)) {
+    e.preventDefault();
+    goBack();
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-go]');
+  if (b) go(b.dataset.go);
+});
+
+/* ---------------- 유틸 ---------------- */
+function fmtTime(s) {
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+}
+function fmtSize(b) {
+  if (!b) return '';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return b.toFixed(i >= 2 ? 1 : 0) + u[i];
+}
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k === 'dataset') Object.assign(n.dataset, v);
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const c of kids) if (c != null) n.append(c);
+  return n;
+}
+function setStatus(msg, ms = 3000) {
+  const s = $('#status');
+  s.textContent = msg;
+  clearTimeout(setStatus.t);
+  if (ms) setStatus.t = setTimeout(() => { s.textContent = ''; }, ms);
+}
+const posKey = (key) => 'pos:' + key;
+
+/* ================= 유튜브 ================= */
+function parseT(t) {
+  if (!t) return 0;
+  if (/^\d+s?$/.test(t)) return parseInt(t, 10);
+  const m = t.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
+  return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+}
+
+function parseYT(s) {
+  s = (s || '').trim();
+  if (/^[\w-]{11}$/.test(s)) return { id: s, start: 0 };
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); } catch { return null; }
+  const h = u.hostname.replace(/^(www|m|music)\./, '');
+  let id = null;
+  if (h === 'youtu.be') id = u.pathname.slice(1, 12);
+  else if (h === 'youtube.com' || h === 'youtube-nocookie.com') {
+    if (u.pathname === '/watch') id = u.searchParams.get('v');
+    else {
+      const m = u.pathname.match(/^\/(shorts|embed|live|v)\/([\w-]{11})/);
+      if (m) id = m[2];
+    }
+  }
+  if (!id || !/^[\w-]{11}$/.test(id)) return null;
+  return { id, start: parseT(u.searchParams.get('t') || u.searchParams.get('start')) };
+}
+
+const recents = {
+  all: () => store.get('yt:recent', []),
+  add(id, title) {
+    const list = recents.all().filter((r) => r.id !== id);
+    const prev = store.get('yt:recent', []).find((r) => r.id === id);
+    list.unshift({ id, title: title || (prev && prev.title) || '', ts: Date.now() });
+    store.set('yt:recent', list.slice(0, 30));
+  },
+  setTitle(id, title) {
+    const list = recents.all();
+    const r = list.find((x) => x.id === id);
+    if (r && title && r.title !== title) { r.title = title; store.set('yt:recent', list); }
+  },
+  remove(id) { store.set('yt:recent', recents.all().filter((r) => r.id !== id)); },
+};
+
+function renderYT() {
+  const list = $('#yt-list');
+  list.replaceChildren();
+  const items = recents.all();
+  if (!items.length) {
+    list.append(el('p', { class: 'empty' }, '아직 없음 — 위에 링크를 입력하거나 폰 리모컨(/phone.html)에서 보내세요.'));
+  }
+  for (const r of items) {
+    const pos = store.get(posKey('yt:' + r.id), 0);
+    list.append(el('div', { class: 'row' },
+      el('button', { class: 'item grow', dataset: { key: 'yt:' + r.id }, onclick: () => playYouTube({ id: r.id }) },
+        el('span', { class: 'ico' }, '▶'),
+        el('span', { class: 'name' }, r.title || r.id),
+        pos > 5 ? el('span', { class: 'meta' }, fmtTime(pos) + '부터') : null),
+      el('button', { class: 'item small danger', dataset: { key: 'ytdel:' + r.id },
+        onclick: () => { recents.remove(r.id); renderYT(); restoreFocus(); } }, '✕')));
+  }
+}
+
+$('#yt-input').addEventListener('change', (e) => {
+  const v = e.target.value;
+  const info = parseYT(v);
+  if (!info) { e.target.value = ''; e.target.placeholder = '유튜브 링크가 아니에요. 다시 입력'; return; }
+  e.target.value = '';
+  playYouTube(info);
+});
+
+/* ---- IFrame 플레이어 미리 준비 (첫 재생 지연 제거) ---- */
+let ytPlayer = null, ytReady = false, ytPending = null, ytCurrent = null;
+
+window.onYouTubeIframeAPIReady = () => {
+  ytPlayer = new YT.Player('yt-frame', {
+    width: 600, height: 600,
+    host: 'https://www.youtube.com',
+    playerVars: {
+      controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0,
+      iv_load_policy: 3, modestbranding: 1, cc_load_policy: 0,
+      origin: location.origin,
+    },
+    events: {
+      onReady() {
+        ytReady = true;
+        const f = ytPlayer.getIframe();
+        f.tabIndex = -1;
+        if (ytPending) { const p = ytPending; ytPending = null; startYT(p); }
+      },
+      onStateChange(e) {
+        if (e.data === YT.PlayerState.PLAYING) {
+          const d = ytPlayer.getVideoData && ytPlayer.getVideoData();
+          if (d && d.title && ytCurrent) {
+            recents.setTitle(ytCurrent.id, d.title);
+            $('#osd-title').textContent = d.title;
+          }
+          flash('▶');
+        } else if (e.data === YT.PlayerState.PAUSED) flash('❚❚', true);
+        else if (e.data === YT.PlayerState.ENDED && ytCurrent) {
+          store.set(posKey('yt:' + ytCurrent.id), 0);
+          flash('■', true);
+        }
+      },
+      onError(e) {
+        const msg = { 2: '잘못된 영상 ID', 5: '재생 불가 (HTML5)', 100: '삭제되었거나 비공개 영상',
+          101: '이 영상은 외부 재생이 허용되지 않음', 150: '이 영상은 외부 재생이 허용되지 않음' }[e.data] || '재생 오류 ' + e.data;
+        $('#osd-title').textContent = '⚠ ' + msg;
+        flash('⚠', true);
+      },
+    },
+  });
+};
+(function loadYTApi() {
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  s.async = true;
+  s.onerror = () => setStatus('유튜브 연결 실패 (오프라인?) — 저장된 영상은 재생 가능', 0);
+  document.head.append(s);
+})();
+
+function startYT(info) {
+  const saved = store.get(posKey('yt:' + info.id), 0);
+  const start = info.start || (saved > 5 ? saved : 0);
+  ytPlayer.loadVideoById({ videoId: info.id, startSeconds: start });
+  ytPlayer.unMute && ytPlayer.unMute();
+}
+
+function playYouTube(info) {
+  stopPlayback();
+  ytCurrent = info;
+  recents.add(info.id);
+  mode = 'yt';
+  $('#player').className = 'screen mode-yt';
+  $('#osd-title').textContent = (recents.all()[0] || {}).title || '유튜브 불러오는 중…';
+  enterPlayer();
+  if (ytReady) startYT(info);
+  else { ytPending = info; flash('…', true); }
+}
+
+/* ================= 저장된 영상 (IndexedDB) ================= */
+const DB = {
+  _db: null,
+  open() {
+    if (this._db) return Promise.resolve(this._db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('mrbd-video', 1);
+      r.onupgradeneeded = () => {
+        r.result.createObjectStore('meta', { keyPath: 'id' });
+        r.result.createObjectStore('blob', { keyPath: 'id' });
+      };
+      r.onsuccess = () => { this._db = r.result; res(r.result); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async tx(stores, mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction(stores, mode);
+      const out = fn(t);
+      t.oncomplete = () => res(out && 'result' in out ? out.result : undefined);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error || new Error('저장 공간 부족'));
+    });
+  },
+  list() { return this.tx(['meta'], 'readonly', (t) => t.objectStore('meta').getAll()); },
+  blob(id) { return this.tx(['blob'], 'readonly', (t) => t.objectStore('blob').get(id)); },
+  put(meta, blob) {
+    return this.tx(['meta', 'blob'], 'readwrite', (t) => {
+      t.objectStore('blob').put({ id: meta.id, blob });
+      t.objectStore('meta').put(meta);
+    });
+  },
+  del(id) {
+    return this.tx(['meta', 'blob'], 'readwrite', (t) => {
+      t.objectStore('meta').delete(id);
+      t.objectStore('blob').delete(id);
+    });
+  },
+};
+
+const downloading = new Map(); // id -> 진행률(0~100)
+
+async function fetchServerList() {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 3000);
+  try {
+    const r = await fetch('/api/videos', { signal: ctl.signal, cache: 'no-store' });
+    return r.ok ? await r.json() : [];
+  } catch { return null; } finally { clearTimeout(t); }
+}
+
+let libRenderSeq = 0;
+async function renderLib() {
+  const seq = ++libRenderSeq;
+  const [local, server] = await Promise.all([DB.list().catch(() => []), fetchServerList()]);
+  if (seq !== libRenderSeq || current !== 'lib') return;
+  rememberFocus();
+  const list = $('#lib-list');
+  list.replaceChildren();
+  local.sort((a, b) => b.addedAt - a.addedAt);
+
+  list.append(el('p', { class: 'sub' }, '안경에 저장됨 · 즉시 재생'));
+  if (!local.length) list.append(el('p', { class: 'empty' }, '아직 없음 — 아래 목록에서 받아 오세요.'));
+  for (const m of local) {
+    const pos = store.get(posKey(m.id), 0);
+    list.append(el('div', { class: 'row' },
+      el('button', { class: 'item grow', dataset: { key: m.id }, onclick: () => playStored(m) },
+        el('span', { class: 'ico' }, '▶'),
+        el('span', { class: 'name' }, m.name),
+        el('span', { class: 'meta' }, pos > 5 ? fmtTime(pos) + '부터' : fmtSize(m.size))),
+      el('button', { class: 'item small danger', dataset: { key: 'del:' + m.id },
+        onclick: async () => { await DB.del(m.id); store.set(posKey(m.id), 0); renderLib(); } }, '🗑')));
+  }
+
+  list.append(el('p', { class: 'sub' }, server === null ? '서버 연결 안 됨 (오프라인)' : '서버 영상 · 받기 또는 스트리밍'));
+  const have = new Set(local.map((m) => m.id));
+  for (const v of server || []) {
+    const id = 'srv:' + v.name + ':' + v.size;
+    if (have.has(id)) continue;
+    const pct = downloading.get(id);
+    list.append(el('div', { class: 'row' },
+      el('button', { class: 'item grow', dataset: { key: id }, onclick: () => download(id, v.name, v.url, v.size) },
+        el('span', { class: 'ico' }, '⬇'),
+        el('span', { class: 'name' }, v.name),
+        el('span', { class: 'meta', 'data-prog': id }, pct != null ? pct + '%' : fmtSize(v.size))),
+      el('button', { class: 'item small', dataset: { key: 'st:' + id },
+        onclick: () => playUrl(v.url, v.name, id) }, '스트림')));
+  }
+
+  list.append(el('div', { class: 'row' },
+    el('input', { class: 'item grow', type: 'url', placeholder: '+ 영상 URL(mp4)로 저장', dataset: { key: 'addurl' },
+      onchange: (e) => {
+        const u = e.target.value.trim();
+        e.target.value = '';
+        if (!u) return;
+        const name = decodeURIComponent(u.split('?')[0].split('/').pop() || 'video.mp4');
+        download('url:' + u, name, u, 0);
+      } })));
+
+  restoreFocus();
+  updateUsage();
+}
+
+async function updateUsage() {
+  if (!navigator.storage || !navigator.storage.estimate) return;
+  const { usage, quota } = await navigator.storage.estimate();
+  $('#lib-usage').textContent = `${fmtSize(usage)} / ${fmtSize(quota)}`;
+}
+
+async function download(id, name, url, sizeHint) {
+  if (downloading.has(id)) return;
+  downloading.set(id, 0);
+  const label = () => document.querySelector(`[data-prog="${CSS.escape(id)}"]`);
+  try {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const total = +res.headers.get('content-length') || sizeHint || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let got = 0, lastPaint = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.length;
+      const now = performance.now();
+      if (now - lastPaint > 250) {
+        lastPaint = now;
+        const pct = total ? Math.floor((got / total) * 100) : 0;
+        downloading.set(id, pct);
+        const l = label();
+        if (l) l.textContent = total ? pct + '%' : fmtSize(got);
+      }
+    }
+    const type = res.headers.get('content-type') || 'video/mp4';
+    const blob = new Blob(chunks, { type });
+    await DB.put({ id, name, size: blob.size, type, addedAt: Date.now() }, blob);
+    setStatus('저장 완료: ' + name);
+  } catch (err) {
+    setStatus('받기 실패: ' + (err.message || err), 5000);
+    const l = label();
+    if (l) l.textContent = '실패';
+  } finally {
+    downloading.delete(id);
+    if (current === 'lib') renderLib();
+  }
+}
+
+/* ================= 로컬/스트림 재생 ================= */
+const video = $('#video');
+let mode = null;       // 'yt' | 'local'
+let localKey = null;   // 이어보기 키
+let blobUrl = null;
+
+async function playStored(meta) {
+  const rec = await DB.blob(meta.id);
+  if (!rec) { setStatus('파일이 없어요. 다시 받아 주세요.'); return renderLib(); }
+  blobUrl = URL.createObjectURL(rec.blob);
+  playVideoSrc(blobUrl, meta.name, meta.id);
+}
+
+function playUrl(url, title, key) { playVideoSrc(url, title, key || url); }
+
+function playVideoSrc(src, title, key) {
+  const keepBlob = blobUrl;
+  blobUrl = null;
+  stopPlayback();
+  blobUrl = keepBlob;
+  mode = 'local';
+  localKey = key;
+  $('#player').className = 'screen mode-local';
+  $('#osd-title').textContent = title;
+  video.src = src;
+  video.play().catch(() => flash('❚❚', true));
+  enterPlayer();
+}
+
+video.addEventListener('loadedmetadata', () => {
+  const saved = store.get(posKey(localKey), 0);
+  if (saved > 5 && saved < video.duration - 10) video.currentTime = saved;
+});
+video.addEventListener('playing', () => flash('▶'));
+video.addEventListener('pause', () => { if (!video.ended) flash('❚❚', true); });
+video.addEventListener('waiting', () => flash('…', true));
+video.addEventListener('ended', () => { store.set(posKey(localKey), 0); flash('■', true); });
+video.addEventListener('error', () => {
+  if (!video.getAttribute('src')) return;
+  $('#osd-title').textContent = '⚠ 재생할 수 없는 형식 (H.264 MP4 권장)';
+  flash('⚠', true);
+});
+
+/* ================= 플레이어 공통 ================= */
+function enterPlayer() {
+  if (current === 'player') { $('#player').focus(); return; }
+  go('player');
+}
+
+const P = {
+  time() { return mode === 'yt' ? (ytReady ? ytPlayer.getCurrentTime() : 0) : video.currentTime; },
+  dur() { return mode === 'yt' ? (ytReady ? ytPlayer.getDuration() : 0) : (video.duration || 0); },
+  paused() { return mode === 'yt' ? !(ytReady && ytPlayer.getPlayerState() === 1) : video.paused; },
+  toggle() {
+    if (mode === 'yt') { if (!ytReady) return; P.paused() ? ytPlayer.playVideo() : ytPlayer.pauseVideo(); }
+    else video.paused ? video.play().catch(() => {}) : video.pause();
+  },
+  seek(d) {
+    const t = Math.max(0, Math.min(P.dur() || Infinity, P.time() + d));
+    if (mode === 'yt') ytReady && ytPlayer.seekTo(t, true);
+    else video.currentTime = t;
+  },
+  vol(d) {
+    let v;
+    if (mode === 'yt') {
+      if (!ytReady) return 0;
+      v = Math.max(0, Math.min(100, ytPlayer.getVolume() + d * 100));
+      ytPlayer.setVolume(v);
+      if (v > 0) ytPlayer.unMute();
+      return Math.round(v);
+    }
+    video.volume = Math.max(0, Math.min(1, video.volume + d));
+    return Math.round(video.volume * 100);
+  },
+};
+
+function savePos() {
+  const key = mode === 'yt' ? ytCurrent && 'yt:' + ytCurrent.id : localKey;
+  if (!key) return;
+  const t = P.time(), d = P.dur();
+  if (d && t > 5 && t < d - 10) store.set(posKey(key), Math.floor(t));
+}
+setInterval(() => { if (current === 'player' && !P.paused()) savePos(); }, 3000);
+
+function stopPlayback() {
+  if (!mode) return;
+  savePos();
+  if (mode === 'yt') {
+    ytPending = null;
+    if (ytReady) ytPlayer.stopVideo();
+    ytCurrent = null;
+  } else {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    localKey = null;
+  }
+  if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+  mode = null;
+  $('#osd').classList.remove('show');
+}
+
+function playerKey(e) {
+  const k = e.key;
+  const handled = ['Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Escape', 'Backspace'];
+  if (!handled.includes(k)) return;
+  e.preventDefault();
+  if (k === 'Enter' || k === ' ') { P.toggle(); flash(P.paused() ? '▶' : '❚❚', true); }
+  else if (k === 'ArrowLeft') { P.seek(-10); flash('⏪ 10'); }
+  else if (k === 'ArrowRight') { P.seek(10); flash('10 ⏩'); }
+  else if (k === 'ArrowUp') flash('🔊 ' + P.vol(0.1));
+  else if (k === 'ArrowDown') flash('🔉 ' + P.vol(-0.1));
+  else goBack();
+}
+
+/* 유튜브 iframe으로 포커스가 넘어가면 키 입력을 잃으므로 즉시 되찾음 */
+window.addEventListener('blur', () => {
+  setTimeout(() => { if (current === 'player') { window.focus(); $('#player').focus(); } }, 0);
+});
+$('#player').tabIndex = -1;
+
+/* OSD (진행바/상태) */
+let osdTimer = null;
+function paintOsd() {
+  const t = P.time(), d = P.dur();
+  $('#osd-fill').style.width = d ? (t / d) * 100 + '%' : '0';
+  $('#osd-time').textContent = fmtTime(t) + ' / ' + (d ? fmtTime(d) : '--:--');
+}
+function flash(icon, sticky) {
+  if (current !== 'player') return;
+  $('#osd-state').textContent = icon || '';
+  paintOsd();
+  const osd = $('#osd');
+  osd.classList.add('show');
+  clearTimeout(osdTimer);
+  if (!sticky) osdTimer = setTimeout(() => { if (!P.paused()) osd.classList.remove('show'); }, 2200);
+}
+setInterval(() => { if (current === 'player' && $('#osd').classList.contains('show')) paintOsd(); }, 500);
+
+/* ================= 폰 리모컨 → 안경 (SSE) ================= */
+function connectEvents() {
+  if (!window.EventSource) return;
+  const es = new EventSource('/api/events');
+  es.addEventListener('push', (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    const info = parseYT(d.url);
+    if (info) {
+      recents.add(info.id);
+      if (current === 'yt') renderYT();
+      if (d.autoplay) playYouTube(info);
+      else setStatus('새 링크 도착 → 유튜브 목록');
+    } else if (/^https?:\/\/.+\.(mp4|m4v|webm|mov)(\?|$)/i.test(d.url)) {
+      if (d.autoplay) playUrl(d.url, d.url.split('/').pop());
+    }
+  });
+  es.addEventListener('library', () => { if (current === 'lib') renderLib(); });
+}
+
+/* ================= 시작 ================= */
+history.replaceState({ s: 'home' }, '');
+show('home');
+connectEvents();
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}

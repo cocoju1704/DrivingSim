@@ -18,3 +18,5 @@
 !/TORApp/
 
 __pycache__/
+!/mrbd-video/
+/mrbd-video/media/

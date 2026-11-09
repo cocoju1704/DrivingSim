@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MRBD Video 리모컨</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --fg:#eef0f4; --mute:#9aa3b2; --acc:#3bc9f5; --bad:#ff6b6b; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f6f8; --card:#fff; --line:#e1e4ea; --fg:#14171c; --mute:#5d6676; --acc:#0a84c6; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui,-apple-system,"Segoe UI","Noto Sans KR",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:22px; margin:4px 0 18px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  p.note { color:var(--mute); font-size:14px; margin:8px 0 0; }
+  input[type=url] { width:100%; padding:12px; font:inherit; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--fg); }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  button, .btn { padding:11px 16px; font:inherit; font-weight:600; border:0; border-radius:10px; background:var(--acc); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--bad); border:1px solid var(--line); padding:6px 10px; font-weight:500; }
+  label.chk { display:flex; gap:6px; align-items:center; color:var(--mute); font-size:14px; }
+  ul { list-style:none; padding:0; margin:10px 0 0; }
+  li { display:flex; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  li .n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  li .s { color:var(--mute); font-size:13px; }
+  progress { width:100%; height:8px; margin-top:10px; }
+  #msg { min-height:20px; font-size:14px; color:var(--mute); margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MRBD Video 리모컨</h1>
+
+  <section>
+    <h2>① 유튜브 링크를 안경으로 보내기</h2>
+    <input id="url" type="url" placeholder="https://youtu.be/…  (공유 → 링크 복사 후 붙여넣기)">
+    <div class="row">
+      <button id="send">안경으로 보내기</button>
+      <label class="chk"><input id="auto" type="checkbox" checked> 바로 재생</label>
+    </div>
+    <div id="msg"></div>
+  </section>
+
+  <section>
+    <h2>② 영상 올리기 → 안경에 저장</h2>
+    <input id="file" type="file" accept="video/mp4,video/webm,video/quicktime,.m4v" multiple>
+    <progress id="prog" value="0" max="100" hidden></progress>
+    <p class="note">업로드 후 안경 앱 → <b>저장된 영상</b>에서 ⬇ 를 눌러 받으면 오프라인에서도 끊김 없이 재생됩니다.
+      H.264 MP4, 720p 이하를 권장합니다.</p>
+    <ul id="list"></ul>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (b) => { const u=['B','KB','MB','GB']; let i=0; while(b>=1024&&i<3){b/=1024;i++;} return b.toFixed(i>=2?1:0)+u[i]; };
+const msg = (t) => { $('#msg').textContent = t; };
+
+$('#send').onclick = async () => {
+  const url = $('#url').value.trim();
+  if (!url) return msg('링크를 붙여넣어 주세요.');
+  try {
+    const r = await fetch('/api/push', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url, autoplay: $('#auto').checked }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    msg(d.delivered ? `안경 ${d.delivered}대에 보냄 ✓` : '연결된 안경이 없습니다. 안경에서 앱을 먼저 여세요.');
+    if (d.delivered) $('#url').value = '';
+  } catch (e) { msg('실패: ' + e.message); }
+};
+$('#url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#send').click(); });
+
+function upload(file) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', '/api/upload?name=' + encodeURIComponent(file.name));
+    x.upload.onprogress = (e) => { if (e.lengthComputable) $('#prog').value = (e.loaded / e.total) * 100; };
+    x.onload = () => x.status === 200 ? res() : rej(new Error((JSON.parse(x.responseText||'{}').error) || x.status));
+    x.onerror = () => rej(new Error('네트워크 오류'));
+    x.send(file);
+  });
+}
+
+$('#file').onchange = async (e) => {
+  const files = [...e.target.files];
+  $('#prog').hidden = false;
+  for (const f of files) {
+    $('#prog').value = 0;
+    try { await upload(f); } catch (err) { alert(f.name + ' 업로드 실패: ' + err.message); }
+  }
+  $('#prog').hidden = true;
+  e.target.value = '';
+  refresh();
+};
+
+async function refresh() {
+  const list = await fetch('/api/videos').then((r) => r.json()).catch(() => []);
+  const ul = $('#list');
+  ul.replaceChildren();
+  for (const v of list) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="n"></span><span class="s"></span><button class="ghost">삭제</button>';
+    li.querySelector('.n').textContent = v.name;
+    li.querySelector('.s').textContent = fmt(v.size);
+    li.querySelector('button').onclick = async () => {
+      if (!confirm(v.name + ' 을(를) 서버에서 삭제할까요? (안경에 이미 저장된 사본은 남습니다)')) return;
+      await fetch('/api/videos/' + encodeURIComponent(v.name), { method: 'DELETE' });
+      refresh();
+    };
+    ul.append(li);
+  }
+}
+refresh();
+</script>
+</body>
+</html>
