@@ -203,7 +203,7 @@ class Launcher(object):
         box = group('입력 / 데이터')
         line = ttk.Frame(box)
         line.pack(anchor='w')
-        for value, text in (('wheel', '핸들'), ('keyboard', '키보드 (Z X C = 응답)')):
+        for value, text in (('wheel', '핸들'), ('keyboard', '키보드 (핸들 없을 때)')):
             ttk.Radiobutton(line, text=text, value=value, variable=v['input']).pack(side='left', padx=(0, 12))
         ttk.Checkbutton(box, text='테스트 (Data/test/MMDDHHMMSS 에 저장)', variable=v['test'],
                         command=self._update).pack(anchor='w', pady=(6, 0))

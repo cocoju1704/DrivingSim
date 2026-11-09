@@ -291,6 +291,10 @@ RIGHT_MIRROR = {
          (0.97, 0.77), (0.93, 0.83), (0.59, 0.92), (0.21, 0.99), (0.0, 1.0)]),
 }
 MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
+# _Experiment2: the side mirror cameras turned outwards by half their field of view and 2 degrees more,
+# so their inner edge looks 2 degrees outside straight back: they show the lane beside (from ~70 m
+# behind, so a car appearing 80 m back is not seen), not the car's own lane (_Experiment: 10)
+SIDE_MIRROR_OUT = MIRROR_INSET_FOV / 2.0 + 2.0
 # Rear-view mirror glass, m from the driver's eyes (forward, right, up). The windshield view is in
 # front of it, so there its image stays where the driver's seat view shows the glass.
 REAR_MIRROR = (0.571, 0.0123, 0.1138)
@@ -751,10 +755,10 @@ def car_mirrors(extent, view):
         return carla.Location(x=share_x * extent.x, y=side * (extent.y + outside), z=share_z * extent.z), size, outline
     return [
         side_glass(LEFT_MIRROR, -1) + (
-            carla.Transform(carla.Location(x=side_x, y=-side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=-170.0)),
+            carla.Transform(carla.Location(x=side_x, y=-side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=-180.0 + SIDE_MIRROR_OUT)),
             MIRROR_INSET_FOV, view),
         side_glass(RIGHT_MIRROR, 1) + (
-            carla.Transform(carla.Location(x=side_x, y=side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=170.0)),
+            carla.Transform(carla.Location(x=side_x, y=side_y, z=side_z), carla.Rotation(pitch=-3.0, yaw=180.0 - SIDE_MIRROR_OUT)),
             MIRROR_INSET_FOV, view),
         (carla.Location(x=eye_x + REAR_MIRROR[0], y=REAR_MIRROR[1], z=eye_z + REAR_MIRROR[2]), REAR_MIRROR_SIZE,
          REAR_MIRROR_OUTLINE,

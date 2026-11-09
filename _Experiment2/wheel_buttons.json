@@ -1,6 +1,5 @@
 {
-  "_comment": "Scenario ABC wheel buttons. responses: what the participant presses (left / right paddle for the side mirrors, a top button for the rear-view mirror); buttons: carla_base's driving buttons (the turn signals are off in this experiment). Find the numbers with: python _Experiment2/carla_base.py --wheel-test",
+  "_comment": "Scenario ABC uses no wheel buttons (the participant answers only the SAGAT questions, on the tablet). buttons: carla_base's driving buttons, none needed here.",
   "wheel": "Thrustmaster T300RS Racing Wheel",
-  "responses": {"paddle_left": 0, "paddle_right": 1, "rear": 3},
   "buttons": {}
 }

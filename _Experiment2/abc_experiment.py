@@ -10,18 +10,23 @@ Scenario ABC: one block of the glasses / phone / HUD experiment (Notion: 주행 
 The ego car drives itself in lane 2 (Town04's real lane 3) at 95 km/h from start to end and reacts to
 nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc_schedule.py):
 
-    S   a car comes up in lane 1 or 3 behind the car and signals towards lane 2 for 5 s
-        -> the paddle on that side (left mirror: left paddle, right mirror: right paddle)
-    SD  the same without the turn signal (distractor)                -> no response
-    R   a car comes up close behind in lane 2 (rear-view mirror)    -> the wheel's rear button
-    F   the car ahead in lane 2 brakes (brake light 3 s, -8 km/h)    -> nothing (gaze only)
+    S   a car comes up in lane 1 or 3 behind the car and signals towards lane 2 for 5 s (left or right
+        side mirror)
+    SD  the same without the turn signal
+    R   a car comes up close behind in lane 2 (rear-view mirror)
+    F   the car ahead in lane 2 brakes (brake light 3 s, -8 km/h)
     Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet;
         after the answer (or 60 s) 3-2-1 on the monitors and the tablet, then the drive goes on
 
-Responses: wheel buttons in wheel_buttons.json ("responses": paddle_left, paddle_right, rear), or the
-keys Z, X, C. The turn signals are off: the paddles only answer. A response within an event's window
-(S, SD: T .. T+7 s; R: T .. 2 s after it falls back past 10 m) is scored for that event; outside
-any window it is a false alarm. At the end the feedback line is on the monitors (and feedback.txt).
+The participant answers nothing but the SAGAT questions: the events are measured by the gaze only
+(Tobii Pro Glasses 2 with its event markers; analysed afterwards). For that, every frame logs in
+which mirror inset each car is visible (its bounding box inside the mirror camera's field of view),
+and each event gets its gaze window (gaze_windows.csv):
+    S, SD   its side mirror, from the first frame the car is visible in it to T+7
+    R       the rear-view mirror, from its first frame there to 2 s after it falls back past 10 m
+    F       the car ahead, T .. T+5
+At the end the monitors only say that the drive is over; the experimenter gives the video score
+(feedback.txt has the line). SAGAT scores are kept in the data, not told.
 
 Keys (experimenter): ESC ends the run, TAB the next camera view, F1 the info panel, N during a
 question skips it (no answer).
@@ -30,9 +35,10 @@ Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMD
     run.json        the options, the set, versions
     frames.csv      every frame: times, the ego car, its controls
     vehicles.csv    every frame: every car around it: course id, kind, lane, planned and real dx,
-                    relative speed, lights
-    events.csv      appearances, turn signals, brake lights, windows, freezes, video commands
-    responses.csv   every button press and what it was scored as
+                    relative speed, lights, the mirror insets it is visible in
+    events.csv      appearances, turn signals, brake lights, first visible in a mirror, gaze window
+                    ends, freezes, video commands
+    gaze_windows.csv  each S, SD, R, F: its area of interest and gaze window
     sagat.json      each question: the real layout at the freeze, the answer, the scores
     summary.json, feedback.txt
     gaze_*.csv      with --gaze (Tobii Pro Nano, gaze_bridge.py)
@@ -62,7 +68,6 @@ import abc_schedule  # noqa: E402
 import abc_traffic  # noqa: E402
 
 DATA_DIR = os.path.join(HERE, 'Data')
-RESPONSE_FILE = os.path.join(HERE, 'wheel_buttons.json')
 CONDITIONS = ('glasses', 'phone', 'hud')
 CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유리 화면'}
 AUTO = 'AUTO'  # the whole block: L3 driving, no takeover (the TOR is not part of the scenario)
@@ -71,8 +76,9 @@ RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variabl
 FRONT_CELLS = ('1_front', '2_front', '3_front')
 APPROACH_ANSWER = {'left': 1, 'behind': 2, 'right': 3}
 SAFE_ANSWER = {'left': '1', 'right': '3', 'both': 'both', 'none': 'none'}
-KEY_RESPONSES = {pygame.K_z: 'paddle_left', pygame.K_x: 'paddle_right', pygame.K_c: 'rear'}
-RESPONSE_NAMES = {'paddle_left': '왼쪽 패들', 'paddle_right': '오른쪽 패들', 'rear': '상단 버튼'}
+GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
+F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
+VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 ○○점입니다.'  # said by the experimenter after the video test
 BADGE = {AUTO: ('L3 자율주행 작동 중', (40, 160, 70))}
 
 
@@ -87,9 +93,9 @@ class DataLog(object):
     COLUMNS = {
         'frames.csv': ('t_sim', 'wall_time', 'frame', 'mode', 'ego_x', 'ego_y', 'ego_z', 'ego_yaw', 'speed_kmh',
                        'steer', 'throttle', 'brake', 'fps'),
-        'vehicles.csv': ('t_sim', 'id', 'kind', 'event', 'lane', 'dx_plan', 'dx', 'dv_kmh', 'lights'),
+        'vehicles.csv': ('t_sim', 'id', 'kind', 'event', 'lane', 'dx_plan', 'dx', 'dv_kmh', 'lights', 'in_mirror'),
         'events.csv': ('t_sim', 'wall_time', 'id', 'what'),
-        'responses.csv': ('t_sim', 'wall_time', 'button', 'source', 'event', 'scored_as', 'rt_s'),
+        'gaze_windows.csv': ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'window_start', 'window_end'),
     }
 
     def __init__(self, directory):
@@ -154,59 +160,72 @@ def output_dir(args):
 
 
 # ==============================================================================
-# -- responses -----------------------------------------------------------------
+# -- mirrors -------------------------------------------------------------------
 # ==============================================================================
 
 
-def response_buttons():
-    """{wheel button number: response} from wheel_buttons.json ("responses")."""
-    try:
-        with open(RESPONSE_FILE, encoding='utf-8') as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        logging.warning('%s missing: wheel responses off (keys Z, X, C work)', RESPONSE_FILE)
-        return {}
-    buttons = {number: name for name, number in data.get('responses', {}).items() if number is not None and number >= 0}
-    logging.info('Response buttons: %s', ', '.join('%s %d' % (name, n) for n, name in sorted(buttons.items())))
-    return buttons
+class MirrorVisibility(object):
+    """Which mirror insets show a car: its bounding box corners projected into each mirror camera
+    (carla_base's mirror views: left, right side mirror, rear-view mirror), a corner inside the
+    image = visible. Nothing hides anything (other cars, the car's own body): close enough for the
+    mirrors. A car counts once it is MIN_PX tall in the inset (at 1440 px monitors; scaled to the
+    window): far behind it is a few pixels, there but not something to see. Only in the driver views
+    (the mirrors are there)."""
 
+    MIN_PX = 4.0
 
-def score_responses(events, presses):
-    """Scores every press, then every target. events: the schedule's S, SD, R with 'window'.
-    Returns (presses with 'event', 'scored_as', 'rt_s'; per-target outcomes)."""
-    windowed = [e for e in events if e['type'] in ('S', 'SD', 'R')]
-    outcome = {e['id']: {'id': e['id'], 'type': e['type'], 'lane': e.get('lane'), 't': e['t'],
-                         'window': e['window'], 'outcome': 'miss' if e['type'] != 'SD' else 'correct_rejection',
-                         'rt_s': None} for e in windowed}
-    for press in presses:
-        press['event'], press['scored_as'], press['rt_s'] = '', 'false_alarm_outside', None
-        if press.get('frozen'):
-            press['scored_as'] = 'during_question'
-            continue
-        for e in windowed:
-            low, high = e['window']
-            if not low <= press['t'] <= high:
+    def __init__(self, world, screen_height=1440):
+        self._min_px = self.MIN_PX * screen_height / 1440.0
+        self._manager = world.camera_manager
+        self._ego = world.player
+        self._boxes = {}     # actor id -> its bounding box (read once: a server round trip)
+        self._cameras = None  # [(name, camera, tan half fov x, tan half fov y)]
+        self._for = None      # the mirror_views list they were made for (respawned with the view)
+
+    def _setup(self):
+        views = getattr(self._manager, 'mirror_views', [])
+        if views is self._for:
+            return
+        self._for = views
+        self._cameras = []
+        ego = self._ego.get_transform()
+        right = ego.get_right_vector()
+        for rect, camera, _ in views:
+            offset = camera.get_transform().location - ego.location
+            side = offset.x * right.x + offset.y * right.y
+            name = 'left' if side < -0.5 else 'right' if side > 0.5 else 'rear'
+            tan_x = math.tan(math.radians(float(camera.attributes.get('fov', 40.0)) / 2.0))
+            tan_y = tan_x * rect.height / float(rect.width)
+            self._cameras.append((name, camera, tan_x, tan_y, rect.height / 2.0 / tan_y))
+
+    def of(self, actor):
+        """'left', 'right', 'rear' or several joined by '+'; '' if in none."""
+        self._setup()
+        if not self._cameras:
+            return ''
+        box = self._boxes.get(actor.id)
+        if box is None:
+            box = self._boxes[actor.id] = actor.bounding_box
+        corners = box.get_world_vertices(actor.get_transform())
+        seen = []
+        for name, camera, tan_x, tan_y, focal in self._cameras:
+            inverse = camera.get_transform().get_inverse_matrix()
+            us, vs = [], []
+            for c in corners:
+                x = inverse[0][0] * c.x + inverse[0][1] * c.y + inverse[0][2] * c.z + inverse[0][3]
+                if x <= 0.5:
+                    continue
+                us.append((inverse[1][0] * c.x + inverse[1][1] * c.y + inverse[1][2] * c.z + inverse[1][3]) / x)
+                vs.append((inverse[2][0] * c.x + inverse[2][1] * c.y + inverse[2][2] * c.z + inverse[2][3]) / x)
+            if not us:
                 continue
-            press['event'] = e['id']
-            target = outcome[e['id']]
-            if e['type'] == 'SD':
-                press['scored_as'] = 'false_alarm'
-                target['outcome'] = 'false_alarm'
-            else:
-                right = 'rear' if e['type'] == 'R' else ('paddle_left' if e['lane'] == 1 else 'paddle_right')
-                if press['button'] == right:
-                    if target['outcome'] == 'hit':
-                        press['scored_as'] = 'repeat'
-                    else:
-                        press['scored_as'] = 'hit'
-                        press['rt_s'] = round(press['t'] - e['t'], 3)
-                        target['outcome'], target['rt_s'] = 'hit', press['rt_s']
-                else:
-                    press['scored_as'] = 'wrong_button'
-                    if target['outcome'] == 'miss':
-                        target['outcome'] = 'wrong_button'
-            break
-    return presses, [outcome[e['id']] for e in windowed]
+            # the box's projection overlaps the image, and is tall enough there to be seen
+            if max(us) < -tan_x or min(us) > tan_x or max(vs) < -tan_y or min(vs) > tan_y:
+                continue
+            tall = (min(max(vs), tan_y) - max(min(vs), -tan_y)) * focal
+            if tall >= self._min_px:
+                seen.append(name)
+        return '+'.join(seen)
 
 
 # ==============================================================================
@@ -344,8 +363,8 @@ class Block(object):
         self.schedule = abc_schedule.load_schedule(args.set)
         self.qt = self.config['templates']['Q']
         self.log = DataLog(output_dir(args))
-        self.presses = []
         self.questions = []
+        self.first_visible = {}  # event id -> first time its car was in its mirror
         self.mode = AUTO
         self.frozen = False
         self.exit_times = {}    # R id -> time it fell back past 10 m (measured)
@@ -363,21 +382,46 @@ class Block(object):
             self.g2.mark(what.split(' ')[0], id=eid, t_sim=round(t, 3), **fields)
 
     def timed_marks(self, t):
-        """The schedule's moments (event T, window ends) as they pass."""
+        """The schedule's moments (event T, gaze window ends) as they pass."""
         for e in self.schedule['events']:
             if e['type'] in ('S', 'SD', 'R', 'F') and e['id'] not in self._marks_done and t >= e['t']:
                 self._marks_done.add(e['id'])
                 what = {'S': 'onset (turn signal on)', 'SD': 'onset (no signal)', 'R': 'onset (closer than 10 m)',
                         'F': 'onset (brake light)'}[e['type']]
                 self.mark(t, what, e['id'], type=e['type'])
-            if 'window' in e and e['id'] + '/end' not in self._marks_done and t >= self.window(e)[1]:
-                self._marks_done.add(e['id'] + '/end')
-                self.mark(t, 'window end', e['id'])
+            if e['type'] in ('S', 'SD', 'R', 'F') and e['id'] + '/end' not in self._marks_done:
+                end = self.gaze_window(e)[1]
+                if end is not None and t >= end:
+                    self._marks_done.add(e['id'] + '/end')
+                    self.mark(t, 'gaze window end', e['id'])
 
-    def window(self, e):
-        if e['type'] == 'R' and e['id'] in self.exit_times:
-            return [e['t'], round(self.exit_times[e['id']] + self.config['templates']['R']['window_after_exit_s'], 3)]
-        return e['window']
+    @staticmethod
+    def aoi(e):
+        """The area of interest of an event."""
+        if e['type'] in ('S', 'SD'):
+            return 'left_mirror' if e['lane'] == 1 else 'right_mirror'
+        return 'rear_mirror' if e['type'] == 'R' else 'lead_car'
+
+    def gaze_window(self, e):
+        """[start, end] of an event's gaze window (None where not known yet)."""
+        if e['type'] == 'F':
+            return [e['t'] + F_GAZE[0], e['t'] + F_GAZE[1]]
+        start = self.first_visible.get(e['id'])
+        if e['type'] == 'R':
+            exit_t = self.exit_times.get(e['id'], e.get('t_exit'))
+            return [start, round(exit_t + self.config['templates']['R']['window_after_exit_s'], 3)]
+        return [start, e['t'] + GAZE_AFTER[e['type']]]
+
+    def track_visible(self, t, mirrors):
+        """mirrors: {course id: 'left+rear' ...} this frame. The first frame an event's car is in
+        its own mirror starts its gaze window."""
+        for e in self.schedule['events']:
+            if e['type'] not in ('S', 'SD', 'R') or e['id'] in self.first_visible:
+                continue
+            want = self.aoi(e).split('_')[0]
+            if want in mirrors.get(e['id'], '').split('+'):
+                self.first_visible[e['id']] = round(t, 3)
+                self.mark(t, 'visible in the %s mirror (gaze window start)' % want, e['id'])
 
     def track_rear(self, t, state):
         """R: the time it really falls back past 10 m bumper to bumper (onset_dx_m), for its window."""
@@ -389,7 +433,7 @@ class Block(object):
                 self.exit_times[rid] = t
                 self.mark(t, 'falls back past 10 m', rid)
 
-    # -- presses -------------------------------------------------------------------------------
+    # -- video -------------------------------------------------------------------------------
 
     def media_results(self, t):
         """What the video players did (their own reports), into the event log."""
@@ -402,54 +446,41 @@ class Block(object):
                                                                   ', covered' if state.get('frozen') else ''))
                 self.log.event(t, what, state.get('id') or '-')
 
-    def press(self, t, button, source):
-        self.presses.append({'t': t, 'wall': time.time(), 'button': button, 'source': source, 'frozen': self.frozen})
-        logging.info('%7.2f s  response  %s (%s)%s', t, button, source, ' during a question' if self.frozen else '')
-        if self.g2 is not None:
-            self.g2.mark('response', button=button, t_sim=round(t, 3))
-
     # -- the end -------------------------------------------------------------------------------
 
     def finish(self, t_end, aborted):
-        events = [dict(e, window=self.window(e)) for e in self.schedule['events'] if e['type'] in ('S', 'SD', 'R')]
-        presses, targets = score_responses(events, self.presses)
-        for p in presses:
-            self.log.row('responses.csv', (round(p['t'], 3), round(p['wall'], 3), p['button'], p['source'],
-                                           p['event'], p['scored_as'], '' if p['rt_s'] is None else p['rt_s']))
-        real = [x for x in targets if x['type'] in ('S', 'R')]
-        hits = sum(1 for x in real if x['outcome'] == 'hit')
-        rts = [x['rt_s'] for x in real if x['rt_s'] is not None]
+        windows = []
+        for e in self.schedule['events']:
+            if e['type'] not in ('S', 'SD', 'R', 'F') or e['t'] > t_end:
+                continue
+            start, end = self.gaze_window(e)
+            row = {'id': e['id'], 'type': e['type'], 'lane': e.get('lane', 2), 't': e['t'], 'aoi': self.aoi(e),
+                   'first_visible': self.first_visible.get(e['id']), 'window_start': start, 'window_end': end}
+            windows.append(row)
+            self.log.row('gaze_windows.csv', [('' if row[k] is None else row[k]) for k in
+                                              ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'window_start',
+                                               'window_end')])
         answered = [q['score'] for q in self.questions if q['score'].get('answered')]
         sagat = round(100.0 * sum(s['score'] for s in answered) / len(answered)) if answered else None
-        due = [x for x in real if x['window'][1] <= t_end]  # aborted runs: only those it got to
-        feedback = ('수고하셨습니다. 이번 주행 결과입니다. 영상 시험 ○○점, 미러 차량 발견 %d개 중 %d개, '
-                    '주변 차량 질문 %s점입니다.' % (len(due), hits, '-' if sagat is None else sagat))
+        missing = [w['id'] for w in windows if w['type'] != 'F' and w['first_visible'] is None]
         summary = {
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
             'participant': self.args.participant, 'test': self.args.test, 'aborted': aborted, 't_end': round(t_end, 2),
-            'mirror_targets': {'hits': hits, 'of': len(due), 'mean_rt_s': round(sum(rts) / len(rts), 3) if rts else None,
-                               'side_hits': sum(1 for x in real if x['type'] == 'S' and x['outcome'] == 'hit'),
-                               'rear_hits': sum(1 for x in real if x['type'] == 'R' and x['outcome'] == 'hit'),
-                               'wrong_button': sum(1 for x in real if x['outcome'] == 'wrong_button')},
-            'false_alarms': {'distractor': sum(1 for x in targets if x['outcome'] == 'false_alarm'),
-                             'outside_windows': sum(1 for p in presses if p['scored_as'] == 'false_alarm_outside')},
-            'targets': targets,
+            'gaze_windows': windows, 'never_visible_in_their_mirror': missing,
             'sagat': {'score_percent': sagat, 'questions': [{'id': q['id'], **q['score']} for q in self.questions]},
-            'feedback': feedback}
+            'feedback': VIDEO_FEEDBACK}
         self.log.json('summary.json', summary)
         self.log.json('sagat.json', self.questions)
-        self.log.text('feedback.txt', feedback + '\n')
+        self.log.text('feedback.txt', VIDEO_FEEDBACK + '\n(영상 시험 뒤 실험자가 읽음. 주변 차량 질문 점수는 알리지 않음)\n')
         print()
         print('=' * 78)
-        print(feedback)
-        print('  mirror targets %d/%d (side %d, rear %d), false alarms %d + %d outside, SAGAT %s' % (
-            hits, len(due), summary['mirror_targets']['side_hits'], summary['mirror_targets']['rear_hits'],
-            summary['false_alarms']['distractor'], summary['false_alarms']['outside_windows'],
-            '-' if sagat is None else '%d %%' % sagat))
+        print('Block over (%s). SAGAT %s (not told to the participant). Gaze windows: %d events%s' % (
+            'aborted' if aborted else 'complete', '-' if sagat is None else '%d %%' % sagat, len(windows),
+            '; never in their mirror: ' + ', '.join(missing) if missing else ''))
+        print('After the video test: "%s"' % VIDEO_FEEDBACK)
         if self.log.dir:
             print('  data: %s' % self.log.dir)
         print('=' * 78)
-        return feedback
 
 
 def build_args():
@@ -465,7 +496,7 @@ def build_args():
                         help='checking: start the block this many s in (events before it are skipped)')
     parser.add_argument('--duration', type=float, default=None, help='checking: quit after this many s of the block')
     parser.add_argument('--feedback-seconds', type=float, default=600.0,
-                        help='the feedback screen at the end stays this long at most (a key closes it)')
+                        help='the end screen stays this long at most (a key closes it)')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('-p', '--port', type=int, default=2000)
     parser.add_argument('--res', default='7680x1440')
@@ -561,7 +592,6 @@ def run(args):
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start))
         driver_input = base.WheelInput(args) if args.input == 'wheel' else base.KeyboardInput()
-        responses = response_buttons() if args.input == 'wheel' else {}
         client = base.connect_server(args.host, args.port)
         sim_world = client.get_world()
         if not sim_world.get_map().name.endswith(base.MAP_NAME):
@@ -619,6 +649,7 @@ def run(args):
         sim_clock = [sim_world.get_snapshot().timestamp.elapsed_seconds]
         follower.clock = lambda: sim_clock[0]  # its speed changes with the simulation's time: the same every run
         overlay = Overlay(world, hud_preview=args.hud_preview)
+        mirror_view = MirrorVisibility(world, args.height)
         if args.gaze:
             from gaze_tracking import GazeTracker
             gaze = GazeTracker(sim_world, world, args.gaze_port, args.gaze_tolerance)
@@ -659,10 +690,6 @@ def run(args):
                     base.next_view(world)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_F1:
                     world.hud.toggle_info()
-                elif event.type == pygame.KEYDOWN and event.key in KEY_RESPONSES:
-                    block.press(t, KEY_RESPONSES[event.key], 'key')
-                elif event.type == pygame.JOYBUTTONDOWN and event.button in responses:
-                    block.press(t, responses[event.button], 'wheel %d' % event.button)
             if t >= schedule['block_end_s'] or (args.duration and t - args.start_at >= args.duration):
                 aborted = t < schedule['block_end_s']
                 break
@@ -671,7 +698,7 @@ def run(args):
             if questions and t >= questions[0]['t']:
                 q = questions.pop(0)
                 q_number += 1
-                if not ask_question(block, q, q_number, t, traffic, sagat, overlay, display, responses, clock):
+                if not ask_question(block, q, q_number, t, traffic, sagat, overlay, display, clock):
                     return
                 settings.fixed_delta_seconds = 1.0 / args.fps  # the next step is one frame, not the freeze
                 sim_world.apply_settings(settings)
@@ -685,6 +712,8 @@ def run(args):
             del traffic.log[:]
             block.timed_marks(t)
             block.track_rear(t, state)
+            mirrors = {cid: mirror_view.of(traffic.cars[cid]['actor']) for cid in state}
+            block.track_visible(t, mirrors)
             block.media_results(t)
 
             # the ego car
@@ -719,7 +748,8 @@ def run(args):
                 block.log.row('vehicles.csv', (round(t, 3), cid, course.kind if course else '',
                                                (course.event or ('F' if course.f_event else '')) if course else '',
                                                lane, '' if planned is None else round(planned[0], 2), round(dx, 2),
-                                               round(dv, 2), abc_traffic._light_names(car['lights']) if car else ''))
+                                               round(dv, 2), abc_traffic._light_names(car['lights']) if car else '',
+                                               mirrors.get(cid, '')))
 
             ticker.start()
             world.tick(clock)
@@ -738,7 +768,7 @@ def run(args):
             player.stop()
             player.close()
         block.media_results(t)
-        feedback = block.finish(t, aborted)
+        block.finish(t, aborted)
         if block.g2 is not None:
             block.mark(t, 'run end')
             block.g2.close()
@@ -768,7 +798,7 @@ def run(args):
             world.destroy()
             # last, with the server already free: the feedback on the monitors until a key
             try:
-                show_feedback(display, Overlay(world), feedback, args.feedback_seconds)
+                show_end(display, Overlay(world), args.feedback_seconds)
             except Exception:  # pylint: disable=broad-except
                 logging.exception('Feedback screen')
         pygame.quit()
@@ -784,7 +814,7 @@ def car_sound(on):
         pass
 
 
-def ask_question(block, q, number, t, traffic, sagat, overlay, display, responses, clock):
+def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock):
     """SAGAT: the simulation is not stepped, the monitors are black, the tablet asks. Returns False
     if the run was ended (ESC)."""
     truth = sagat_truth(traffic.snapshot(t, block.qt['approach_window_s']), block.qt)
@@ -808,10 +838,6 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, response
                 return False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_n:
                 skipped = True
-            elif event.type == pygame.KEYDOWN and event.key in KEY_RESPONSES:
-                block.press(t, KEY_RESPONSES[event.key], 'key')
-            elif event.type == pygame.JOYBUTTONDOWN and event.button in responses:
-                block.press(t, responses[event.button], 'wheel %d' % event.button)
         answer = sagat.answer()
         waited = time.monotonic() - started
         if answer is not None or skipped or waited >= seconds:
@@ -848,19 +874,15 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, response
     return True
 
 
-def show_feedback(display, overlay, feedback, seconds):
-    """The feedback on the monitors until a key or the wheel's button (or `seconds`)."""
-    first, _, rest = feedback.partition('이번 주행 결과입니다. ')
-    lines = [first.strip(), '이번 주행 결과입니다.'] + [part.strip() + ('' if part.strip().endswith('.') else ',')
-                                                      for part in rest.split(', ')]
-    lines[-1] = lines[-1].rstrip(',')
+def show_end(display, overlay, seconds):
+    """The end of the drive on the monitors (no scores) until a key or a wheel button (or `seconds`)."""
     until = time.monotonic() + seconds
     pygame.event.clear()
     while time.monotonic() < until:
         for event in pygame.event.get():
             if event.type in (pygame.KEYDOWN, pygame.QUIT, pygame.JOYBUTTONDOWN):
                 return
-        overlay.black(display, lines + ['', '(아무 키나 누르면 닫힙니다)'])
+        overlay.black(display, ['주행이 끝났습니다', '잠시 기다려 주세요'])
         pygame.display.flip()
         time.sleep(0.05)
 
