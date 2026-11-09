@@ -317,10 +317,12 @@ const DB = {
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open('mrbd-video', 1);
+      const r = indexedDB.open('mrbd-video', 2);
       r.onupgradeneeded = () => {
-        r.result.createObjectStore('meta', { keyPath: 'id' });
-        r.result.createObjectStore('blob', { keyPath: 'id' });
+        const db = r.result, have = db.objectStoreNames;
+        if (!have.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' });
+        if (!have.contains('blob')) db.createObjectStore('blob', { keyPath: 'id' });   // v1: 영상 하나 = Blob 하나
+        if (!have.contains('part')) db.createObjectStore('part', { keyPath: ['id', 'i'] }); // v2: 조각 저장
       };
       r.onsuccess = () => { this._db = r.result; res(r.result); };
       r.onerror = () => rej(r.error);
@@ -337,17 +339,28 @@ const DB = {
     });
   },
   list() { return this.tx(['meta'], 'readonly', (t) => t.objectStore('meta').getAll()); },
-  blob(id) { return this.tx(['blob'], 'readonly', (t) => t.objectStore('blob').get(id)); },
-  put(meta, blob) {
-    return this.tx(['meta', 'blob'], 'readwrite', (t) => {
-      t.objectStore('blob').put({ id: meta.id, blob });
-      t.objectStore('meta').put(meta);
-    });
+  parts: (id) => IDBKeyRange.bound([id, 0], [id, Infinity]),
+  /* 조각들을 디스크에 둔 채 하나의 Blob으로 묶음 (메모리로 읽어 들이지 않음) */
+  async blob(meta) {
+    if (!meta.parts) {
+      const rec = await this.tx(['blob'], 'readonly', (t) => t.objectStore('blob').get(meta.id));
+      return rec && rec.blob;
+    }
+    const recs = await this.tx(['part'], 'readonly', (t) => t.objectStore('part').getAll(this.parts(meta.id)));
+    if (!recs || recs.length !== meta.parts) return null;
+    return new Blob(recs.map((p) => p.blob), { type: meta.type });
+  },
+  putPart(id, i, blob) {
+    return this.tx(['part'], 'readwrite', (t) => { t.objectStore('part').put({ id, i, blob }); });
+  },
+  putMeta(meta) {
+    return this.tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(meta); });
   },
   del(id) {
-    return this.tx(['meta', 'blob'], 'readwrite', (t) => {
+    return this.tx(['meta', 'blob', 'part'], 'readwrite', (t) => {
       t.objectStore('meta').delete(id);
       t.objectStore('blob').delete(id);
+      t.objectStore('part').delete(this.parts(id));
     });
   },
 };
@@ -430,14 +443,25 @@ async function download(id, name, url, sizeHint) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const total = +res.headers.get('content-length') || sizeHint || 0;
+    const type = res.headers.get('content-type') || 'video/mp4';
     const reader = res.body.getReader();
-    const chunks = [];
-    let got = 0, lastPaint = 0;
+    // 4MB씩 끊어 바로 IndexedDB에 기록 → 영상 전체를 메모리에 올리지 않음 (안경 RAM 2GB)
+    const PART = 4 * 1024 * 1024;
+    await DB.del(id); // 이전에 실패하고 남은 조각 정리
+    let chunks = [], buffered = 0, parts = 0, got = 0, lastPaint = 0;
+    const flush = async () => {
+      if (!buffered) return;
+      const b = new Blob(chunks, { type });
+      chunks = []; buffered = 0;
+      await DB.putPart(id, parts++, b);
+    };
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
+      buffered += value.length;
       got += value.length;
+      if (buffered >= PART) await flush();
       const now = performance.now();
       if (now - lastPaint > 250) {
         lastPaint = now;
@@ -447,11 +471,12 @@ async function download(id, name, url, sizeHint) {
         if (l) l.textContent = total ? pct + '%' : fmtSize(got);
       }
     }
-    const type = res.headers.get('content-type') || 'video/mp4';
-    const blob = new Blob(chunks, { type });
-    await DB.put({ id, name, size: blob.size, type, addedAt: Date.now() }, blob);
+    await flush();
+    if (total && got !== total) throw new Error(`중간에 끊김 (${fmtSize(got)} / ${fmtSize(total)})`);
+    await DB.putMeta({ id, name, size: got, type, parts, addedAt: Date.now() }); // 목록엔 다 받은 뒤에만 표시
     setStatus('저장 완료: ' + name);
   } catch (err) {
+    DB.del(id).catch(() => {});
     setStatus('받기 실패: ' + (err.message || err), 5000);
     const l = label();
     if (l) l.textContent = '실패';
@@ -468,9 +493,9 @@ let localKey = null;   // 이어보기 키
 let blobUrl = null;
 
 async function playStored(meta) {
-  const rec = await DB.blob(meta.id);
-  if (!rec) { setStatus('파일이 없어요. 다시 받아 주세요.'); return renderLib(); }
-  blobUrl = URL.createObjectURL(rec.blob);
+  const blob = await DB.blob(meta);
+  if (!blob) { setStatus('파일이 없어요. 다시 받아 주세요.'); return renderLib(); }
+  blobUrl = URL.createObjectURL(blob);
   playVideoSrc(blobUrl, meta.name, meta.id);
 }
 

@@ -57,12 +57,15 @@ cloudflared tunnel --url http://localhost:8080      # https://xxxx.trycloudflare
 
 ## 영상 준비 팁
 
-안경의 디코딩 부담과 저장 용량을 줄이려면 720p 이하, H.264 MP4, faststart로 변환해 두세요.
+안경 화면(600px)에 맞춰 H.264 MP4, 30fps, faststart로 변환해 두세요. 원본은 `videos/`에 두고(git 제외) 결과만 `media/`에 넣으면 됩니다.
 
 ```bash
-ffmpeg -i in.mp4 -vf "scale='min(720,iw)':-2" -c:v libx264 -preset slow -crf 26 \
-       -c:a aac -b:a 96k -movflags +faststart out.mp4
+ffmpeg -i videos/in.mp4 -vf "fps=30,scale=600:-2,setsar=1" -c:v libx264 -profile:v main -preset veryfast \
+       -crf 28 -maxrate 700k -bufsize 1400k -c:a aac -b:a 64k -ac 2 -movflags +faststart media/.tmp.mp4 \
+  && mv media/.tmp.mp4 media/out_600p.mp4      # 점(.)으로 시작하는 임시 파일은 목록에 안 보임
 ```
+
+1080p 50분 영상(약 1.3GB)이 약 120~150MB가 됩니다. 안경은 받은 영상을 4MB 조각으로 나눠 저장하므로 큰 파일도 메모리를 거의 쓰지 않습니다.
 
 ## 제약 / 주의
 

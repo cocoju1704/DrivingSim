@@ -64,11 +64,24 @@ def safe_name(name: str) -> str | None:
     return name
 
 
+def is_video_file(f: str) -> bool:
+    # 점으로 시작하는 파일은 변환/업로드 중인 임시 파일이라 숨김
+    return (not f.startswith(".") and os.path.splitext(f)[1].lower() in VIDEO_EXT
+            and os.path.isfile(os.path.join(MEDIA, f)))
+
+
+def media_file(name: str) -> str | None:
+    """요청한 이름이 media/ 안에 실제로 있는 영상이면 그 경로.
+    폴더에 직접 넣은 파일은 이름에 &, # 같은 문자가 있을 수 있어 safe_name 대신 목록과 그대로 대조한다."""
+    name = os.path.basename(name or "")
+    return os.path.join(MEDIA, name) if name in os.listdir(MEDIA) and is_video_file(name) else None
+
+
 def list_videos() -> list[dict]:
     out = []
     for f in sorted(os.listdir(MEDIA)):
         p = os.path.join(MEDIA, f)
-        if os.path.isfile(p) and os.path.splitext(f)[1].lower() in VIDEO_EXT:
+        if is_video_file(f):
             st = os.stat(p)
             out.append({"name": f, "size": st.st_size, "mtime": int(st.st_mtime),
                         "url": "/media/" + urllib.parse.quote(f)})
@@ -158,9 +171,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(dict(_state, server_ts=int(time.time() * 1000)))
 
         if path.startswith("/media/"):
-            name = safe_name(path[len("/media/"):])
-            p = os.path.join(MEDIA, name) if name else None
-            if not p or not os.path.isfile(p):
+            p = media_file(path[len("/media/"):])
+            if not p:
                 return self.send_json({"error": "not found"}, 404)
             return self.send_file(p, cache="public, max-age=31536000, immutable")
 
@@ -201,12 +213,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.unquote(urllib.parse.urlparse(self.path).path)
         if not path.startswith("/api/videos/"):
             return self.send_json({"error": "not found"}, 404)
-        name = safe_name(path[len("/api/videos/"):])
-        p = os.path.join(MEDIA, name) if name else None
-        if not p or not os.path.isfile(p):
+        p = media_file(path[len("/api/videos/"):])
+        if not p:
             return self.send_json({"error": "not found"}, 404)
         os.remove(p)
-        broadcast("library", {"removed": name})
+        broadcast("library", {"removed": os.path.basename(p)})
         return self.send_json({"ok": True})
 
     def do_POST(self):

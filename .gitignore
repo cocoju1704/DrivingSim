@@ -24,3 +24,4 @@
 __pycache__/
 !/mrbd-video/
 /mrbd-video/media/
+/mrbd-video/videos/
