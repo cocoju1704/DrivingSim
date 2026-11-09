@@ -369,7 +369,7 @@ const downloading = new Map(); // id -> 진행률(0~100)
 
 async function fetchServerList() {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 3000);
+  const t = setTimeout(() => ctl.abort(), 8000); // 받는 중엔 회선이 붐벼 늦게 올 수 있음
   try {
     const r = await fetch('/api/videos', { signal: ctl.signal, cache: 'no-store' });
     return r.ok ? await r.json() : [];
@@ -434,21 +434,86 @@ async function updateUsage() {
   $('#lib-usage').textContent = `${fmtSize(usage)} / ${fmtSize(quota)}`;
 }
 
-async function download(id, name, url, sizeHint) {
+/* 받기: 한 번에 하나씩(대역폭을 나누지 않음), 끊기면 받은 조각은 남겨 두고 Range로 이어받음.
+   앱을 껐다 켠 뒤 ⬇를 다시 눌러도 남은 조각 다음부터 이어받는다. */
+let downloadQueue = Promise.resolve();
+function download(id, name, url, sizeHint) {
   if (downloading.has(id)) return;
   downloading.set(id, 0);
+  const l = document.querySelector(`[data-prog="${CSS.escape(id)}"]`);
+  if (l) l.textContent = '대기';
+  downloadQueue = downloadQueue.then(() => downloadOne(id, name, url, sizeHint));
+}
+
+async function downloadOne(id, name, url, sizeHint) {
   const label = () => document.querySelector(`[data-prog="${CSS.escape(id)}"]`);
+  const PART = 4 * 1024 * 1024; // 4MB씩 IndexedDB에 기록 → 영상 전체를 메모리에 올리지 않음 (안경 RAM 2GB)
+  const MAX_TRIES = 40;
+  let tries = 0;
   try {
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    const res = await fetch(url);
+    for (;;) {
+      try {
+        await downloadAttempt(id, name, url, sizeHint, PART, label);
+        setStatus('저장 완료: ' + name);
+        return;
+      } catch (err) {
+        if (err && err.fatal) throw err;
+        if (++tries >= MAX_TRIES) throw err;
+        const wait = Math.min(15000, 1000 * 2 ** Math.min(tries, 4));
+        setStatus(`연결 끊김, ${Math.round(wait / 1000)}초 뒤 이어받기 (${tries}/${MAX_TRIES})`, wait);
+        const lb = label();
+        if (lb) lb.textContent = (downloading.get(id) || 0) + '% ↻';
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  } catch (err) {
+    // 받은 조각은 지우지 않음: 다시 ⬇를 누르면 이어받는다
+    setStatus('받기 중단: ' + (err.message || err) + ' — ⬇를 다시 누르면 이어받기', 6000);
+    const lb = label();
+    if (lb) lb.textContent = '중단';
+  } finally {
+    downloading.delete(id);
+    if (current === 'lib') renderLib();
+  }
+}
+
+async function downloadAttempt(id, name, url, sizeHint, PART, label) {
+  // 이미 받아 둔 조각: 0번부터 빈틈없이 이어진 것만 인정, 마지막 조각이 4MB 미만이면 버리고 다시 받음
+  const have = await DB.tx(['part'], 'readonly', (t) => t.objectStore('part').getAll(DB.parts(id)));
+  let parts = 0, got = 0;
+  for (const p of have || []) {
+    if (p.i !== parts || p.blob.size !== PART) break;
+    parts++; got += p.blob.size;
+  }
+  if ((have || []).length !== parts) {
+    await DB.tx(['part'], 'readwrite', (t) => t.objectStore('part').delete(IDBKeyRange.bound([id, parts], [id, Infinity])));
+  }
+  if (sizeHint && got === sizeHint) { // 조각은 다 받았는데 목록 기록 전에 멈춘 경우
+    await DB.putMeta({ id, name, size: got, type: 'video/mp4', parts, addedAt: Date.now() });
+    return;
+  }
+
+  const ctl = new AbortController();
+  let idle = setTimeout(() => ctl.abort(), 20000); // 20초 동안 아무것도 안 오면 끊긴 것으로 보고 이어받기
+  const kick = () => { clearTimeout(idle); idle = setTimeout(() => ctl.abort(), 20000); };
+  try {
+    const res = await fetch(url, { signal: ctl.signal, cache: 'no-store',
+                                   headers: got ? { Range: `bytes=${got}-` } : {} });
+    if (res.status === 416 || res.status === 404) {
+      await DB.del(id);
+      throw Object.assign(new Error('서버에 파일이 없거나 바뀜 (HTTP ' + res.status + ')'), { fatal: true });
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const total = +res.headers.get('content-length') || sizeHint || 0;
-    const type = res.headers.get('content-type') || 'video/mp4';
+    if (got && res.status !== 206) { // 서버가 이어받기를 지원하지 않음 → 처음부터
+      await DB.del(id);
+      parts = 0; got = 0;
+    }
+    const range = /\/(\d+)$/.exec(res.headers.get('content-range') || '');
+    const total = range ? +range[1] : (+res.headers.get('content-length') || sizeHint || 0);
+    const type = (res.headers.get('content-type') || 'video/mp4').split(';')[0];
     const reader = res.body.getReader();
-    // 4MB씩 끊어 바로 IndexedDB에 기록 → 영상 전체를 메모리에 올리지 않음 (안경 RAM 2GB)
-    const PART = 4 * 1024 * 1024;
-    await DB.del(id); // 이전에 실패하고 남은 조각 정리
-    let chunks = [], buffered = 0, parts = 0, got = 0, lastPaint = 0;
+    let chunks = [], buffered = 0, lastPaint = 0;
     const flush = async () => {
       if (!buffered) return;
       const b = new Blob(chunks, { type });
@@ -457,11 +522,22 @@ async function download(id, name, url, sizeHint) {
     };
     for (;;) {
       const { done, value } = await reader.read();
+      kick();
       if (done) break;
       chunks.push(value);
       buffered += value.length;
       got += value.length;
-      if (buffered >= PART) await flush();
+      if (buffered >= PART) {
+        // 조각 경계를 정확히 4MB로 맞춤 (이어받기 위치 계산이 단순해짐)
+        const all = new Uint8Array(buffered);
+        let o = 0;
+        for (const c of chunks) { all.set(c, o); o += c.length; }
+        chunks = [all.subarray(0, PART)];
+        const rest = all.subarray(PART);
+        buffered = PART;
+        await flush();
+        if (rest.length) { chunks = [rest]; buffered = rest.length; }
+      }
       const now = performance.now();
       if (now - lastPaint > 250) {
         lastPaint = now;
@@ -471,18 +547,11 @@ async function download(id, name, url, sizeHint) {
         if (l) l.textContent = total ? pct + '%' : fmtSize(got);
       }
     }
-    await flush();
     if (total && got !== total) throw new Error(`중간에 끊김 (${fmtSize(got)} / ${fmtSize(total)})`);
+    await flush();
     await DB.putMeta({ id, name, size: got, type, parts, addedAt: Date.now() }); // 목록엔 다 받은 뒤에만 표시
-    setStatus('저장 완료: ' + name);
-  } catch (err) {
-    DB.del(id).catch(() => {});
-    setStatus('받기 실패: ' + (err.message || err), 5000);
-    const l = label();
-    if (l) l.textContent = '실패';
   } finally {
-    downloading.delete(id);
-    if (current === 'lib') renderLib();
+    clearTimeout(idle);
   }
 }
 

@@ -41,6 +41,8 @@ cloudflared tunnel --url http://localhost:8080      # https://xxxx.trycloudflare
 
 인증서가 있으면 서버가 직접 HTTPS로 띄울 수도 있습니다: `python server.py --port 8443 --cert cert.pem --key key.pem`
 
+**실험용 고정 주소 (권장)**: 안경 저장소(IndexedDB)는 주소별로 따로라, 임시 터널처럼 주소가 바뀌면 받아 둔 영상이 보이지 않고 실험 연동(SAGAT 일시정지)도 끊깁니다. 그래서 이름 있는 터널 `mrbd-video` → `https://video.cocoju.dev`를 씁니다. `start_video_server.bat`이 서버와 터널을 함께 켭니다. 터널 설정은 `%USERPROFILE%\.cloudflared\config.yml`에 있고, 랩실 Wi-Fi가 UDP(QUIC)를 막아 `protocol: http2`로 둡니다. `glasses_qr.png`가 이 주소의 설치 QR입니다.
+
 ### 안경에 설치
 
 1. Meta AI 앱에서 **개발자 모드**를 켭니다.
