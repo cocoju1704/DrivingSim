@@ -7,7 +7,7 @@ Scenario ABC: one block of the glasses / phone / HUD experiment (Notion: 주행 
     python _Experiment2\\abc_experiment.py --set A --block 1 --condition glasses --participant 3
     python _Experiment2\\abc_experiment.py --set P --test      practice drive, data to Data/test/
 
-The ego car drives itself in lane 2 (Town04's real lane 3) at 95 km/h from start to end and reacts to
+The ego car drives itself in lane 2 (Town04's real lane 3) at 95 km/h until the TOR and reacts to
 nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc_schedule.py):
 
     S   a car comes up in lane 1 or 3 behind the car and signals towards lane 2 for 5 s (left or right
@@ -17,6 +17,17 @@ nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc
     F   the car ahead in lane 2 brakes (brake light 3 s, -8 km/h)
     Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet;
         after the answer (or 60 s) 3-2-1 on the monitors and the tablet, then the drive goes on
+    TOR at the end of every block (and of the practice drive), T = the schedule's time:
+        T-15  no other car from here on (the schedule's background traffic is gone)
+        T-9   the approaching car: 80 m behind in the unsafe lane, +20 km/h, no turn signal
+        T-3   a stopped car 270 m ahead in lane 2, hazard lights (~190 m, TTC ~7 s at T)
+        T     the alert: beeps, "지금 직접 운전하세요" blinking above the cluster (and in the HUD
+              area in the HUD condition), the video paused with the same text on the glasses / phone
+        a move of the wheel or a pedal (carla_base's STEER_TAKEOVER, PEDAL_TAKEOVER from where they
+        were at T) takes over: manual driving, the alert off. No takeover: at TTC 1.5 s to the
+        stopped car an automatic emergency stop (no_takeover). The approaching car keeps its speed;
+        if the ego car comes into its lane less than 10 m ahead of it, it brakes (conflict).
+        The block ends at T+30, or 5 s after the car stands still.
 
 The participant answers nothing but the SAGAT questions: the events are measured by the gaze only
 (Tobii Pro Glasses 2 with its event markers; analysed afterwards). For that, every frame logs in
@@ -27,7 +38,8 @@ and each event gets its gaze window (gaze_windows.csv):
     R       the rear-view mirror, from the first frame it is big enough there to 2 s after it falls
             back past 10 m
     F       the car ahead, T .. T+5
-At the end the monitors only say that the drive is over; the experimenter gives the video score
+tor_events.csv has the TOR's measures (one row). At the end the monitors only say that the drive
+is over; the experimenter gives the video score
 (feedback.txt has the line). SAGAT scores are kept in the data, not told.
 
 Keys (experimenter): ESC ends the run, TAB the next camera view, F1 the info panel, N during a
@@ -35,12 +47,15 @@ question skips it (no answer).
 
 Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMDDHHMMSS>/):
     run.json        the options, the set, versions
-    frames.csv      every frame: times, the ego car, its controls
+    frames.csv      every frame: times, mode (auto / manual), TOR phase, the ego car, its lane and
+                    offset from the lane's middle, its controls, the wheel and pedals, TTC to the
+                    stopped car
     vehicles.csv    every frame: every car around it: course id, kind, lane, planned and real dx,
                     relative speed, lights, the mirror insets it is visible in
     events.csv      appearances, turn signals, brake lights, first visible in a mirror, gaze window
                     ends, freezes, video commands
     gaze_windows.csv  each S, SD, R, F: its area of interest and gaze window
+    tor_events.csv  the TOR: alert, first input, takeover, lane change, chosen lane, TTC, gaps
     sagat.json      each question: the real layout at the freeze, the answer, the scores
     summary.json, feedback.txt
     gaze_*.csv      with --gaze (Tobii Pro Nano, gaze_bridge.py)
@@ -72,7 +87,7 @@ import abc_traffic  # noqa: E402
 DATA_DIR = os.path.join(HERE, 'Data')
 CONDITIONS = ('glasses', 'phone', 'hud')
 CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유리 화면'}
-AUTO = 'AUTO'  # the whole block: L3 driving, no takeover (the TOR is not part of the scenario)
+AUTO, TOR, MANUAL, STOPPED = 'AUTO', 'TOR', 'MANUAL', 'STOPPED'  # TOR: the alert, still driving itself
 AUDIO_MUTE_PORT = 5006     # carla-audio-engine fmain.py: "mute" / "unmute" (the car sound during a question)
 RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variable one would be the freeze)
 FRONT_CELLS = ('1_front', '2_front', '3_front')
@@ -82,7 +97,24 @@ WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the 
 GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
 VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 ○○점입니다.'  # said by the experimenter after the video test
-BADGE = {AUTO: ('L3 자율주행 작동 중', (40, 160, 70))}
+BADGE = {AUTO: ('L3 자율주행 작동 중', (40, 160, 70)), TOR: ('L3 해제 요청', (220, 30, 30)),
+         MANUAL: ('수동 운전', (40, 110, 200)), STOPPED: ('비상 정지', (220, 30, 30))}
+WHEEL_HALF_DEG = 450.0   # degrees of the wheel at full axis travel (900 lock to lock): the logged angle
+FIRST_INPUT_STEER = 2.0 / WHEEL_HALF_DEG  # axis travel from the TOR's position: the first input (2 deg) ...
+FIRST_INPUT_PEDAL = 0.02                  # ... a pedal 2 %; the takeover: carla_base's STEER_TAKEOVER, PEDAL_TAKEOVER
+START_HOLD_S = 1.0       # s the start speed is held: a car put down at speed has wheels that stand still,
+                         # which brake it hard on the road (95 -> 17 km/h, ~6 s late for the whole block)
+STOPPED_KMH = 1.0        # below this the car stands still (the block ends end_after_stop_s later)
+# Lane 3 is lane 3's route shifted one lane width to the right (abc_traffic): where the real lane 4 leaves
+# the loop, that line goes straight over the exit's gore, through its crash cushions (water drums), a
+# light pole and a sign. Its cars hit them and were thrown into lane 2 (set C, 47.8 s: into the ego car).
+# Not there in the experiment. (From a scan of the three lanes' lines for objects within 1.3 m.)
+GORE_OBJECTS = ('SM_SecWaterDrums',                       # all water drums (the three gores: lane 3 s 17, 121, 2752)
+                'BP_HighwayLight_multiple_2_SM_', 'BP_HighwayLight_multiple3_8_SM_',
+                'BP_HighwayLight_multiple16_47_SM_', 'BP_SpeedLimit95_3959_SM_')
+TOR_COLUMNS = ('participant', 'block', 'set', 'condition', 't_tor', 'safe_lane', 'unsafe_lane', 't_first_input',
+               't_manual', 'first_input_type', 't_lane_change_start', 't_lane_change_end', 'chosen_lane',
+               'chose_safe', 'min_ttc_obstacle_s', 'min_gap_hazard_m', 'conflict', 'collision', 'no_takeover')
 
 
 # ==============================================================================
@@ -94,13 +126,15 @@ class DataLog(object):
     """The run's files (none with --no-log)."""
 
     COLUMNS = {
-        'frames.csv': ('t_sim', 'wall_time', 'frame', 'mode', 'ego_x', 'ego_y', 'ego_z', 'ego_yaw', 'speed_kmh',
-                       'steer', 'throttle', 'brake', 'fps'),
+        'frames.csv': ('t_sim', 'wall_time', 'frame', 'mode', 'driving', 'tor_phase', 'ego_x', 'ego_y', 'ego_z',
+                       'ego_yaw', 'speed_kmh', 'ego_lane', 'lane_offset_m', 'steer', 'throttle', 'brake',
+                       'wheel_axis', 'wheel_deg', 'pedal_throttle', 'pedal_brake', 'ttc_obstacle_s', 'fps'),
         'vehicles.csv': ('t_sim', 'id', 'kind', 'event', 'lane', 'dx_plan', 'dx', 'dv_kmh', 'lights', 'in_mirror',
                          'mirror_px'),
         'events.csv': ('t_sim', 'wall_time', 'id', 'what'),
         'gaze_windows.csv': ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'first_recognizable', 'window_start',
                              'window_end'),
+        'tor_events.csv': TOR_COLUMNS,
     }
 
     def __init__(self, directory):
@@ -275,8 +309,9 @@ def sagat_score(truth, answer):
 
 
 class Overlay(object):
-    """The instrument cluster of carla_base (the gauges tablet), the L3 badge above it, and the
-    black screens of a question and of the end.
+    """The instrument cluster of carla_base (the gauges tablet), the L3 badge above it, the TOR
+    alert (blinking above the cluster; in the HUD condition in the HUD area too), and the black
+    screens of a question and of the end.
 
     Layout at the bottom of the middle monitor: the cluster on the left and the HUD's video area
     right next to it (where the glasses' display appears: lower right of the view), the two
@@ -302,8 +337,9 @@ class Overlay(object):
         fov = self._world.camera_manager.screen_fov if hasattr(self._world.camera_manager, 'screen_fov') else 43.0
         return int(size[0] * math.tan(math.radians(self.HUD_DEG / 2.0)) / math.tan(math.radians(fov / 2.0)))
 
-    def __init__(self, world, hud_preview=False):
+    def __init__(self, world, hud_preview=False, condition=None):
         self._world = world
+        self._condition = condition
         self.hud_rect = None
         self._hud_preview = hud_preview
         self._phone_cluster = None
@@ -328,9 +364,12 @@ class Overlay(object):
         width, height = manager.screen_size
         return manager.screens // 2 * width, width, height
 
-    def render(self, display, mode, speed_kmh, pedal):
+    def render(self, display, mode, speed_kmh, pedal, alert_since=None):
+        """alert_since: time.monotonic() of the TOR alert while it is on (it blinks), else None."""
         self._speed_kmh, self._pedal = speed_kmh, pedal
         self._draw_cluster(display)
+        if alert_since is not None and self._world.camera_manager.transform_index == 0 and self._cluster is not None:
+            self._draw_alert(display, alert_since)
         if self._world.camera_manager.transform_index == 0 and self._cluster is not None:
             x0, width, height = self.middle()
             label, color = BADGE[mode]
@@ -344,6 +383,22 @@ class Overlay(object):
                 pygame.draw.rect(display, (90, 200, 255), rect, 3)
                 label = self.badge.render('HUD 영상 영역 (%.0f°)' % self.HUD_DEG, True, (90, 200, 255))
                 display.blit(label, label.get_rect(center=rect.center))
+
+    def _draw_alert(self, display, since):
+        if int((time.monotonic() - since) * 2 * base.TOR_BLINK_HZ) % 2:
+            return  # the off half of the blink
+        x0, width, height = self.middle()
+        text = self.big.render(base.TOR_MESSAGE, True, (255, 255, 255))
+        middle = x0 + self._cluster['origin'][0] + self._cluster['face'].get_width() // 2
+        box = text.get_rect(midbottom=(middle, self._cluster['origin'][1] - 60)).inflate(60, 28)
+        pygame.draw.rect(display, (220, 30, 30), box, border_radius=10)
+        display.blit(text, text.get_rect(center=box.center))
+        if self._condition == 'hud' and self.hud_rect is not None:  # the NDRT screen: the same text
+            rect = self.hud_rect.move(x0, 0)
+            pygame.draw.rect(display, (220, 30, 30), rect, border_radius=10)
+            for k, line in enumerate(('지금 직접', '운전하세요')):
+                line_text = self.big.render(line, True, (255, 255, 255))
+                display.blit(line_text, line_text.get_rect(center=(rect.centerx, rect.centery + (k - 0.5) * 56)))
 
     def black(self, display, lines=(), count=None):
         display.fill((0, 0, 0))
@@ -380,7 +435,8 @@ class Block(object):
                            for e in self.schedule['events'] if e['type'] == 'R'}
         self._marks_done = set()
         self.g2 = None
-        self.media = []         # NDRT video players: pause() / resume() at the questions (later)
+        self.media = []         # NDRT video players: pause() / resume() at the questions, alert() at the TOR
+        self.tor = None         # TorRun (the schedule's TOR, once the scene is set up)
 
     # -- marks ---------------------------------------------------------------------------------
 
@@ -482,9 +538,12 @@ class Block(object):
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
             'participant': self.args.participant, 'test': self.args.test, 'aborted': aborted, 't_end': round(t_end, 2),
             'gaze_windows': windows, 'never_visible_in_their_mirror': missing,
+            'tor': self.tor.row(self) if self.tor is not None and self.tor.t_alert is not None else None,
             'sagat': {'score_percent': sagat, 'questions': [{'id': q['id'], **q['score']} for q in self.questions]},
             'feedback': VIDEO_FEEDBACK}
         self.log.json('summary.json', summary)
+        if summary['tor']:
+            self.log.row('tor_events.csv', [('' if summary['tor'][k] is None else summary['tor'][k]) for k in TOR_COLUMNS])
         self.log.json('sagat.json', self.questions)
         self.log.text('feedback.txt', VIDEO_FEEDBACK + '\n(영상 시험 뒤 실험자가 읽음. 주변 차량 질문 점수는 알리지 않음)\n')
         print()
@@ -492,6 +551,14 @@ class Block(object):
         print('Block over (%s). SAGAT %s (not told to the participant). Gaze windows: %d events%s' % (
             'aborted' if aborted else 'complete', '-' if sagat is None else '%d %%' % sagat, len(windows),
             '; never in their mirror: ' + ', '.join(missing) if missing else ''))
+        if summary['tor']:
+            tor = summary['tor']
+            print('TOR at %.1f s: %s, first input %s, lane change to %s (%s), min TTC %s s, conflict %s, collision %s' % (
+                tor['t_tor'], 'no takeover (emergency stop)' if tor['no_takeover'] else
+                'takeover %.2f s after it' % (tor['t_manual'] - tor['t_tor']) if tor['t_manual'] is not None else
+                'no takeover', tor['first_input_type'] or '-', tor['chosen_lane'] or '-',
+                'safe' if tor['chose_safe'] else '-' if tor['chose_safe'] is None else 'not the safe lane', tor['min_ttc_obstacle_s'], tor['conflict'],
+                tor['collision'] or 'none'))
         print('After the video test: "%s"' % VIDEO_FEEDBACK)
         if self.log.dir:
             print('  data: %s' % self.log.dir)
@@ -508,7 +575,8 @@ def build_args():
     parser.add_argument('--out', help='data folder (default: see above)')
     parser.add_argument('--no-log', action='store_true')
     parser.add_argument('--start-at', type=float, default=0.0,
-                        help='checking: start the block this many s in (events before it are skipped)')
+                        help='checking: start the block this many s in (events before it are skipped), the car '
+                             'where it would be then (abc_ego.py profile)')
     parser.add_argument('--duration', type=float, default=None, help='checking: quit after this many s of the block')
     parser.add_argument('--feedback-seconds', type=float, default=600.0,
                         help='the end screen stays this long at most (a key closes it)')
@@ -535,6 +603,9 @@ def build_args():
     parser.add_argument('--brake-axis', type=int, default=1)
     parser.add_argument('--pedal-rest', type=int, default=1, choices=[1, -1])
     parser.add_argument('--sagat-port', type=int, default=5011)
+    parser.add_argument('--sim-driver', choices=('safe', 'unsafe', 'brake'),
+                        help='checking the TOR: a scripted driver takes over 1 s after the alert and changes '
+                             'to the safe or the unsafe lane, or brakes')
     parser.add_argument('--hud-preview', action='store_true',
                         help="the outline of the HUD's video area right of the cluster (for setting up)")
     parser.add_argument('--gaze', action='store_true', help='Tobii Pro Nano: gaze_bridge.py sends the gaze (UDP)')
@@ -591,7 +662,7 @@ def run(args):
                                 'real_lane': block.config['real_lane']})
     pygame.init()
     pygame.font.init()
-    world = client = sim_world = ticker = traffic = sagat = gaze = audio = driver_input = None
+    world = client = sim_world = ticker = traffic = sagat = gaze = audio = driver_input = sound = None
     async_settings = None
     server_weather = None
     collision_sensor = None
@@ -617,6 +688,9 @@ def run(args):
         sim_world.set_weather(getattr(carla.WeatherParameters, WEATHER))  # clear: no fog over the far cars
         trees = {tree.id for tree in sim_world.get_environment_objects(carla.CityObjectLabel.Vegetation)}
         sim_world.enable_environment_objects(trees, args.trees)
+        gore = {o.id for o in sim_world.get_environment_objects(carla.CityObjectLabel.Any)
+                if o.name.startswith(GORE_OBJECTS)}
+        sim_world.enable_environment_objects(gore, False)
         traffic_manager = client.get_trafficmanager(base._free_port())  # pylint: disable=protected-access
         async_settings = sim_world.get_settings()
         async_settings.synchronous_mode = False
@@ -628,6 +702,7 @@ def run(args):
         traffic_manager.set_synchronous_mode(True)
         ticker = base.SimTicker(sim_world)
         audio = base.AudioEngine(not args.no_audio_engine)
+        sound = base.AlertSound(not args.no_sound)  # the TOR's beeps (carla_base, as in the takeover experiment)
         base.remove_stale_actors(client, sim_world)
 
         flags = pygame.HWSURFACE | pygame.DOUBLEBUF
@@ -650,29 +725,40 @@ def run(args):
         route = routes[3]
         traffic = abc_traffic.ScriptedTraffic(client, sim_world, carla_map, routes, schedule, block.config)
         # the set's start point along the loop: its events on the straights (abc_schedule, abc_ego)
-        start_index = traffic.ego_route.index_at(schedule.get('ego_start_m', 0.0))
+        start_m = schedule.get('ego_start_m', 0.0)
+        speed = block.config['ego']['speed_kmh']
+        if args.start_at > 0:  # checking: where the car would be by then, at its speed there
+            import abc_ego
+            if os.path.isfile(abc_ego.PROFILE_FILE):
+                start_m, v = abc_ego.position(abc_ego.load_profile(), start_m, args.start_at)
+                speed = v * 3.6
+        start_index = traffic.ego_route.index_at(start_m)
         traffic.start(start_index)
-        logging.info('Start %.0f m along the loop (route point %d)', schedule.get('ego_start_m', 0.0), start_index)
+        logging.info('Start %.0f m along the loop (route point %d), %.0f km/h', start_m, start_index, speed)
         start = route[start_index].transform
         start.location.z += 0.5
         world.player.set_transform(start)
         sim_world.tick()
-        speed = block.config['ego']['speed_kmh']
         forward = start.get_forward_vector()
         world.player.set_target_velocity(carla.Vector3D(forward.x * speed / 3.6, forward.y * speed / 3.6, 0.0))
         sim_world.tick()
         planner = base.GlobalRoutePlanner(carla_map, base.ROUTE_RESOLUTION)
-        follower = base.LoopFollower(world.player, route, speed, carla_map, planner)
+        follower = base.LoopFollower(world.player, route, block.config['ego']['speed_kmh'], carla_map, planner)
         follower._agent.ignore_vehicles(True)  # pylint: disable=protected-access  (it reacts to nothing)
         sim_clock = [sim_world.get_snapshot().timestamp.elapsed_seconds]
         follower.clock = lambda: sim_clock[0]  # its speed changes with the simulation's time: the same every run
-        overlay = Overlay(world, hud_preview=args.hud_preview)
+        overlay = Overlay(world, hud_preview=args.hud_preview, condition=args.condition)
+        tor_event = next((e for e in schedule['events'] if e['type'] == 'TOR'), None)
+        if tor_event is not None:
+            scene = abc_traffic.TorScene(traffic, tor_event, block.config['templates']['TOR'],
+                                         block.config['event_vehicle'])
+            block.tor = TorRun(block, tor_event, block.config['templates']['TOR'], scene, world.player)
         mirror_view = MirrorVisibility(world, args.height)
         if args.gaze:
             from gaze_tracking import GazeTracker
             gaze = GazeTracker(sim_world, world, args.gaze_port, args.gaze_tolerance)
             gaze.log_to(block.log.dir)
-        collision_sensor, collisions = base.log_collisions(sim_world, world.player)
+        collision_sensor, collisions = collision_log(sim_world, world.player)
         logged_collisions = 0
         control = carla.VehicleControl()
         if not sagat.connected(0.1):
@@ -684,6 +770,7 @@ def run(args):
         q_number = sum(1 for e in schedule['events'] if e['type'] == 'Q' and e['t'] < args.start_at)
         block._marks_done.update(k for e in schedule['events'] if e['t'] < args.start_at for k in (e['id'], e['id'] + '/end'))
         fixed_frames = 0
+        holding = True  # the start speed (START_HOLD_S)
         clock = pygame.time.Clock()
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
         for player in block.media:
@@ -708,8 +795,9 @@ def run(args):
                     base.next_view(world)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_F1:
                     world.hud.toggle_info()
-            if t >= schedule['block_end_s'] or (args.duration and t - args.start_at >= args.duration):
-                aborted = t < schedule['block_end_s']
+            ended = block.tor is not None and block.tor.over(t)  # 5 s after the car stands still
+            if t >= schedule['block_end_s'] or ended or (args.duration and t - args.start_at >= args.duration):
+                aborted = t < schedule['block_end_s'] and not ended
                 break
 
             # a question: everything stops until it is answered
@@ -738,14 +826,51 @@ def run(args):
             transform = world.player.get_transform()
             velocity = world.player.get_velocity()
             speed_kmh = velocity.length() * 3.6
-            control = follower.run_step()  # it drives itself from start to end
-            pedal = control.throttle
+            forward = transform.get_forward_vector()
+            ego_speed = velocity.x * forward.x + velocity.y * forward.y
+            ego_s = traffic.ego_s(transform)
+            lateral = lateral_offset(traffic.ego_route, ego_s, transform.location)
+            wheel = driver_input.peek(keys)  # (steer axis, throttle, brake) the driver gives
+            sim = args.sim_driver and block.tor is not None and block.tor.t_alert is not None                 and t >= block.tor.t_alert + 1.0
+            if sim:  # checking: its input
+                wheel = (0.0, 0.0, 0.5) if args.sim_driver == 'brake' else (0.02, 0.0, 0.0)
+            if block.tor is not None:
+                block.tor.tick(t, block, transform, ego_s, ego_speed, lateral, wheel, dt, sound, collisions)
+            if block.mode in (AUTO, TOR):
+                control = follower.run_step()  # it drives itself until the takeover
+                pedal = control.throttle
+            elif block.mode == STOPPED:
+                # full brake, and the speed brought down so that the car stops 3 m before the stopped
+                # car: from TTC 1.5 s at highway speed the brakes alone would not make it
+                control = carla.VehicleControl(throttle=0.0, brake=1.0)
+                pedal = 0.0
+                gap = block.tor.obstacle_gap(ego_s)
+                if ego_speed > 0.3 and gap is not None:
+                    decel = max(ego_speed * ego_speed / (2.0 * max(gap - 3.0, 0.5)), 6.0)
+                    slower = max(ego_speed - decel * max(dt, 1.0 / args.fps), 0.0)
+                    world.player.set_target_velocity(carla.Vector3D(velocity.x * slower / ego_speed,
+                                                                    velocity.y * slower / ego_speed, velocity.z))
+            elif sim:  # MANUAL, checking: the scripted driver
+                control = sim_driver(args.sim_driver, block.tor, traffic.ego_route, ego_s, transform, lateral,
+                                     ego_speed, follower._wanted_speed())  # pylint: disable=protected-access
+                pedal = control.throttle
+            else:  # MANUAL: the driver
+                driver_input.update(control, keys, clock.get_time(), speed_kmh, forward.z)
+                pedal = wheel[1]
+            if holding:
+                if t - args.start_at < START_HOLD_S:  # the wheels turn up to the start speed
+                    world.player.set_target_velocity(carla.Vector3D(forward.x * speed / 3.6, forward.y * speed / 3.6,
+                                                                    velocity.z))
+                else:
+                    holding = False
+                    follower.engage()  # from the speed it has now
             world.player.apply_control(control)
             driver_input.force_feedback(speed_kmh)
             lights = base.BRAKE_LIGHT if control.brake > 0.0 else 0
             world.player.set_light_state(carla.VehicleLightState(lights))
             while logged_collisions < len(collisions):
-                block.mark(t, 'collision: %s' % collisions[logged_collisions])
+                block.mark(t, 'collision: %s' % (block.tor.what_is(collisions[logged_collisions][1])
+                                                 if block.tor is not None else collisions[logged_collisions][0]))
                 logged_collisions += 1
 
             now = time.monotonic()
@@ -754,10 +879,17 @@ def run(args):
                 gaze.tick(now, world.camera_manager.transform_index in base.DRIVER_VIEWS)
                 gaze_fields = gaze.log_fields()
             location = transform.location
+            ttc = block.tor.ttc if block.tor is not None else None
             block.log.row('frames.csv', (round(t, 3), round(time.time(), 3), snapshot.frame, block.mode,
+                                         'manual' if block.mode == MANUAL else 'auto',
+                                         block.tor.phase if block.tor is not None else '',
                                          round(location.x, 2), round(location.y, 2), round(location.z, 2),
-                                         round(transform.rotation.yaw, 2), round(speed_kmh, 2), round(control.steer, 3),
-                                         round(control.throttle, 3), round(control.brake, 3),
+                                         round(transform.rotation.yaw, 2), round(speed_kmh, 2),
+                                         2 + int(round(lateral / base.LANE_WIDTH)),
+                                         round(lateral - base.LANE_WIDTH * round(lateral / base.LANE_WIDTH), 3),
+                                         round(control.steer, 3), round(control.throttle, 3), round(control.brake, 3),
+                                         round(wheel[0], 4), round(wheel[0] * WHEEL_HALF_DEG, 2), round(wheel[1], 3),
+                                         round(wheel[2], 3), '' if ttc is None else round(ttc, 2),
                                          round(clock.get_fps(), 1)), gaze_fields)
             for cid, (lane, dx, dv) in state.items():
                 car = traffic.cars.get(cid)
@@ -769,11 +901,19 @@ def run(args):
                                                round(dv, 2), abc_traffic._light_names(car['lights']) if car else '',
                                                '+'.join(sorted(mirrors.get(cid, {}))),
                                                ';'.join('%s:%s' % kv for kv in sorted(mirrors.get(cid, {}).items()))))
+            if block.tor is not None:
+                for cid, lane, dx, dv, lights, actor in block.tor.cars(transform, ego_s, ego_speed):
+                    seen = mirror_view.of(actor)
+                    block.tor.seen(t, block, cid, seen)
+                    block.log.row('vehicles.csv', (round(t, 3), cid, 'tor', 'TOR', lane, '', round(dx, 2),
+                                                   round(dv, 2), lights, '+'.join(sorted(seen)),
+                                                   ';'.join('%s:%s' % kv for kv in sorted(seen.items()))))
 
             ticker.start()
             world.tick(clock)
             world.render(display)
-            overlay.render(display, block.mode, speed_kmh, pedal)
+            overlay.render(display, block.mode, speed_kmh, pedal,
+                           block.tor.alert_wall if block.tor is not None and block.mode in (TOR, STOPPED) else None)
             pygame.display.flip()
         # the end of the block
         block.mark(t, 'block end')
@@ -810,6 +950,10 @@ def run(args):
             driver_input.close()
         if audio is not None:
             audio.stop()
+        if sound is not None:
+            sound.stop()
+        if block.tor is not None:
+            block.tor.scene.destroy()
         if collision_sensor is not None:
             collision_sensor.stop()
             collision_sensor.destroy()
@@ -822,11 +966,279 @@ def run(args):
             world.destroy()
             # last, with the server already free: the feedback on the monitors until a key
             try:
-                show_end(display, Overlay(world), args.feedback_seconds)
+                show_end(display, Overlay(world, condition=args.condition), args.feedback_seconds)
             except Exception:  # pylint: disable=broad-except
                 logging.exception('Feedback screen')
         pygame.quit()
     return aborted
+
+
+def sim_driver(kind, tor, route, s, transform, lateral, speed, wanted_kmh):
+    """--sim-driver: after the takeover, to the middle of the safe or unsafe lane, at the speed the
+    car drove itself at (slower in the curves), or a full stop in lane 2. Pure pursuit of a point
+    on the lane's line ahead."""
+    if kind == 'brake':
+        return carla.VehicleControl(throttle=0.0, brake=0.6)
+    target = (tor.safe if kind == 'safe' else tor.unsafe) - 2  # -1 left, +1 right
+    error = target * base.LANE_WIDTH - lateral
+    ahead = max(12.0, 1.0 * speed)
+    # the lane line ahead, moved over to the target lane over at most 2 lane widths' worth of path
+    shift = lateral + max(-0.12 * ahead, min(0.12 * ahead, error))
+    point, _, _, (rx, ry) = route.pose(s + ahead)
+    gx, gy = point.x + rx * shift, point.y + ry * shift
+    location = transform.location
+    yaw = math.radians(transform.rotation.yaw)
+    dx, dy = gx - location.x, gy - location.y
+    alpha = math.atan2(dy, dx) - yaw
+    alpha = (alpha + math.pi) % (2.0 * math.pi) - math.pi
+    distance = max(math.hypot(dx, dy), 1.0)
+    angle = math.atan(2.0 * 2.9 * math.sin(alpha) / distance)  # wheel base ~2.9 m
+    steer = max(-1.0, min(1.0, angle / math.radians(70.0)))
+    goal = wanted_kmh / 3.6
+    if speed > goal + 0.5:
+        return carla.VehicleControl(throttle=0.0, brake=min(0.6, 0.15 * (speed - goal)), steer=steer)
+    throttle = max(0.0, min(0.8, 0.4 + 0.15 * (goal - speed)))
+    return carla.VehicleControl(throttle=throttle, steer=steer)
+
+
+def lateral_offset(route, s, location):
+    """m the location is right of the route's line at s (< 0: left); the ego car's lane is lane 2."""
+    here, _, _, (rx, ry) = route.pose(s)
+    return (location.x - here.x) * rx + (location.y - here.y) * ry
+
+
+def collision_log(sim_world, vehicle):
+    """carla_base.log_collisions with the other actor's id: [(type_id, id)]."""
+    hits = []
+    last = {}
+
+    def on_collision(event):
+        other = event.other_actor
+        now = time.monotonic()
+        if now - last.get(other.id, -1e9) < base.COLLISION_LOG_GAP:
+            return
+        last[other.id] = now
+        hits.append((other.type_id, other.id))
+        logging.warning('Collision with %s', other.type_id)
+    sensor = sim_world.spawn_actor(sim_world.get_blueprint_library().find('sensor.other.collision'),
+                                   carla.Transform(), attach_to=vehicle)
+    sensor.listen(on_collision)
+    return sensor, hits
+
+
+class TorRun(object):
+    """The block's TOR as it happens: the scene's timeline (abc_traffic.TorScene), the alert, the
+    takeover, the automatic emergency stop, and the measures of tor_events.csv."""
+
+    def __init__(self, block, event, template, scene, ego):
+        self.event = event
+        self.tt = template
+        self.scene = scene
+        self.t = event['t']
+        self.safe, self.unsafe = event['safe_lane'], event['unsafe_lane']
+        self.phase = ''
+        self._hazard_due = self.t + template['hazard_vehicle']['spawn_rel_s']
+        self._obstacle_due = self.t + template['obstacle']['spawn_rel_s']
+        self._clear_at = self.t + template['clear_rel_s']
+        self._ego_length, self._ego_width = 2.0 * ego.bounding_box.extent.x, 2.0 * ego.bounding_box.extent.y
+        self._ego_id = ego.id
+        self.t_alert = None
+        self.alert_wall = None     # time.monotonic() of the alert: the blink
+        self.baseline = None       # (steer, throttle, brake) at the alert
+        self.t_first_input = self.first_input_type = self.t_manual = None
+        self.lc_start = self.lc_end = self.chosen = None
+        self.min_ttc = self.min_gap_hazard = None
+        self.ttc = None
+        self.conflict = False
+        self.no_takeover = False
+        self.collision = None
+        self.t_stop = None
+        self._seen_logged = False
+        self._hits_before = 0      # collisions before the alert (not the TOR's)
+        self._new = False          # the approaching car appeared this frame
+
+    # -- the cars ----------------------------------------------------------------------------
+
+    def obstacle_gap(self, ego_s):
+        """m bumper to bumper to the stopped car ahead (None: not there, or passed)."""
+        dx = self.scene.obstacle_dx(ego_s)
+        if dx is None:
+            return None
+        gap = dx - (self._ego_length + self.scene.obstacle_length) / 2.0
+        return gap if gap > -2.0 else None
+
+    def _accel(self, transform):
+        """m/s^2 the ego car speeds up at, along its heading."""
+        a = self.scene._traffic._world.get_actor(self._ego_id).get_acceleration()  # pylint: disable=protected-access
+        f = transform.get_forward_vector()
+        return a.x * f.x + a.y * f.y
+
+    def what_is(self, actor_id):
+        if self.scene.obstacle_actor is not None and actor_id == self.scene.obstacle_actor.id:
+            return 'obstacle'
+        if self.scene.hazard_actor is not None and actor_id == self.scene.hazard_actor.id:
+            return 'hazard'
+        return 'other'
+
+    def cars(self, transform, ego_s, ego_speed):
+        """[(id, lane, dx, dv km/h, lights, actor)] of its cars (vehicles.csv)."""
+        out = []
+        prefix = self.event['id']
+        if self.scene.hazard_actor is not None and not self._new:
+            out.append((prefix + '-hazard', self.unsafe, self.scene.hazard_dx(transform),
+                        (self.scene.hazard_speed - ego_speed) * 3.6, 'brake' if self.scene.yielding else 'off',
+                        self.scene.hazard_actor))
+        if self.scene.obstacle_actor is not None:
+            out.append((prefix + '-obstacle', 2, self.scene.obstacle_dx(ego_s), -ego_speed * 3.6, 'hazard',
+                        self.scene.obstacle_actor))
+        return out
+
+    def seen(self, t, block, cid, mirrors):
+        """At the alert: how big the approaching car is in its side mirror (logged once)."""
+        if self._seen_logged or self.t_alert is None or not cid.endswith('-hazard'):
+            return
+        self._seen_logged = True
+        side = 'right' if self.unsafe == 3 else 'left'
+        px = mirrors.get(side)
+        block.log.event(t, 'approaching car in the %s mirror at the alert: %s' % (
+            side, 'not visible' if px is None else '%.0f px%s' % (
+                px, '' if px >= MirrorVisibility.RECOGNIZE_PX else ' (smaller than RECOGNIZE_PX)')), self.event['id'])
+
+    # -- per frame ---------------------------------------------------------------------------
+
+    def over(self, t):
+        return self.t_stop is not None and t >= self.t_stop + self.tt['end_after_stop_s']
+
+    def tick(self, t, block, transform, ego_s, ego_speed, lateral, wheel, dt, sound, collisions):
+        eid = self.event['id']
+        scene = self.scene
+        self._new = False
+        # the timeline
+        if t >= self._clear_at and not self.phase:
+            self.phase = 'clear'
+            block.mark(t, 'tor clear (no other cars from here)', eid)
+        if t >= self._hazard_due and scene.hazard_actor is None and self.phase == 'clear':
+            if scene.hazard(t, transform, ego_speed):
+                self.phase = 'hazard_spawn'
+                self._new = True
+                block.mark(t, 'tor hazard_spawn (lane %d, %.0f m behind)' % (
+                    self.unsafe, -self.tt['hazard_vehicle']['spawn_dx_m']), eid)
+        if t >= self._obstacle_due and scene.obstacle_actor is None and self.phase == 'hazard_spawn':
+            accel = self._accel(transform)
+            if scene.obstacle(ego_s, ego_speed, block.config['ego']['speed_kmh'] / 3.6, accel,
+                              -self.tt['obstacle']['spawn_rel_s']):
+                self.phase = 'obstacle_spawn'
+                block.mark(t, 'tor obstacle_spawn (lane 2, %.0f m ahead at %.0f km/h)' % (
+                    scene.obstacle_spawn_dx, ego_speed * 3.6), eid)
+        if scene.hazard_actor is not None and not self._new:
+            scene.tick(t, transform, ego_speed, dt)  # (the client sees where it is from the frame after it appeared)
+        if t >= self.t and self.t_alert is None and scene.obstacle_actor is not None:
+            self.t_alert = t
+            self.alert_wall = time.monotonic()
+            self.phase = 'alert'
+            self.baseline = wheel
+            self._hits_before = len(collisions)
+            block.mode = TOR
+            scene.release()  # the approaching car keeps its speed from here
+            if self.tt['alert'].get('sound', True):
+                sound.tor()
+            for player in block.media:
+                player.alert(eid, base.TOR_MESSAGE)
+            hazard = scene.hazard_dx(transform)
+            obstacle = self.obstacle_gap(ego_s)
+            block.mark(t, 'tor alert (stopped car %s m ahead, TTC %s s; approaching car %s m)' % (
+                '-' if obstacle is None else '%.0f' % obstacle,
+                '-' if obstacle is None or ego_speed < 0.5 else '%.1f' % (obstacle / ego_speed),
+                '-' if hazard is None else '%.0f' % hazard), eid, safe_lane=self.safe, unsafe_lane=self.unsafe)
+        # the stopped car: TTC while the ego car is in its lane
+        gap = self.obstacle_gap(ego_s)
+        in_lane2 = abs(lateral) < (self._ego_width + scene.obstacle_width) / 2.0
+        self.ttc = gap / ego_speed if gap is not None and gap > 0.0 and ego_speed > 0.3 and in_lane2 else None
+        if self.t_alert is None:
+            return
+        if self.ttc is not None:
+            self.min_ttc = self.ttc if self.min_ttc is None else min(self.min_ttc, self.ttc)
+        # the driver
+        if block.mode in (TOR, STOPPED):
+            steer, throttle, brake = wheel
+            d_steer = abs(steer - self.baseline[0])
+            d_throttle, d_brake = throttle - self.baseline[1], brake - self.baseline[2]
+            if self.t_first_input is None:
+                shares = {'steering': d_steer / FIRST_INPUT_STEER, 'throttle': d_throttle / FIRST_INPUT_PEDAL,
+                          'brake': d_brake / FIRST_INPUT_PEDAL}
+                kind = max(shares, key=shares.get)
+                if shares[kind] >= 1.0:
+                    self.t_first_input, self.first_input_type = t, kind
+                    block.mark(t, 'first input (%s) %.2f s after the alert' % (kind, t - self.t_alert), eid)
+            if d_steer > base.STEER_TAKEOVER or d_throttle > base.PEDAL_TAKEOVER or d_brake > base.PEDAL_TAKEOVER:
+                was = block.mode
+                block.mode = MANUAL
+                self.phase = 'manual'
+                if self.t_manual is None:
+                    self.t_manual = t
+                if self.t_first_input is None:  # past both thresholds in one frame
+                    self.t_first_input = t
+                    self.first_input_type = ('steering' if d_steer > base.STEER_TAKEOVER else
+                                             'brake' if d_brake > base.PEDAL_TAKEOVER else 'throttle')
+                sound.stop(confirm=True)
+                for player in block.media:
+                    player.alert_off(eid)
+                block.mark(t, 'takeover %.2f s after the alert%s' % (
+                    t - self.t_alert, ' (during the emergency stop)' if was == STOPPED else ''), eid)
+            elif block.mode == TOR and self.ttc is not None and self.ttc <= self.tt['auto_stop_ttc_s']:
+                block.mode = STOPPED
+                self.phase = 'auto_stop'
+                self.no_takeover = True
+                sound.stop()
+                block.mark(t, 'no takeover: automatic emergency stop at TTC %.2f s' % self.ttc, eid)
+        # the lane change (from the middle of lane 2: its sides touch the line, then all of it across)
+        half = base.LANE_WIDTH / 2.0
+        if self.lc_end is None:
+            if abs(lateral) + self._ego_width / 2.0 >= half:
+                if self.lc_start is None:
+                    self.lc_start = t
+                    block.mark(t, 'lane change start (towards lane %d)' % (3 if lateral > 0 else 1), eid)
+                if abs(lateral) - self._ego_width / 2.0 >= half:
+                    self.lc_end = t
+                    self.chosen = 3 if lateral > 0 else 1
+                    block.mark(t, 'lane change end: lane %d (%s)' % (
+                        self.chosen, 'the safe lane' if self.chosen == self.safe else 'the approaching car\'s lane'), eid)
+            elif self.lc_start is not None:
+                self.lc_start = None  # back in lane 2
+                block.mark(t, 'lane change given up', eid)
+        # the approaching car: the gap while the ego car is (partly) in its lane, and its yielding
+        hazard = scene.hazard_dx(transform)
+        middle = (self.unsafe - 2) * base.LANE_WIDTH
+        if hazard is not None and abs(lateral - middle) < half + self._ego_width / 2.0:
+            gap = abs(hazard) - (self._ego_length + scene.hazard_length) / 2.0
+            self.min_gap_hazard = gap if self.min_gap_hazard is None else min(self.min_gap_hazard, gap)
+            if not self.conflict and hazard < 0 and gap < self.tt['hazard_vehicle']['yield_if_cut_in_gap_m']:
+                self.conflict = True
+                scene.yield_to()
+                block.mark(t, 'conflict: in the approaching car\'s lane %.1f m ahead of it, it brakes' % gap, eid)
+        # the first collision from the alert on: its cars, or anything else (e.g. static.guardrail)
+        if self.collision is None and len(collisions) > self._hits_before:
+            type_id, actor_id = collisions[self._hits_before]
+            what = self.what_is(actor_id)
+            self.collision = what if what != 'other' else type_id
+        # standing still: the block ends end_after_stop_s later
+        if self.t_stop is None and ego_speed * 3.6 < STOPPED_KMH:
+            self.t_stop = t
+            self.phase = 'end'
+            block.mark(t, 'the car stands still: the block ends in %.0f s' % self.tt['end_after_stop_s'], eid)
+
+    def row(self, block):
+        def r(x, n=2):
+            return None if x is None else round(x, n)
+        args = block.args
+        return {'participant': args.participant, 'block': args.block, 'set': args.set, 'condition': args.condition,
+                't_tor': r(self.t_alert, 3), 'safe_lane': self.safe, 'unsafe_lane': self.unsafe,
+                't_first_input': r(self.t_first_input, 3), 't_manual': r(self.t_manual, 3),
+                'first_input_type': self.first_input_type, 't_lane_change_start': r(self.lc_start, 3),
+                't_lane_change_end': r(self.lc_end, 3), 'chosen_lane': self.chosen,
+                'chose_safe': None if self.chosen is None else self.chosen == self.safe, 'min_ttc_obstacle_s': r(self.min_ttc),
+                'min_gap_hazard_m': r(self.min_gap_hazard), 'conflict': self.conflict, 'collision': self.collision,
+                'no_takeover': self.no_takeover}
 
 
 def car_sound(on):

@@ -8,6 +8,8 @@ PC: python mrbd-video/server.py).
     block start   seek (--video-start, if > 0), play
     SAGAT         freeze: paused and covered (the glasses show nothing), its buttons do nothing
     after 3-2-1   resume: uncovered, playing again if it was playing before
+    TOR           alert: paused, covered, "지금 직접 운전하세요" in red on it
+    takeover      alert_off: the text goes, still covered and paused (manual driving to the end)
     block end     pause
 
 The commands go to the server (POST /api/control), which passes them to the glasses app over its
@@ -97,6 +99,12 @@ class VideoLink(object):
 
     def resume(self, qid=''):
         self._send('resume', id=qid)
+
+    def alert(self, eid='', text=''):
+        self._send('alert', id=eid, text=text)
+
+    def alert_off(self, eid=''):
+        self._send('alert_off', id=eid)
 
     def stop(self):
         self._send('pause')

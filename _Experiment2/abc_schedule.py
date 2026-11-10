@@ -21,10 +21,19 @@ How the background traffic is made (make_schedule):
      that creeps up to -48 .. -42 m and holds
   3. for each F, a lead car holding +36 .. +45 m in lane 2 that brakes at F (brake light 3 s)
   4. random cars in lanes 1 and 3 (and now and then lane 2) until 4-6 cars are within 50 m
+  5. the TOR at the end (its cars are not courses: abc_traffic.TorScene drives them): no background
+     car from TOR-15 s on, every event car gone by then (one in lane 2 behind: by the TOR); the
+     block ends 30 s after the TOR
 Every car is checked against the rules of the Notion page (section 1), and a car that breaks one is
 drawn again: same lane gaps of 15 m or more, the event lane clear during an event, nothing near the
 grid boundaries at a question, the exact target layout (cells, approaching cars, safe lane) at each
-question; no event after last_event_s (9:40). The seed of each set is in abc_config.json.
+question; no event after last_event_s (9:40) but the TOR. The seed of each set is in abc_config.json.
+
+The TOR's time: its target (the set's "t") moved at most move_max_s (practice: practice_move_max_s)
+so that straight_rel_s around it is on a straight, after_window_s or more after the last gaze window
+ends, and tor_apart_s or more from the TORs of the other sets (A, B, C). Town04's longest straight is
+31.6 s at 95 km/h: TOR-10 .. TOR+15 (the approaching car, the alert, the lane change past the stopped
+car) fits it with the margins; TOR-15 .. TOR+30 would not.
 """
 
 from __future__ import print_function
@@ -327,7 +336,12 @@ class Rules(object):
         self.qt = config['templates']['Q']
         self.questions = [e for e in events if e['type'] == 'Q']
         self.built = set()  # ids of the questions whose cars are all placed: checked in full
-        self.events_end = block['last_event_s']   # no event after this (9:40); the drive goes on to the end
+        self.events_end = block['last_event_s']   # no event after this (9:40) but the TOR
+        tors = [e for e in events if e['type'] == 'TOR']
+        # the TOR: no background car at all from its clearing on (its own cars only, then manual driving:
+        # courses relative to the ego car would make no sense)
+        self.tor_clear = (int(round((tors[0]['t'] + config['templates']['TOR']['clear_rel_s']) / DT))
+                          if tors else None)
         self.clear = []  # (lane, i0, i1, low, high): no background car there
         for car, event in event_cars:  # as in the document: e.g. S lane 1, -75 .. +10 m, T-10 .. T+14
             template = config['templates']['S' if event['type'] in ('S', 'SD') else 'R']
@@ -337,6 +351,8 @@ class Rules(object):
                                low, high))
 
     def ok(self, new, cars):
+        if self.tor_clear is not None and new.kind != 'event' and new.i1 >= self.tor_clear:
+            return False
         for i, x in enumerate(new.xs):
             t = (new.i0 + i) * DT
             index = new.i0 + i
@@ -365,7 +381,8 @@ class Rules(object):
 # side for the error of the prediction (abc_ego.py: 1-2 s). Town04's loop does not have straights
 # for all of them (two places for a car event per 137 s lap, ten car events 30 s apart): the
 # seconds in a curve are kept as few as can be (CURVE_WEIGHT), then the moving.
-CRITICAL = {'S': (-2.0, 7.0), 'SD': (-2.0, 7.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-2.0, 1.0)}
+CRITICAL = {'S': (-2.0, 7.0), 'SD': (-2.0, 7.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-2.0, 1.0),
+            'TOR': (-10.0, 15.0)}   # TOR: config TOR straight_rel_s, all of it on a straight (not just few s)
 CURVE_MARGIN = 1.0
 CURVE_WEIGHT = 20.0           # cost of a second in a curve, in seconds moved
 MOVE_MAX = 25                 # s an event may move from its time in the document
@@ -374,6 +391,10 @@ PLAN_TRIES = 20               # start points tried, best first, until the questi
 CAR_LEAD = {'S': 14.1, 'SD': 14.1, 'R': 15.9}   # s from a car's appearance to its T
 CAR_TAIL = {'S': 15.4, 'SD': 15.4, 'R': 15.3}   # s from its T to its removal
 WINDOW_END = {'S': 7.0, 'SD': 7.0, 'R': 8.5}
+# s from an event to the TOR at least: S, SD its car gone (CAR_TAIL) before the TOR's clearing (15 s
+# before it); R its window over 15 s before (its car is in lane 2 behind, gone by the TOR); a question's
+# cars gone before the clearing; F its lead car gone (lane 2 ahead) before the clearing
+TOR_AFTER = {'S': 31.0, 'SD': 31.0, 'R': 24.0, 'Q': 45.0, 'F': 45.0}
 
 
 def in_curve(curves, kind, t):
@@ -382,12 +403,29 @@ def in_curve(curves, kind, t):
     return curves.overlap(t + low - CURVE_MARGIN, t + high + CURVE_MARGIN)
 
 
-def plan_times(events, block, curves):
+def tor_candidates(e, tor, practice, curves, avoid=()):
+    """[(time, cost)] of a TOR: straight (hard), tor_apart_s from the times in `avoid`, moved
+    as little as can be."""
+    move = int(tor['practice_move_max_s'] if practice else tor['move_max_s'])
+    low, high = tor['straight_rel_s']
+    out = []
+    for d in range(-move, move + 1):
+        t = e['t'] + d
+        if curves is not None and curves.overlap(t + low - CURVE_MARGIN, t + high + CURVE_MARGIN) > 0.0:
+            continue
+        if any(abs(t - other) < tor['tor_apart_s'] for other in avoid):
+            continue
+        out.append((t, abs(d)))
+    return out
+
+
+def plan_times(events, block, curves, tor=None, avoid=()):
     """Moves the events (in their order, at most MOVE_MAX s) so that their critical parts are in
     the curves as little as can be, then moved as little as can be. The document's rules stay:
     30 s or more between the events (S, SD, R, Q; 32 s before an R that follows a car: one event car
     at a time), no car event before the adaptation phase is over, none after last_event_s; an F 15 s from the events around it (after a car's window, before the next car
-    appears). Dynamic programming over the events but F, the Fs placed in each step's gap.
+    appears). The TOR (last, tor: its template) all on a straight (tor_candidates), TOR_AFTER from
+    the event before it. Dynamic programming over the events but F, the Fs placed in each step's gap.
     Returns (cost, {id: time}) or None."""
     last = block['last_event_s']
     adapt = block['adaptation_end_s']
@@ -412,6 +450,8 @@ def plan_times(events, block, curves):
     def before(cur, t_cur):    # latest F before it
         if cur is None:
             return last
+        if cur['type'] == 'TOR':
+            return min(last, t_cur - TOR_AFTER['F'])
         return t_cur - (15.0 if cur['type'] == 'Q' else CAR_LEAD[cur['type']] + 15.0)
 
     def place_fs(i, prev, t_prev, cur, t_cur):
@@ -432,6 +472,8 @@ def plan_times(events, block, curves):
         return total, placed
 
     def candidates(e):
+        if e['type'] == 'TOR':
+            return tor_candidates(e, tor, block.get('practice'), curves, avoid)
         out = []
         for d in range(-MOVE_MAX, MOVE_MAX + 1):
             t = e['t'] + d
@@ -445,6 +487,8 @@ def plan_times(events, block, curves):
 
     def gap_ok(prev, t_prev, cur, t_cur):
         gap = t_cur - t_prev
+        if cur['type'] == 'TOR':
+            return gap >= TOR_AFTER[prev['type']]
         need = 32.0 if cur['type'] == 'R' and prev['type'] in CAR_LEAD else 30.0
         return need <= gap <= 75.0
 
@@ -485,7 +529,7 @@ def plan_times(events, block, curves):
     return total, times
 
 
-def rank_starts(events, block, profile, name):
+def rank_starts(events, block, profile, name, tor=None, avoid=()):
     """The start points along the loop with their event times, best first: the events in the
     curves as little as can be (plan_times). [(cost, start m, {id: time}, CurveTimes)]"""
     import abc_ego  # next to this script
@@ -493,7 +537,7 @@ def rank_starts(events, block, profile, name):
     start = 0.0
     while start < profile['length_m']:
         curves = abc_ego.CurveTimes(profile, start, block['block_end_s'])
-        plan = plan_times(events, block, curves)
+        plan = plan_times(events, block, curves, tor, avoid)
         if plan is not None:
             plans.append((plan[0], start, plan[1], curves))
         start += START_STEP
@@ -503,8 +547,8 @@ def rank_starts(events, block, profile, name):
     return plans
 
 
-def choose_start(events, block, profile, name):
-    return rank_starts(events, block, profile, name)[0]
+def choose_start(events, block, profile, name, tor=None, avoid=()):
+    return rank_starts(events, block, profile, name, tor, avoid)[0]
 
 
 # -- making a schedule -------------------------------------------------------------------------
@@ -521,6 +565,7 @@ def make_schedule(config, name, plan=None):
     spawn = bg['spawn_dx_m']
     t_end = block['block_end_s']
     t_first = -200.0  # cars on the road at the start were placed before it
+    tor_template = templates.get('TOR')
     # 0. where on the loop the block starts, and the event times on the straights
     curves = None
     start_m = 0.0
@@ -530,6 +575,10 @@ def make_schedule(config, name, plan=None):
             e['doc_t'] = e['t']
             e['t'] = times[e['id']]
         events.sort(key=lambda e: e['t'])
+    tor = next((e for e in events if e['type'] == 'TOR'), None)
+    if tor is not None:
+        t_end = tor['t'] + tor_template['end_rel_s']  # the block ends 30 s after the TOR
+        tor_clear = tor['t'] + tor_template['clear_rel_s']
     # 1. event cars
     event_cars = []
     windows = {}
@@ -551,6 +600,11 @@ def make_schedule(config, name, plan=None):
             if abs(car.xs[0]) < 65.0:
                 raise RuntimeError('%s: its car would appear %.0f m behind, in view' % (event['id'], -car.xs[0]))
     cars = [car for car, _ in event_cars]
+    for car, event in event_cars:
+        # the TOR: the event cars are gone (S, SD: before its clearing; R, lane 2 behind: by the TOR)
+        if tor is not None and car.i1 * DT >= (tor['t'] if car.lane == 2 else tor_clear) - 1e-6:
+            raise RuntimeError('%s: its car is still there at %.1f s, the TOR at %.0f s' % (event['id'], car.i1 * DT,
+                                                                                            tor['t']))
     for k, (car, _) in enumerate(event_cars):
         same = [c for c, _ in event_cars[:k]]
         for other in same:
@@ -572,14 +626,17 @@ def make_schedule(config, name, plan=None):
     spawns = {event['id']: car.t0 for car, event in event_cars}
 
     def q_time_ok(event, t):
-        """A question time: 30 s from the other events, 20 s after a target's window, 15 s from F."""
+        """A question time: 30 s from the other events, 20 s after a target's window, 15 s from F,
+        TOR_AFTER before the TOR."""
         if t < block['adaptation_end_s'] or t > rules.events_end:
+            return False
+        if tor is not None and t > tor['t'] - TOR_AFTER['Q']:
             return False
         for other in events:
             if other is event:
                 continue
-            if other['type'] == 'F':
-                continue  # F moves itself (up to shift_s) to keep 15 s from the questions
+            if other['type'] in ('F', 'TOR'):
+                continue  # F moves itself (up to shift_s) to keep 15 s from the questions; TOR above
             if abs(t - other['t']) < 30.0:
                 return False
             if other['type'] in ('S', 'R') and other['t'] < t and t < windows[other['id']][1] + 20.0:
@@ -598,7 +655,10 @@ def make_schedule(config, name, plan=None):
         return True
 
     def f_time_ok(event, t):
-        """An F time: 15 s from the questions, after a window ends and before the next car appears."""
+        """An F time: 15 s from the questions, after a window ends and before the next car appears,
+        TOR_AFTER before the TOR."""
+        if tor is not None and t > tor['t'] - TOR_AFTER['F']:
+            return False
         for other in events:
             if other is event or other['type'] == 'F':
                 continue
@@ -687,7 +747,8 @@ def make_schedule(config, name, plan=None):
         return counts
 
     counts = density(cars)
-    fill_end = n_steps  # density all the way to the block end
+    # density all the way to the block end (with a TOR: to its clearing, the road is empty after it)
+    fill_end = n_steps if tor is None else int(round(tor_clear / DT))
     for _ in range(PROPOSALS):
         deficit = [i for i in range(n_steps) if counts[i] < low and i < fill_end]
         if not deficit:
@@ -759,6 +820,15 @@ def make_schedule(config, name, plan=None):
             k = by_type.get(car.extra['event'], 0)
             by_type[car.extra['event']] = k + 1
             car.extra['color'] = colors[k % len(colors)]
+    if tor is not None:
+        last_window = max([w[1] for w in windows.values()] + [e['t'] + 5.0 for e in events if e['type'] == 'F'] +
+                          [e['t'] for e in events if e['type'] == 'Q'])
+        low_s, high_s = tor_template['straight_rel_s']
+        report['tor'] = {'t': tor['t'], 'target': tor.get('doc_t', tor['t']),
+                         'after_last_window_s': round(tor['t'] - last_window, 1),
+                         'straight': None if curves is None else curves.straight(tor['t'] + low_s, tor['t'] + high_s),
+                         'straight_rel_s': [low_s, high_s], 'safe_lane': tor['safe_lane'],
+                         'unsafe_lane': tor['unsafe_lane']}
     report['ego_start_m'] = start_m
     report['moved'] = {e['id']: round(e['t'] - e['doc_t'], 1) for e in events
                        if 'doc_t' in e and abs(e['t'] - e['doc_t']) > 1e-6}
@@ -847,6 +917,13 @@ def print_report(schedule):
         print('  %-6s %5.0f s  cells: %-40s approach: %-6s safe: %-5s %s' % (
             q['id'], q['t'], cells, ','.join(map(str, q['approach'])) or 'none', q['safe'],
             'ok' if q['matches_target'] else 'NOT THE TARGET'))
+    tor = report.get('tor')
+    if tor:
+        print('  TOR    %5.0f s  (target %.0f), %.0f s after the last gaze window, T%+.0f .. T%+.0f s %s; '
+              'safe lane %d, approaching car in lane %d; block end %.0f s' % (
+                  tor['t'], tor['target'], tor['after_last_window_s'], tor['straight_rel_s'][0], tor['straight_rel_s'][1],
+                  'on a straight' if tor['straight'] else 'NOT ALL ON A STRAIGHT' if tor['straight'] is False else
+                  '(curves not known)', tor['safe_lane'], tor['unsafe_lane'], schedule['block_end_s']))
     for event in schedule['events']:
         if event['type'] == 'F' and abs(event['t'] - event['t_doc']) > 1e-6:
             print('  %-6s moved %+.1f s to %.1f s (lead car)' % (event['id'], event['t'] - event['t_doc'], event['t']))
@@ -873,7 +950,16 @@ def main():
             profile = abc_ego.load_profile()
         else:
             print("No ego profile (abc_ego.py --log): the document's times, curves or not")
+    taken = {}  # set -> its TOR time (A, B, C: tor_apart_s apart)
+    if not args.check:
+        for other in config['blocks']:
+            if other not in names and not config['blocks'][other].get('practice') and os.path.isfile(schedule_path(other)):
+                tor = next((e for e in load_schedule(other)['events'] if e['type'] == 'TOR'), None)
+                if tor is not None:
+                    taken[other] = tor['t']
     for name in names:
+        practice = config['blocks'][name].get('practice')
+        avoid = [] if practice else list(taken.values())
         if args.check:
             schedule = load_schedule(name)
         elif profile is None:
@@ -881,7 +967,8 @@ def main():
         else:  # the best start point whose questions' layouts can be placed
             schedule = None
             events = sorted([dict(e) for e in config['sets'][name]], key=lambda e: e['t'])
-            for k, plan in enumerate(rank_starts(events, config['blocks'][name], profile, name)[:PLAN_TRIES]):
+            for k, plan in enumerate(rank_starts(events, config['blocks'][name], profile, name,
+                                                 config['templates'].get('TOR'), avoid)[:PLAN_TRIES]):
                 try:
                     schedule = make_schedule(config, name, plan)
                     break
@@ -891,6 +978,9 @@ def main():
                 raise RuntimeError('%s: none of the %d best start points worked' % (name, PLAN_TRIES))
             with open(schedule_path(name), 'w', encoding='utf-8') as handle:
                 json.dump(schedule, handle, ensure_ascii=False, separators=(',', ':'))
+        tor = schedule['report'].get('tor')
+        if tor and not practice:
+            taken[name] = tor['t']
         print_report(schedule)
         if not all(q['matches_target'] for q in schedule['report']['questions']):
             sys.exit(1)

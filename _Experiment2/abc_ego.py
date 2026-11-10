@@ -128,6 +128,22 @@ def _predict(profile, start_m, t_end, radius=CURVE_RADIUS):
     return out
 
 
+def position(profile, start_m, t):
+    """(m along the loop, m/s) where the ego car is t s into a block that starts at start_m (as predict()):
+    abc_experiment --start-at puts it there."""
+    lag, scale = profile.get('lag_s', 0.0), profile.get('time_scale', 1.0)
+    length, size = profile['length_m'], profile['bin_m']
+    speed = profile['speed_mps']
+    s, v, now = start_m % length, START_SPEED, 0.0
+    t = max(0.0, (t - lag) / scale)
+    while now < t - 1e-9:
+        b = int(s / size) % len(speed)
+        v += max(-CURVE_DECEL * STEP, min(speed[b] - v, AUTO_ACCEL * STEP))
+        s = (s + v * STEP) % length
+        now += STEP
+    return s, v
+
+
 def intervals(mask, join=1.0):
     """[(start, end)] of the curves in a predict() list; curves less than `join` s apart are one."""
     result, start = [], None

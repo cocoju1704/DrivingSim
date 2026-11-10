@@ -10,7 +10,7 @@ Assignment, participant p (1, 2, ...):
     condition order  the 6 orders of (glasses, phone, HUD), ORDERS[(p - 1) % 6]: full counterbalancing
     sets             a 3 x 3 Latin square row ((p - 1) // 6) % 3: block k gets set "ABC"[(k + row) % 3],
                      so each set meets each condition, and every 18 participants it all comes round
-    practice drive   set P, with the condition of the participant's block 1 (no TOR anywhere)
+    practice drive   set P, with the condition of the participant's block 1 (every block and the practice drive end with the TOR)
 
 Also started from here when ticked: the CARLA server (if not running), gaze_bridge.py for the
 Tobii Pro Nano (venv_gaze), the mrbd-video server for the glasses video.

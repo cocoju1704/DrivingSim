@@ -1,5 +1,5 @@
 {
-  "_comment": "Scenario ABC (Notion: 시나리오 ABC, section 7). Times are simulation seconds, SAGAT freezes excluded. Lanes as in the document: 1 = left of the ego car, 2 = the ego car's lane, 3 = right of it. On Town04 they are the real highway lanes 2, 3 and 4 (real lane 1, next to the median, stays empty). Q and F times are fixed here; make_schedule.py builds the background traffic so that each Q's target layout happens by itself at its time. No TOR (Notion, 2026-11-09): after the last event (by last_event_s, 9:40) the drive goes on as before until block_end_s.",
+  "_comment": "Scenario ABC (Notion: 시나리오 ABC, section 7). Times are simulation seconds, SAGAT freezes excluded. Lanes as in the document: 1 = left of the ego car, 2 = the ego car's lane, 3 = right of it. On Town04 they are the real highway lanes 2, 3 and 4 (real lane 1, next to the median, stays empty). Q and F times are fixed here; make_schedule.py builds the background traffic so that each Q's target layout happens by itself at its time. TOR (Notion, 2026-11-09, again): once per block and in the practice drive, at the end. Its \"t\" in the sets is the target; abc_schedule.py moves it (at most move_max_s) onto a straight (straight_rel_s around it), at least after_window_s after the last gaze window, tor_apart_s apart in A, B, C. The background traffic is gone from clear_rel_s on; the block ends end_rel_s after the TOR (5 s after the car stands still). blocks.*.block_end_s is only how far ahead the curves are looked at; the schedule's block_end_s is TOR + end_rel_s.",
   "time_base": "sim_seconds_excluding_sagat_freeze",
   "real_lane": {
     "1": 2,
@@ -128,30 +128,81 @@
       "approach_window_s": 5,
       "approach_dv_kmh": 3,
       "margin_m": 2.5
+    },
+    "TOR": {
+      "clear_rel_s": -15,
+      "clear_until_rel_s": 15,
+      "lane2_clear_front_m": [
+        0,
+        270
+      ],
+      "safe_lane_clear_abs_dx_m": 70,
+      "hazard_vehicle": {
+        "lane": "event.unsafe_lane",
+        "spawn_rel_s": -9,
+        "spawn_dx_m": -80,
+        "dv_kmh": 20,
+        "blinker": false,
+        "yield_if_cut_in_gap_m": 10,
+        "yield_decel_mps2": 6,
+        "blueprint": "vehicle.mercedes.coupe_2020",
+        "color": "192,192,192"
+      },
+      "obstacle": {
+        "lane": 2,
+        "spawn_rel_s": -3,
+        "spawn_dx_m": 270,
+        "stopped": true,
+        "hazard_lights": true,
+        "blueprint": "vehicle.tesla.model3",
+        "color": "90,90,95"
+      },
+      "alert": {
+        "sound": true,
+        "cluster_text": "지금 직접 운전하세요",
+        "ndrt_screen_text": true,
+        "pause_video": true
+      },
+      "takeover_input": [
+        "steering",
+        "throttle",
+        "brake"
+      ],
+      "auto_stop_ttc_s": 1.5,
+      "end_rel_s": 30,
+      "end_after_stop_s": 5,
+      "straight_rel_s": [
+        -10,
+        15
+      ],
+      "after_window_s": 15,
+      "move_max_s": 25,
+      "practice_move_max_s": 10,
+      "tor_apart_s": 10
     }
   },
   "blocks": {
     "A": {
       "adaptation_end_s": 60,
-      "block_end_s": 630,
+      "block_end_s": 680,
       "seed": 101,
       "last_event_s": 580
     },
     "B": {
       "adaptation_end_s": 60,
-      "block_end_s": 630,
+      "block_end_s": 680,
       "seed": 202,
       "last_event_s": 580
     },
     "C": {
       "adaptation_end_s": 60,
-      "block_end_s": 630,
+      "block_end_s": 680,
       "seed": 303,
       "last_event_s": 580
     },
     "P": {
       "adaptation_end_s": 30,
-      "block_end_s": 180,
+      "block_end_s": 230,
       "seed": 404,
       "practice": true,
       "last_event_s": 160
@@ -269,6 +320,13 @@
         "t": 565,
         "id": "A-R2",
         "type": "R"
+      },
+      {
+        "t": 600,
+        "id": "A-TOR",
+        "type": "TOR",
+        "safe_lane": 1,
+        "unsafe_lane": 3
       }
     ],
     "B": [
@@ -382,6 +440,13 @@
         "id": "B-SD4",
         "type": "SD",
         "lane": 1
+      },
+      {
+        "t": 585,
+        "id": "B-TOR",
+        "type": "TOR",
+        "safe_lane": 3,
+        "unsafe_lane": 1
       }
     ],
     "C": [
@@ -495,6 +560,13 @@
         "t": 563,
         "id": "C-R2",
         "type": "R"
+      },
+      {
+        "t": 615,
+        "id": "C-TOR",
+        "type": "TOR",
+        "safe_lane": 1,
+        "unsafe_lane": 3
       }
     ],
     "P": [
@@ -520,6 +592,13 @@
         ],
         "approach": [],
         "safe": "1"
+      },
+      {
+        "t": 180,
+        "id": "P-TOR",
+        "type": "TOR",
+        "safe_lane": 3,
+        "unsafe_lane": 1
       }
     ]
   }

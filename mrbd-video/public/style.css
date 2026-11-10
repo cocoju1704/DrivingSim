@@ -61,3 +61,8 @@ input.item::placeholder { color: #778; }
 /* 실험 연동: SAGAT 동안 전부 가림 */
 #freeze { position: absolute; inset: 0; background: #000; z-index: 100; }
 #freeze[hidden] { display: none; }
+/* TOR: 빨간 경고 문구, 깜빡임 (실험의 TOR_BLINK_HZ 2) */
+#freeze.alert { display: flex; align-items: center; justify-content: center; text-align: center;
+  color: #fff; font-size: 64px; font-weight: 700; padding: 40px; animation: tor-blink 0.5s steps(1) infinite; }
+#freeze.alert[hidden] { display: none; }
+@keyframes tor-blink { 0% { background: #dc1e1e; } 50% { background: #000; } }

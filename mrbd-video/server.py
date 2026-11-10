@@ -11,8 +11,10 @@
   /api/upload    업로드 (PUT /api/upload?name=<filename>, body = 파일)
   /api/push      유튜브 링크를 안경으로 전송 (POST {"url": "...", "autoplay": true})
   /api/events    안경이 구독하는 Server-Sent Events 스트림
-  /api/control   실험(CARLA) -> 안경: 재생 제어 (POST {"action": "freeze" | "resume" | "pause" | "play" | "seek",
-                 "t": 초(seek), "id": 사건 ID}). freeze = 일시정지 + 화면 가림(SAGAT), resume = 가림 해제 + 이어 재생
+  /api/control   실험(CARLA) -> 안경: 재생 제어 (POST {"action": "freeze" | "resume" | "pause" | "play" | "seek" |
+                 "alert" | "alert_off", "t": 초(seek), "id": 사건 ID, "text": 문구(alert)}).
+                 freeze = 일시정지 + 화면 가림(SAGAT), resume = 가림 해제 + 이어 재생,
+                 alert = 일시정지 + 가림 + 빨간 경고 문구(TOR), alert_off = 문구만 지움(가림·정지 유지)
   /api/state     안경 -> 서버: 플레이어 상태 보고 (POST), 실험이 읽음 (GET: 마지막 보고)
 """
 import argparse
@@ -43,7 +45,7 @@ mimetypes.add_type("text/javascript", ".js")
 _clients: set[queue.Queue] = set()
 _clients_lock = threading.Lock()
 _state: dict = {}  # 안경이 마지막으로 보고한 플레이어 상태 (/api/state)
-CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek"}
+CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_off"}
 
 
 def broadcast(event: str, data: dict) -> int:

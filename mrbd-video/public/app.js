@@ -732,24 +732,34 @@ function connectEvents() {
  * 실험 PC가 /api/control 로 보냄:
  *   freeze  일시정지 + 화면 가림 (SAGAT 시작), 조작도 막음
  *   resume  가림 해제 + freeze 전에 재생 중이었으면 이어 재생
+ *   alert {text}  TOR: 일시정지 + 가림 + 빨간 경고 문구 (깜빡임)
+ *   alert_off     경고 문구만 지움 (가림·정지는 그대로: 블록 끝까지 수동 운전)
  *   pause / play / seek {t}   블록 시작·끝
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
 
 function control(d) {
   const a = d.action;
-  if (a === 'freeze' || a === 'pause') {
+  if (a === 'freeze' || a === 'pause' || a === 'alert') {
     if (!held) held = { wasPlaying: !!mode && !P.paused(), frozen: false };
     P.pause();
-    if (a === 'freeze') { held.frozen = true; $('#freeze').hidden = false; }
+    if (a === 'freeze' || a === 'alert') { held.frozen = true; $('#freeze').hidden = false; }
+    if (a === 'alert') { $('#freeze').textContent = d.text || '지금 직접 운전하세요'; $('#freeze').classList.add('alert'); }
+  } else if (a === 'alert_off') {
+    $('#freeze').textContent = '';
+    $('#freeze').classList.remove('alert');
   } else if (a === 'resume') {
     const h = held;
     held = null;
     $('#freeze').hidden = true;
+    $('#freeze').textContent = '';
+    $('#freeze').classList.remove('alert');
     if (mode && (!h || h.wasPlaying)) P.play();
   } else if (a === 'play') {
     held = null;
     $('#freeze').hidden = true;
+    $('#freeze').textContent = '';
+    $('#freeze').classList.remove('alert');
     P.play();
   } else if (a === 'seek') {
     P.seekTo(+d.t || 0);

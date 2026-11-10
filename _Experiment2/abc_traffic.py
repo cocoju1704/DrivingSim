@@ -13,6 +13,9 @@ is removed when it ends, both 65 m or more from the ego car.
 Real lane 4 is lane 3's route shifted one lane width to the right: lane 4 itself leaves the loop at
 the exits, the shifted line goes straight on.
 
+The TOR's two cars are not courses (the driver drives after it): TorScene puts them in the world and
+drives the approaching one at its own speed (see there).
+
 """
 
 from __future__ import print_function
@@ -302,18 +305,7 @@ class ScriptedTraffic(object):
         goal = max(goal, 0.0)
         step = ACCEL * max(dt_real, 1e-3)
         car['speed'] += max(-step, min(goal - car['speed'], step))
-        speed = car['speed']
-        transform = actor.get_transform()
-        location = transform.location
-        here, _, (fx, fy), (rx, ry) = route.pose(s)
-        drift = (here.x - location.x) * rx + (here.y - location.y) * ry
-        side = max(-SIDEWAYS, min(CENTERING * drift, SIDEWAYS))
-        ahead, _, _, _ = route.pose(s + max(8.0, speed * 0.8))
-        heading = math.degrees(math.atan2(ahead.y - location.y, ahead.x - location.x))
-        turn = (heading - transform.rotation.yaw + 180.0) % 360.0 - 180.0
-        actor.set_target_velocity(carla.Vector3D(fx * speed + rx * side, fy * speed + ry * side,
-                                                 actor.get_velocity().z))
-        actor.set_target_angular_velocity(carla.Vector3D(0.0, 0.0, TURNING * turn))
+        steer_along(actor, route, s, car['speed'])
 
     def _remove(self, cid, t, why):
         car = self.cars.pop(cid)
@@ -340,6 +332,191 @@ class ScriptedTraffic(object):
         if actors:
             base.destroy_actors(self._client, actors)
         self.cars = {}
+
+
+def steer_along(actor, route, s, speed):
+    """Drives `actor` (at distance s along `route`) at `speed` m/s along the middle of the route's lane:
+    its velocity and turn rate set directly."""
+    transform = actor.get_transform()
+    location = transform.location
+    here, _, (fx, fy), (rx, ry) = route.pose(s)
+    drift = (here.x - location.x) * rx + (here.y - location.y) * ry
+    side = max(-SIDEWAYS, min(CENTERING * drift, SIDEWAYS))
+    ahead, _, _, _ = route.pose(s + max(8.0, speed * 0.8))
+    heading = math.degrees(math.atan2(ahead.y - location.y, ahead.x - location.x))
+    turn = (heading - transform.rotation.yaw + 180.0) % 360.0 - 180.0
+    actor.set_target_velocity(carla.Vector3D(fx * speed + rx * side, fy * speed + ry * side, actor.get_velocity().z))
+    actor.set_target_angular_velocity(carla.Vector3D(0.0, 0.0, TURNING * turn))
+
+
+HAZARD_LIGHTS = base.LEFT_BLINKER | base.RIGHT_BLINKER
+HAZARD_FOLLOW_GAP = 20.0   # m: after yielding, the approaching car stays this far behind the ego car
+HAZARD_ACCEL = 2.0         # m/s^2 it speeds up again at
+HAZARD_GONE_M = 250.0      # m ahead or behind: removed
+
+
+class TorScene(object):
+    """The TOR's cars (Notion 시나리오 ABC, 2): the approaching car in the unsafe lane and the stopped
+    car in lane 2. Both at fixed places of the road, not relative to the ego car: from the TOR on the
+    driver drives.
+
+        hazard()    T-9: dx -80 m in the unsafe lane, no turn signal; until the alert it comes up at
+                    +20 km/h relative to the ego car (a course: -80 m + 20 km/h x the time, whatever
+                    the ego car's speed: after the curve before the loop's long straight it is still
+                    speeding up), so it is 30 m behind at T; release() at T: from then on it keeps its
+                    speed (next to the ego car ~5.4 s later if that keeps its own)
+        obstacle()  T-3: in lane 2, standing (hand brake), hazard lights on: 270 m ahead at 95 km/h;
+                    at another speed (still speeding up after the curve) where it makes the same TTC at
+                    T, ~7.2 s (190 m at 95 km/h)
+        tick()      drives the approaching car; yield(): once the ego car has come into its lane less
+                    than 10 m ahead of it, it brakes (6 m/s^2) and stays HAZARD_FOLLOW_GAP behind
+    """
+
+    def __init__(self, traffic, event, template, event_vehicle):
+        self._traffic = traffic
+        self.event = event
+        self.template = template
+        self.unsafe = event['unsafe_lane']
+        self.safe = event['safe_lane']
+        self.hazard_actor = self.obstacle_actor = None
+        self.hazard_s = self.obstacle_s = None   # along their lane routes (the obstacle: lane 2 = ego route)
+        self.hazard_length = self.obstacle_length = 4.8
+        self.obstacle_spawn_dx = None
+        self.hazard_width = self.obstacle_width = 1.9
+        self._hint = None
+        self._speed = None        # m/s, the approaching car's
+        self._cruise = None       # m/s, its own speed from the alert on (None: still on its course)
+        self._course = None       # (t, dx) it appeared at
+        self.yielding = False
+        self._event_vehicle = event_vehicle
+
+    def _blueprint(self, settings, fallback):
+        library = self._traffic._world.get_blueprint_library()  # pylint: disable=protected-access
+        blueprint = library.find(settings.get('blueprint') or fallback)
+        blueprint.set_attribute('role_name', 'npc')
+        if settings.get('color') and blueprint.has_attribute('color'):
+            blueprint.set_attribute('color', settings['color'])
+        return blueprint
+
+    def _place(self, settings, fallback, lane, s, speed):
+        route = self._traffic._routes[lane]  # pylint: disable=protected-access
+        loc, yaw, (fx, fy), _ = route.pose(s)
+        actor = self._traffic._world.try_spawn_actor(  # pylint: disable=protected-access
+            self._blueprint(settings, fallback),
+            carla.Transform(carla.Location(loc.x, loc.y, loc.z + 0.3), carla.Rotation(yaw=yaw)))
+        if actor is not None and speed:
+            actor.set_target_velocity(carla.Vector3D(fx * speed, fy * speed, 0.0))
+        return actor
+
+    def hazard(self, t, ego_transform, ego_speed):
+        """Puts the approaching car in; False if its place is taken (try again next frame)."""
+        settings = self.template['hazard_vehicle']
+        s = self._traffic.ref_s(self.unsafe, ego_transform) + settings['spawn_dx_m']
+        speed = ego_speed + settings['dv_kmh'] / 3.6
+        actor = self._place(settings, self._event_vehicle, self.unsafe, s, speed)
+        if actor is None:
+            return False
+        self.hazard_actor, self.hazard_s, self._speed = actor, s, speed
+        self._course = (t, settings['spawn_dx_m'])
+        self._hint = self._traffic._routes[self.unsafe].index_at(s)  # pylint: disable=protected-access
+        extent = actor.bounding_box.extent
+        self.hazard_length, self.hazard_width = 2.0 * extent.x, 2.0 * extent.y
+        logging.info('TOR: approaching car in lane %d, %.0f m behind, %.0f km/h', self.unsafe,
+                     -settings['spawn_dx_m'], speed * 3.6)
+        return True
+
+    def obstacle(self, ego_s, ego_speed, nominal_speed, ego_accel=0.0, lead_s=3.0):
+        """Puts the stopped car in lane 2, lead_s before the alert, where it is as many seconds ahead
+        at the alert as spawn_dx_m would be at nominal_speed m/s (the ego car's speed then from its
+        speed and acceleration now); False if its place is taken. self.obstacle_spawn_dx: how far
+        ahead it went."""
+        settings = self.template['obstacle']
+        v_alert = max(ego_speed + max(ego_accel, 0.0) * lead_s, 1.0)
+        ttc = settings['spawn_dx_m'] / nominal_speed - lead_s   # 7.2 s: 270 m - 3 s at 95 km/h
+        self.obstacle_spawn_dx = ttc * v_alert + lead_s * (ego_speed + v_alert) / 2.0
+        s = ego_s + self.obstacle_spawn_dx
+        actor = self._place(settings, 'vehicle.tesla.model3', 2, s, 0.0)
+        if actor is None:
+            return False
+        actor.apply_control(carla.VehicleControl(hand_brake=True, brake=1.0))
+        if settings.get('hazard_lights', True):
+            actor.set_light_state(carla.VehicleLightState(HAZARD_LIGHTS))
+        self.obstacle_actor, self.obstacle_s = actor, s % self._traffic.ego_route.length
+        extent = actor.bounding_box.extent
+        self.obstacle_length, self.obstacle_width = 2.0 * extent.x, 2.0 * extent.y
+        logging.info('TOR: stopped car %.0f m ahead in lane 2', self.obstacle_spawn_dx)
+        return True
+
+    def hazard_dx(self, ego_transform):
+        """m the approaching car is ahead of the ego car (< 0 behind), centre to centre, along its lane."""
+        if self.hazard_actor is None:
+            return None
+        route = self._traffic._routes[self.unsafe]  # pylint: disable=protected-access
+        return route.wrap(self.hazard_s - self._traffic.ref_s(self.unsafe, ego_transform))
+
+    def obstacle_dx(self, ego_s):
+        if self.obstacle_actor is None:
+            return None
+        return self._traffic.ego_route.wrap(self.obstacle_s - ego_s)
+
+    def release(self):
+        """The alert: from now on the approaching car keeps the speed it has."""
+        if self._cruise is None and self._speed is not None:
+            self._cruise = self._speed
+
+    def yield_to(self):
+        """The ego car has come into its lane just ahead: from now on it brakes and keeps behind."""
+        self.yielding = True
+
+    def tick(self, t, ego_transform, ego_speed, dt):
+        """Drives the approaching car. Returns its dx (None if there is none)."""
+        actor = self.hazard_actor
+        if actor is None:
+            return None
+        route = self._traffic._routes[self.unsafe]  # pylint: disable=protected-access
+        loc = actor.get_location()
+        self._hint, self.hazard_s = route.locate(loc.x, loc.y, self._hint)
+        dx = self.hazard_dx(ego_transform)
+        if abs(dx) > HAZARD_GONE_M:
+            self._traffic._client.apply_batch([carla.command.DestroyActor(actor.id)])  # pylint: disable=protected-access
+            self.hazard_actor = None
+            logging.info('TOR: the approaching car is gone (%.0f m)', dx)
+            return None
+        dt = max(dt, 1e-3)
+        settings = self.template['hazard_vehicle']
+        if self._cruise is None:  # its course: dx -80 m + 20 km/h x the time, relative to the ego car
+            planned = self._course[1] + settings['dv_kmh'] / 3.6 * (t - self._course[0])
+            goal = ego_speed + settings['dv_kmh'] / 3.6 + max(-CATCH_UP, min(GAIN * (planned - dx), CATCH_UP))
+        else:
+            goal = self._cruise
+        if self.yielding and dx < 0:  # behind the ego car: stay HAZARD_FOLLOW_GAP behind its bumper
+            gap = -dx - (self.hazard_length + 4.8) / 2.0
+            goal = max(0.0, min(goal, ego_speed + 0.5 * (gap - HAZARD_FOLLOW_GAP)))
+        if self._cruise is None:  # on its course: as the cars of the schedule
+            self._speed += max(-ACCEL * dt, min(goal - self._speed, ACCEL * dt))
+        elif goal < self._speed:
+            self._speed = max(goal, self._speed - settings['yield_decel_mps2'] * dt)
+        else:
+            self._speed = min(goal, self._speed + HAZARD_ACCEL * dt)
+        steer_along(actor, route, self.hazard_s, self._speed)
+        if self.yielding and self._cruise is not None and self._speed < self._cruise - 0.5:
+            actor.set_light_state(carla.VehicleLightState(base.BRAKE_LIGHT))
+        else:
+            actor.set_light_state(carla.VehicleLightState(0))
+        return dx
+
+    @property
+    def hazard_speed(self):
+        return self._speed
+
+    def actors(self):
+        return [a for a in (self.hazard_actor, self.obstacle_actor) if a is not None]
+
+    def destroy(self):
+        actors = self.actors()
+        if actors:
+            base.destroy_actors(self._traffic._client, actors)  # pylint: disable=protected-access
+        self.hazard_actor = self.obstacle_actor = None
 
 
 def _light_names(flags):
