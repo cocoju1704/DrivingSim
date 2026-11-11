@@ -20,7 +20,12 @@ How the background traffic is made (make_schedule):
      lane 2 ahead a slower car that comes back to the ego car and holds a gap, lane 2 behind a car
      that creeps up to -48 .. -42 m and holds
   3. for each F, a lead car holding +36 .. +45 m in lane 2 that brakes at F (brake light 3 s)
-  4. random cars in lanes 1 and 3 (and now and then lane 2) until 4-6 cars are within 50 m
+  4. random cars in lanes 1 and 3 (and now and then lane 2) until 4-6 cars are within 50 m; with
+     background fast_lane (1 or 3, --fast-lane) the cars of that lane are mostly faster than the ego
+     car (fast_lane_share), of the other lane mostly slower: a passing lane, as on a real highway
+  4b. lane 0 (the road's lane 1, next to the median, two lanes left of the ego car): a few cars as
+     scenery (lane0_n_within_80m), at the speeds of lane 1. Not in the SAGAT grid: not in the answers,
+     not asked about
   5. the TOR at the end (its cars are not courses: abc_traffic.TorScene drives them): no background
      car from TOR-15 s on, every event car gone by then (one in lane 2 behind: by the TOR); the
      block ends 30 s after the TOR
@@ -52,6 +57,7 @@ DT = 0.1                 # s between the samples of a course
 KMH = 1.0 / 3.6
 ZONES = ('front', 'side', 'rear')
 CELLS = ['%d_%s' % (lane, zone) for lane in (1, 2, 3) for zone in ZONES if (lane, zone) != (2, 'side')]
+GRID_LANES = (1, 2, 3)   # lane 0 (scenery, two lanes left) is outside the SAGAT grid
 PROPOSALS = 50000        # random background cars tried per set
 ANCHOR_TRIES = 400
 QUESTION_TRIES = 250
@@ -334,6 +340,8 @@ def layout(cars_now, history, qt):
     unsafe = set()
     low, high = qt['unsafe_dx_m']
     for k, (lane, dx) in enumerate(cars_now):
+        if lane not in GRID_LANES:
+            continue
         cell = cell_of(lane, dx, cell_dx)
         if cell:
             cells[cell] = cells.get(cell, 0) + 1
@@ -384,7 +392,7 @@ def question_ok(cars, q, qt, partial=False):
     window = qt['approach_window_s']
     for car in cars:
         x = car.at(q['t'])
-        if x is None or abs(x) > 50.0 + margin:
+        if x is None or abs(x) > 50.0 + margin or car.lane not in GRID_LANES:
             continue
         lane_edges = edges if car.lane != 2 else [-50.0, -5.0, 5.0, 50.0]
         if any(abs(x - e) < margin for e in lane_edges):
@@ -394,7 +402,7 @@ def question_ok(cars, q, qt, partial=False):
             dv = (x - before) / window / KMH
             if abs(dv - qt['approach_dv_kmh']) < 1.5:
                 return False
-    return all(_holds(car, q['t'], qt) for car in cars)
+    return all(_holds(car, q['t'], qt) for car in cars if car.lane in GRID_LANES)
 
 
 def _holds(car, t, qt):
@@ -466,6 +474,8 @@ class Rules(object):
             for index in range(start, end + 1):
                 if abs(car.xs[index - car.i0] - new.xs[index - new.i0]) < self.min_gap:
                     return False
+        if new.lane not in GRID_LANES:
+            return True   # scenery: the questions do not see it
         everything = cars + [new]
         return all(question_ok(everything, q, self.qt, partial=q['id'] not in self.built) for q in self.questions
                    if new.at(q['t']) is not None or new.at(q['t'] - self.qt['approach_window_s']) is not None)
@@ -727,6 +737,14 @@ def make_schedule(config, name, plan=None):
     targets = qt['target_dx_m']
     v_low, v_high = bg['dv_kmh']
     v_anchor = bg.get('anchor_dv_kmh_max', v_high)
+    fast_lane = bg.get('fast_lane')
+
+    def faster_share(lane):
+        """Share of the cars in `lane` (0, 1, 3) faster than the ego car."""
+        if not fast_lane:
+            return bg.get('faster_share', 0.5)
+        share = bg.get('fast_lane_share', 0.85)
+        return share if (1 if lane == 0 else lane) == fast_lane else 1.0 - share
 
     # 2. anchors of each question, 3. lead cars of each F (in time order: each sees the cars before it)
     spawns = {event['id']: car.t0 for car, event in event_cars}
@@ -871,7 +889,7 @@ def make_schedule(config, name, plan=None):
                 car = rear2_car(new_id('B'), t_at - rng.uniform(5, 30), t_at + rng.uniform(5, 40),
                                 rng.uniform(-49, -41), rng.uniform(6, 15) * KMH, spawn, t_end, kind='bg')
         else:
-            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < bg.get('faster_share', 0.5) else -1)
+            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < faster_share(lane) else -1)
             car = pass_car(new_id('B'), lane, dv, t_at, rng.uniform(-48, 48), spawn, t_end)
         if car.t0 < t_first:
             count[0] -= 1
@@ -885,6 +903,36 @@ def make_schedule(config, name, plan=None):
             continue
         cars.append(car)
         counts = [a + b for a, b in zip(counts, extra)]
+
+    # 4b. lane 0: scenery, lane0_n_within_80m cars within 80 m (none from the TOR's clearing on)
+    zero = bg.get('lane0_n_within_80m')
+    if zero:
+        low0, high0 = zero
+        counts0 = [0] * n_steps
+
+        def density0(car):
+            out = {}
+            for i, x in enumerate(car.xs):
+                index = car.i0 + i
+                if 0 <= index < n_steps and abs(x) <= 80.0:
+                    out[index] = 1
+            return out
+        start0 = int(round(block['adaptation_end_s'] / DT)) if bg.get('lane0_after_adaptation') else 0
+        for _ in range(PROPOSALS // 5):
+            deficit = [i for i in range(start0, fill_end) if counts0[i] < low0]
+            if not deficit:
+                break
+            t_at = rng.choice(deficit) * DT
+            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < faster_share(0) else -1)
+            car = pass_car(new_id('Z'), 0, dv, t_at, rng.uniform(-75, 75), spawn, t_end)
+            extra = density0(car)
+            if car.t0 < t_first or any(counts0[k] + 1 > high0 for k in extra) or not rules.ok(car, cars):
+                count[0] -= 1
+                continue
+            cars.append(car)
+            for k in extra:
+                counts0[k] += 1
+        analysed0 = counts0[int(block['adaptation_end_s'] / DT):fill_end]
 
     # the answers, from the courses
     report = {}
@@ -905,6 +953,17 @@ def make_schedule(config, name, plan=None):
         'max': max(analysed)}
     report['questions'] = questions
     report['background_cars'] = sum(1 for c in cars if c.kind != 'event')
+    lanes = {}
+    for car in cars:
+        if car.kind == 'bg' and 'dv_kmh' in car.extra:
+            item = lanes.setdefault(str(car.lane), {'cars': 0, 'faster': 0})
+            item['cars'] += 1
+            item['faster'] += car.extra['dv_kmh'] > 0
+    report['lanes'] = {'fast_lane': fast_lane, 'pass_cars': lanes}
+    if zero:
+        report['lane0_within_80m'] = {'target': [low0, high0], 'mean': round(sum(analysed0) / float(len(analysed0)), 2),
+                                      'share_in_target': round(sum(1 for c in analysed0 if low0 <= c <= high0)
+                                                               / float(len(analysed0)), 3)}
     out_events = []
     for event in events:
         item = dict(event)
@@ -1029,6 +1088,15 @@ def print_report(schedule):
           'fewer than %d %.0f %%, fewer than 4 %.0f %%, max %d' % (
               d['mean'], low, high, 100 * d.get('share_in_target', d.get('share_4_to_6', 0)), low,
               100 * d.get('share_below_target', d['share_below_4']), 100 * d['share_below_4'], d['max']))
+    lanes = report.get('lanes')
+    if lanes:
+        print('  passing cars (lanes 0, 1, 3), faster than the ego car: ' + ', '.join(
+            'lane %s %d of %d' % (lane, v['faster'], v['cars']) for lane, v in sorted(lanes['pass_cars'].items())) +
+              ('; passing lane %s' % lanes['fast_lane'] if lanes['fast_lane'] else ''))
+    if report.get('lane0_within_80m'):
+        z = report['lane0_within_80m']
+        print('  lane 0 (scenery) cars within 80 m: mean %.2f, %d-%d %.0f %% of the time' % (
+            z['mean'], z['target'][0], z['target'][1], 100 * z['share_in_target']))
     for q in report['questions']:
         cells = ', '.join('%s%s' % (c, ' x%d' % n if n > 1 else '') for c, n in sorted(q['cells'].items()))
         print('  %-6s %5.0f s  cells: %-40s approach: %-6s safe: %-5s %s' % (
@@ -1054,10 +1122,15 @@ def main():
     parser.add_argument('--set', action='append', help='A, B, C or P (practice); default: all')
     parser.add_argument('--check', action='store_true', help='print the report of the saved schedules')
     parser.add_argument('--config', default=CONFIG_FILE)
+    parser.add_argument('--fast-lane', type=int, choices=(0, 1, 3),
+                        help="the passing lane: 1 (left) or 3 (right, the reverse); 0: none, faster_share in "
+                             "both lanes; default: background fast_lane in the config")
     parser.add_argument('--ignore-curves', action='store_true',
                         help="the document's times, from the loop start (no ego profile)")
     args = parser.parse_args()
     config = load_config(args.config)
+    if args.fast_lane is not None:
+        config['background']['fast_lane'] = args.fast_lane or None
     names = args.set or list(config['blocks'])
     os.makedirs(SCHEDULE_DIR, exist_ok=True)
     profile = None

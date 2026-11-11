@@ -162,7 +162,10 @@ class ScriptedTraffic(object):
     def __init__(self, client, sim_world, carla_map, routes, schedule, config):
         self._client = client
         self._world = sim_world
-        self._routes = {1: Route(routes[2]), 2: Route(routes[3]), 3: Route(routes[3], base.LANE_WIDTH)}
+        # schedule lanes 1-3 are the road's lanes 2-4; lane 0 (the road's lane 1, next to the median:
+        # scenery, outside the SAGAT grid) one lane width left of lane 1 (it runs the whole loop)
+        self._routes = {0: Route(routes[2], -base.LANE_WIDTH), 1: Route(routes[2]), 2: Route(routes[3]),
+                        3: Route(routes[3], base.LANE_WIDTH)}
         self.ego_route = self._routes[2]
         self._courses = [Course(c, schedule['dt']) for c in schedule['cars']]
         self._courses.sort(key=lambda c: c.t0)
@@ -186,7 +189,7 @@ class ScriptedTraffic(object):
     def start(self, ego_index):
         """The ego car is at route point ego_index (of its lane): where the searches begin."""
         self._ego_hint = ego_index
-        for lane in (1, 2, 3):
+        for lane in self._routes:
             self._ref_hint[lane] = min(ego_index, self._routes[lane].count - 1)
 
     def ego_s(self, ego_transform):
@@ -198,9 +201,10 @@ class ScriptedTraffic(object):
         """Distance along `lane`'s route level with the ego car."""
         route = self._routes[lane]
         loc = ego_transform.location
-        if lane == 1:  # one lane width to the left of the ego car
+        if lane in (0, 1):  # one (two) lane widths to the left of the ego car
             right = ego_transform.get_right_vector()
-            x, y = loc.x - right.x * base.LANE_WIDTH, loc.y - right.y * base.LANE_WIDTH
+            w = base.LANE_WIDTH * (2 - lane)
+            x, y = loc.x - right.x * w, loc.y - right.y * w
         else:
             x, y = loc.x, loc.y
         self._ref_hint[lane], s = route.locate(x, y, self._ref_hint.get(lane))
@@ -221,7 +225,7 @@ class ScriptedTraffic(object):
         velocity = ego.get_velocity()
         forward = transform.get_forward_vector()
         ego_speed = velocity.x * forward.x + velocity.y * forward.y  # m/s along its heading
-        refs = {lane: self.ref_s(lane, transform) for lane in (1, 2, 3)}
+        refs = {lane: self.ref_s(lane, transform) for lane in self._routes}
         while self._next < len(self._courses) and self._courses[self._next].t0 <= t + 1e-6:
             course = self._courses[self._next]
             self._next += 1
