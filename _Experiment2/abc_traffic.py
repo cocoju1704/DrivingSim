@@ -36,7 +36,8 @@ CENTERING = 0.8       # m/s sideways per m off the middle of the lane
 SIDEWAYS = 1.5        # m/s sideways at most
 TURNING = 3.0         # deg/s turn rate per deg off the line to a point ahead
 HISTORY_S = 6.0       # s of dx kept per car (approaching cars at a question)
-BLUEPRINT_EXCLUDED = ('police', 'ambulance', 'firetruck', 'microlino', 'carlacola', 'cybertruck')
+# patrol_2021: its body and wheels are drawn ~0.3 m above the road (the actor itself is on it): a floating car
+BLUEPRINT_EXCLUDED = ('police', 'ambulance', 'firetruck', 'microlino', 'carlacola', 'cybertruck', 'patrol_2021')
 
 
 class Route(object):

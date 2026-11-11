@@ -746,6 +746,19 @@ def make_schedule(config, name, plan=None):
         share = bg.get('fast_lane_share', 0.85)
         return share if (1 if lane == 0 else lane) == fast_lane else 1.0 - share
 
+    def faster_sign(lane):
+        """+1 (faster) or -1: the side that brings the lane's background cars so far closer to
+        faster_share. A random sign per proposal does not: the rules turn down more of one side
+        (in set A lane 1 ended 53 % faster with 85 % asked). Not in the practice drive: steered it
+        gets few cars (5-7 within 50 m 6 % of the time instead of 55 %), random its share is close."""
+        if block.get('practice'):
+            return 1 if rng.random() < faster_share(lane) else -1
+        mine = [c for c in cars if c.kind == 'bg' and c.lane == lane and 'dv_kmh' in c.extra]
+        n_fast = sum(c.extra['dv_kmh'] > 0 for c in mine)
+        if not mine:
+            return 1 if rng.random() < faster_share(lane) else -1
+        return 1 if n_fast / float(len(mine)) < faster_share(lane) else -1
+
     # 2. anchors of each question, 3. lead cars of each F (in time order: each sees the cars before it)
     spawns = {event['id']: car.t0 for car, event in event_cars}
 
@@ -811,7 +824,8 @@ def make_schedule(config, name, plan=None):
                                 and not any(c.extra.get('f_event') == f['id'] for c in cars)
                                 and f_time_ok(f, f['t'])]
                     for car in anchor_cars(new_id, event, rng, targets, v_low, v_anchor, spawn, t_end,
-                                           nearby_f[:1], templates['F'], qt.get('hold_s', 0.0)):
+                                           nearby_f[:1], templates['F'], qt.get('hold_s', 0.0),
+                                           share=None if block.get('practice') else faster_share):
                         if car.t0 < t_first or not rules.ok(car, cars + placed):
                             break
                         placed.append(car)
@@ -889,8 +903,16 @@ def make_schedule(config, name, plan=None):
                 car = rear2_car(new_id('B'), t_at - rng.uniform(5, 30), t_at + rng.uniform(5, 40),
                                 rng.uniform(-49, -41), rng.uniform(6, 15) * KMH, spawn, t_end, kind='bg')
         else:
-            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < faster_share(lane) else -1)
-            car = pass_car(new_id('B'), lane, dv, t_at, rng.uniform(-48, 48), spawn, t_end)
+            # the side towards faster_share (faster_sign); the random numbers in the order the saved
+            # schedules were made with (P: before faster_sign)
+            speed = rng.uniform(v_low, v_high) * KMH
+            if block.get('practice'):
+                sign = faster_sign(lane)
+                x_at = rng.uniform(-48, 48)
+            else:
+                x_at = rng.uniform(-48, 48)
+                sign = faster_sign(lane)
+            car = pass_car(new_id('B'), lane, speed * sign, t_at, x_at, spawn, t_end)
         if car.t0 < t_first:
             count[0] -= 1
             continue
@@ -923,8 +945,16 @@ def make_schedule(config, name, plan=None):
             if not deficit:
                 break
             t_at = rng.choice(deficit) * DT
-            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < faster_share(0) else -1)
-            car = pass_car(new_id('Z'), 0, dv, t_at, rng.uniform(-75, 75), spawn, t_end)
+            # lane 0 at random by faster_share: steered (faster_sign), its slow proposals are mostly turned
+            # down and fewer cars fit (set A: 70 % of the time 1-2 cars instead of 95 %)
+            speed = rng.uniform(v_low, v_high) * KMH
+            if block.get('practice'):
+                sign = 1 if rng.random() < faster_share(0) else -1
+                x_at = rng.uniform(-75, 75)
+            else:
+                x_at = rng.uniform(-75, 75)
+                sign = 1 if rng.random() < faster_share(0) else -1
+            car = pass_car(new_id('Z'), 0, speed * sign, t_at, x_at, spawn, t_end)
             extra = density0(car)
             if car.t0 < t_first or any(counts0[k] + 1 > high0 for k in extra) or not rules.ok(car, cars):
                 count[0] -= 1
@@ -1006,11 +1036,18 @@ def make_schedule(config, name, plan=None):
             'report': report}
 
 
-def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(), f_template=None, hold_s=0.0):
+def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(), f_template=None, hold_s=0.0,
+                share=None):
     """The cars of question q's target cells. The cars of one cell lane (1 or 3) drive at the same
     speed, a group: at different speeds one would overtake the other in the same lane. A lane with
     an approaching car behind is faster than the ego car, a lane with a car behind that is not
-    approaching is slower, else either."""
+    approaching is slower, else either: faster with the lane's share(lane) (the passing lane mostly
+    faster), 1:1 without it."""
+
+    def side(lane):
+        if share is None:
+            return rng.choice((-1, 1))
+        return 1 if rng.random() < share(lane) else -1
     t = q['t']
     cars = []
     by_lane = {}
@@ -1041,7 +1078,7 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
         if lane in q['approach'] and len(zones) > 1:
             # the cars ahead in the lane at any speed; the approaching one catches up with them by
             # the question and then slows down to their speed
-            dv = rng.uniform(v_low, (v_low + v_high) / 2.0) * KMH * rng.choice((-1, 1))
+            dv = rng.uniform(v_low, (v_low + v_high) / 2.0) * KMH * side(lane)
             fast = rng.uniform(max(v_low, 6.0, dv / KMH + 6.0), max(v_high, dv / KMH + 8.0)) * KMH
             follow = (t + 0.5, dv, 2.0)
         # hold_s: the lane's cars that do not approach stay alongside (about the ego car's speed) from
@@ -1057,7 +1094,7 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
         elif 'rear' in zones:
             dv = -rng.uniform(max(v_low, 6.0), v_high) * KMH
         else:
-            dv = rng.uniform(v_low, v_high) * KMH * rng.choice((-1, 1))
+            dv = rng.uniform(v_low, v_high) * KMH * side(lane)
         for zone in zones:
             key = 'rear_lane1_3' if zone == 'rear' else zone
             if follow and zone == 'rear':  # well behind the others: room to slow down
