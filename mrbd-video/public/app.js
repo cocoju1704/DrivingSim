@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 9;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 10;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -736,7 +736,7 @@ function connectEvents() {
  *   alert {text}  TOR: 일시정지 + 가림 + 빨간 경고 문구 (깜빡임)
  *   alert_off     경고 문구만 지움 (가림·정지는 그대로: 블록 끝까지 수동 운전)
  *   pause / play / seek {t}   블록 시작·끝
- *   calib {dot}   시선 보정: 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; off = 끔)
+ *   calib {dot}   시선 보정: 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; px:X,Y = 600x600 화면의 한 점; off = 끔)
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
 
@@ -779,7 +779,10 @@ function calibDot(dot) {
   if (!dot || dot === 'off') { box.hidden = true; box.style.display = 'none'; return; }
   if (mode && !P.paused()) P.pause();
   const w = window.innerWidth, h = window.innerHeight, i = CALIB_INSET;
-  const at = { c: [w / 2, h / 2], tl: [i, i], tr: [w - i, i], br: [w - i, h - i], bl: [i, h - i] }[dot] || [w / 2, h / 2];
+  // 'px:X,Y': any point in the 600x600 display px (g2_validate.py's check points)
+  const px = typeof dot === 'string' && dot.startsWith('px:') ? dot.slice(3).split(',').map(Number) : null;
+  const at = px && px.length === 2 && px.every(isFinite) ? [px[0] * w / 600, px[1] * h / 600]
+    : { c: [w / 2, h / 2], tl: [i, i], tr: [w - i, i], br: [w - i, h - i], bl: [i, h - i] }[dot] || [w / 2, h / 2];
   Object.assign(box.style, { display: 'block', position: 'fixed', left: '0', top: '0', width: w + 'px',
     height: h + 'px', background: '#000', zIndex: '110' });
   const el = $('#calib-dot');

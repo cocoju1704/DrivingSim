@@ -1,6 +1,6 @@
 // 앱 셸 프리캐시 → 안경에서 앱이 네트워크 없이도 즉시 뜸.
 // 영상(/media)과 API는 캐시하지 않음 (영상은 앱이 IndexedDB에 직접 저장).
-const CACHE = 'mrbd-video-v9';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib), v7: 점을 단색으로 (안경에서 그라디언트가 안 보임), v8: HTTP 캐시를 건너뛰고 받음, v9: 보정 점 시험 버튼, 버전 보고
+const CACHE = 'mrbd-video-v10';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib), v7: 점을 단색으로 (안경에서 그라디언트가 안 보임), v8: HTTP 캐시를 건너뛰고 받음, v9: 보정 점 시험 버튼, 버전 보고, v10: 임의 위치 점 (검증)
 // Cloudflare turns the server's no-cache into max-age=14400 (Browser Cache TTL), so the browser's HTTP
 // cache would keep old app files for 4 h: install with cache 'reload', refresh with cache 'no-cache'.
 const SHELL = ['/', '/index.html', '/app.js', '/style.css', '/manifest.json', '/icon.png'];

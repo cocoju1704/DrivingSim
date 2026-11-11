@@ -17,6 +17,8 @@
 /_Experiment2/launcher_last.json
 /_Experiment2/g2_calibration.json
 /_Experiment2/g2_display.json
+/_Experiment2/g2_validation.json
+/_Experiment2/g2_validation/
 # the glasses' live video and data of each block (g2_stream.py): large, on this PC only
 /_Experiment2/Data/**/g2_scene.ts
 /_Experiment2/Data/**/g2_data.jsonl
