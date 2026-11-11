@@ -5,11 +5,11 @@ The NDRT video on the glasses (mrbd-video, the Meta Ray-Ban Display player) in s
 experiment: abc_experiment.py --video http://127.0.0.1:8080 (the mrbd-video server, usually on this
 PC: python mrbd-video/server.py).
 
-    block start   seek (--video-start, if > 0), play
+    block start   play {file, t}: the app opens the video itself if none is open, seeks to t (--video-start)
     SAGAT         freeze: paused and covered (the glasses show nothing), its buttons do nothing
     after 3-2-1   resume: uncovered, playing again if it was playing before
-    TOR           alert: paused, covered, "지금 직접 운전하세요" in red on it
-    takeover      alert_off: the text goes, still covered and paused (manual driving to the end)
+    TOR           alert: as freeze (paused, covered), no text on the glasses: the request is on the monitors
+    takeover      alert_off: nothing to take away, still covered and paused (manual driving to the end)
     block end     pause
 
 The commands go to the server (POST /api/control), which passes them to the glasses app over its
@@ -122,9 +122,15 @@ class VideoLink(object):
         self._worker.join(wait)
 
     def start(self):
+        """play with the video's name and start: the app (v13+) opens it itself when no video is open
+        (its home screen) or another one is (--video-file; without it the one last saved on the
+        glasses), then seeks to t."""
+        fields = {}
+        if self._file:
+            fields['file'] = self._file
         if self._start > 0:
-            self._send('seek', t=self._start)
-        self._send('play')
+            fields['t'] = self._start
+        self._send('play', **fields)
 
     def pause(self, qid=''):
         self._send('freeze', id=qid)
