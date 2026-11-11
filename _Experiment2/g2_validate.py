@@ -58,6 +58,7 @@ SCENE_PX = (960, 540)                # the live scene video
 SETTLE_S = 1.0                       # s after a target appears before its gaze counts
 COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
+MIRROR_MESSAGE = '미러는 운전할 때처럼 고개를 돌려서 보세요'   # before the first mirror target
 MIN_SAMPLES = 20
 # the monitors: (name, monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). The
 # middle monitor's centre and corners, then where the experiment's mirrors are (abc_experiment's driver
@@ -128,6 +129,7 @@ class Recording(object):
         with open(os.path.join(self.dir, 'g2_sync.json'), encoding='utf-8') as handle:
             self.sync = json.load(handle)
         self.gaze = []                  # (glasses ts us, PC time, x, y): valid gp samples
+        self.gyro = []                  # (glasses ts us, [x, y, z] deg/s): the head unit's gyroscope
         self.gaze_packets = 0
         with open(os.path.join(self.dir, 'g2_data.jsonl'), encoding='utf-8') as handle:
             for line in handle:
@@ -136,11 +138,33 @@ class Recording(object):
                     p = json.loads(text)
                 except ValueError:
                     continue
+                if 'gy' in p and p.get('s') == 0:
+                    self.gyro.append((p['ts'], p['gy']))
                 if 'gp' in p:
                     self.gaze_packets += 1
                     if p.get('s') == 0:
                         self.gaze.append((p['ts'], float(pc), p['gp'][0], p['gp'][1]))
         self.gaze.sort()
+        self.gyro.sort()
+
+    def head_rotation(self, still, start):
+        """The head's rotation (deg about the head unit's x, y, z) from PC time start on, as a function of
+        glasses ts: the gyroscope less its bias (its median while the head is still, PC times still[0]..
+        still[1]) summed up. Drifts by a degree or so over half a minute."""
+        t0, t1 = self.pc_to_ts(still[0]), self.pc_to_ts(still[1])
+        rest = [g for t, g in self.gyro if t0 <= t <= t1] or [g for _, g in self.gyro[:100]]
+        bias = [statistics.median(g[i] for g in rest) for i in range(3)] if rest else [0.0, 0.0, 0.0]
+        begin = self.pc_to_ts(start)
+        angle_now, prev, series = [0.0, 0.0, 0.0], None, []
+        for t, g in self.gyro:
+            if t < begin:
+                continue
+            if prev is not None:
+                for i in range(3):
+                    angle_now[i] += (g[i] - bias[i]) * (t - prev) / 1e6
+            prev = t
+            series.append((t, list(angle_now)))
+        return series, bias
 
     def valid_share(self):
         return round(len(self.gaze) / float(self.gaze_packets), 3) if self.gaze_packets else None
@@ -340,14 +364,20 @@ def validate_monitor(host, out_dir, screen, link):
     rec = Recording(host, os.path.join(out_dir, 'monitor'))
     print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s)'
           % (len(MONITOR_POINTS), len(MONITOR_POINTS) * (SETTLE_S + COLLECT_S)))
-    screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요 (미러 자리는 고개를 돌려도 됩니다)')
+    screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요')
     glasses_cue(link, '이제 모니터를 보세요')
+    still = (time.time() + 0.5, time.time() + MESSAGE_S)    # the head still: the gyroscope's bias
     time.sleep(MESSAGE_S)
     glasses_cue(link)
     shown = []
+    told = False
     for point in MONITOR_POINTS:
         if screen.aborted:
             break
+        if 'mirror' in point[0] and not told:
+            screen.message(MIRROR_MESSAGE)
+            time.sleep(MESSAGE_S)
+            told = True
         if screen.target(point[1:]):
             shown.append((point, time.time()))
             time.sleep(SETTLE_S + COLLECT_S)
@@ -370,6 +400,7 @@ def validate_monitor(host, out_dir, screen, link):
         found = find_target(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cv2)
         frames.append((a * pts + b, None if found is None else (found[0] / SCENE_PX[0], found[1] / SCENE_PX[1])))
     results = []
+    rotation, bias = rec.head_rotation(still, shown[0][1] if shown else still[1])
     for point, at in shown:
         t0, t1 = rec.pc_to_ts(at + SETTLE_S), rec.pc_to_ts(at + SETTLE_S + COLLECT_S)
         gaze = [(t, x, y) for t, _, x, y in rec.gaze if t0 <= t <= t1]
@@ -382,7 +413,16 @@ def validate_monitor(host, out_dir, screen, link):
                 errors.append(angle((x, y), target))
                 targets.append(target)
         name = point[0]
-        results.append(_point_result(name, gaze, targets, errors, len([1 for ft, _ in frames if t0 <= ft <= t1])))
+        out = _point_result(name, gaze, targets, errors, len([1 for ft, _ in frames if t0 <= ft <= t1]))
+        turned = [a for t, a in rotation if t0 <= t <= t1]
+        if turned:
+            # from the first target (the road ahead): which axis is the head's yaw and its sign is
+            # the head unit's; read it off a run where the head turned
+            out['head_rotation_deg'] = [round(statistics.median(a[i] for a in turned), 1) for i in range(3)]
+            out['shown_pc'] = round(at, 3)
+            print('  %-22s head rotation from the road target: x %+.1f, y %+.1f, z %+.1f deg'
+                  % ('', out['head_rotation_deg'][0], out['head_rotation_deg'][1], out['head_rotation_deg'][2]))
+        results.append(out)
     return results, rec.valid_share()
 
 
