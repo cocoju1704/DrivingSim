@@ -325,7 +325,7 @@ def glasses_cue(link, text=None):
     if link is None:
         return
     try:
-        link.calib('blank', text)
+        link.calib_now('blank', text)
     except OSError:
         pass
 
@@ -428,7 +428,7 @@ def validate_display(host, out_dir, screen, link):
         for x, y in DISPLAY_POINTS:
             if screen.aborted:
                 break
-            link.calib('px:%d,%d' % (x, y))
+            link.calib_now('px:%d,%d' % (x, y))
             shown.append(((x, y), time.time()))
             time.sleep(SETTLE_S + COLLECT_S)
     finally:
@@ -474,7 +474,7 @@ def run(host, devices, out_dir, screen, result):
     finally:
         if link is not None:
             try:
-                link.calib('off')      # the menu back
+                link.calib_now('off')      # the menu back
             except OSError:
                 pass
             link.close()

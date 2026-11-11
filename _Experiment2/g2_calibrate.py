@@ -50,7 +50,8 @@ DOTS = ('c', 'tl', 'tr', 'br', 'bl')
 DOT_SETTLE_S = 1.2           # s after a dot appears before its gaze counts (the eyes get there)
 DOT_COLLECT_S = 1.5          # s of gaze per dot
 MIN_SAMPLES = 20             # valid gaze samples a dot needs (50 Hz: 75 in DOT_COLLECT_S)
-MAX_SPREAD = 0.02            # median distance of a dot's samples from their median (0..1 of the scene camera)
+MAX_SPREAD = 0.03            # median distance of a dot's samples from their median (0..1 of the scene camera);
+                             # the display only has to tell 'looking at it' (about 12 x 12 degrees)
 
 
 def dot_px(dot):
@@ -146,7 +147,7 @@ def glasses_link(video_address):
     from video_link import VideoLink
     link = VideoLink(video_address)
     try:
-        delivered = link.calib('blank')
+        delivered = link.calib_now('blank')
     except OSError as error:
         print('The video server at %s is not reached (%s): start it, open the app on the glasses' % (
             link.base, error))
@@ -162,7 +163,7 @@ def glasses_link(video_address):
         print('The glasses app is v%d, these steps need v%d (calib blank): update it (git pull where the '
               'server runs, then reopen the app; or disconnect and connect the web app in Meta AI)'
               % (version, MIN_APP_VERSION))
-        link.calib('off')
+        link.calib_now('off')
         link.close()
         return None
     return link
@@ -181,12 +182,12 @@ def calibrate_display(g2_host, link, calibration):
                   'moves (5 dots, %.0f s). Enter: start > ' % (len(DOTS) * (DOT_SETTLE_S + DOT_COLLECT_S)))
         except EOFError:
             pass
-        link.calib('blank', '이제 글래스를 보세요')
+        link.calib_now('blank', '이제 글래스를 보세요')
         time.sleep(CUE_S)
         found = {}
         for dot in DOTS:
             for attempt in range(2):
-                link.calib('px:%d,%d' % dot_px(dot))
+                link.calib_now('px:%d,%d' % dot_px(dot))
                 shown = time.time()
                 time.sleep(DOT_SETTLE_S + DOT_COLLECT_S)
                 points = gaze.between(shown + DOT_SETTLE_S, shown + DOT_SETTLE_S + DOT_COLLECT_S)
@@ -200,9 +201,19 @@ def calibrate_display(g2_host, link, calibration):
                     print('  %-2s unsteady (spread %.3f): again' % (dot, spread))
                 else:
                     print('  %-2s too few valid samples (%d): again' % (dot, len(points)))
-        link.calib('blank')
+        link.calib_now('blank')
     finally:
         gaze.close()
+    corners = ('tl', 'tr', 'br', 'bl')
+    missing = [d for d in corners if d not in found]
+    if 'c' in found and len(missing) == 1:
+        # one corner (mostly a bottom one, at the edge of the scene camera's view): from the other three,
+        # a parallelogram (opposite = sum of its neighbours minus the far one)
+        k = corners.index(missing[0])
+        a, b, far = found[corners[(k - 1) % 4]], found[corners[(k + 1) % 4]], found[corners[(k + 2) % 4]]
+        gp = [round(a['gp'][i] + b['gp'][i] - far['gp'][i], 4) for i in range(2)]
+        found[missing[0]] = {'gp': gp, 'estimated': True, 'display_px': list(dot_px(missing[0]))}
+        print('  %-2s estimated from the other three corners: (%.3f, %.3f)' % (missing[0], gp[0], gp[1]))
     if len(found) < len(DOTS):
         print('Glasses display not found: %s missing. Run again (--display-only).'
               % ', '.join(d for d in DOTS if d not in found))
@@ -243,7 +254,7 @@ def main():
     finally:
         if link is not None:
             try:
-                link.calib('off')       # the menu back
+                link.calib_now('off')       # the menu back
             except OSError:
                 pass
             link.close()

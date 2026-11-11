@@ -29,7 +29,7 @@ import time
 import urllib.error
 import urllib.request
 
-TIMEOUT = 2.0
+TIMEOUT = 6.0   # s: through a phone hotspot the TLS handshake alone takes up to ~3 s
 # Cloudflare (https://video.cocoju.dev) answers urllib's default "Python-urllib/x.y" with 403 (error 1010)
 HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
@@ -68,18 +68,25 @@ class VideoLink(object):
                     raise
             time.sleep(0.2)
 
-    def calib(self, dot, text=None):
+    def calib_now(self, dot, text=None):
         """The glasses app's calibration layer (calib.js): dot 'c' / 'tl' ... / 'px:X,Y' (600x600 px),
         'blank' (black, i.e. see-through, over the menu), 'off'; text: a line of guidance on it.
-        Returns how many apps got it. Raises when the server is not reached."""
+        Sent at once (calib() below queues it for the experiment's worker); returns how many apps got
+        it. Raises when the server is not reached."""
         data = {'action': 'calib', 'dot': dot}
         if text:
             data['text'] = text
         return self._post('/api/control', data).get('delivered', 0)
 
-    def app_version(self):
-        """The glasses app's version (APP_VERSION) from its last report, 0 if none or older than v9."""
-        return int(self.state().get('v') or 0)
+    def app_version(self, tries=4):
+        """The glasses app's version (APP_VERSION) from its last report, 0 if none or older than v9
+        (tried again: through the hotspot a request now and then gets no answer)."""
+        for attempt in range(tries):
+            state = self.state()
+            if state.get('received_ts'):
+                return int(state.get('v') or 0)
+            time.sleep(0.5)
+        return 0
 
     def state(self):
         """The glasses' last report (position t in s, paused, frozen, title), {} if none."""

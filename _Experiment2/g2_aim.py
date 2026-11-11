@@ -31,7 +31,7 @@ import g2_validate as v
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RECORD_S = 1.2
-GOOD_DEG = 3.0          # within this both ways: aimed
+GOOD_DEG = 3.0          # within this both ways: aimed (--good=DEG)
 # where the monitor centre should be, degrees from the camera's centre (- = up in the view): the camera
 # must see both the monitors above and the glasses display below, so it points a little down
 # (--aim-v=-6.5: the Ray-Ban Display's bottom edge is about 28 deg down, the monitor's top about 9.5 deg
@@ -103,6 +103,8 @@ def main():
     import cv2
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     aim_v = next((float(a.split('=', 1)[1]) for a in sys.argv[1:] if a.startswith('--aim-v=')), AIM_V)
+    global GOOD_DEG
+    GOOD_DEG = next((float(a.split('=', 1)[1]) for a in sys.argv[1:] if a.startswith('--good=')), GOOD_DEG)
     with open(os.path.join(HERE, 'devices.json'), encoding='utf-8') as handle:
         host = args[0] if args else json.load(handle)['g2']
     mons = v.monitors()
