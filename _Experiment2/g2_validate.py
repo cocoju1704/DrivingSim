@@ -60,6 +60,10 @@ COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
 MIRROR_MESSAGE = '미러는 운전할 때처럼 고개를 돌려서 보세요'   # before the first mirror target
 MIN_SAMPLES = 20
+# pass (the participant's fit is good enough for the experiment), from the 2026-11-11 pilot
+PASS_ROAD_DEG = 1.5              # the road target
+PASS_MONITOR_MEAN_DEG = 3.0      # all monitor and mirror targets
+PASS_DISPLAY_MEDIAN_DEG = 3.0    # the glasses display ("looking at it": the display is about 12 deg)
 # the monitors: (name, monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). The
 # middle monitor's centre and corners, then where the experiment's mirrors are (abc_experiment's driver
 # view over 3 x 1920 x 1080, measured on its screen snapshot): for those the head may turn, as it does
@@ -495,6 +499,30 @@ def summary(results, valid):
             'sd_mean_deg': round(sum(r['sd_deg'] for r in ok) / len(ok), 3), 'gaze_valid_share': valid}
 
 
+def judge(result):
+    """(passed, reasons) for the parts measured this run, None if none was."""
+    reasons, measured = [], False
+    if 'monitor' in result:
+        measured = True
+        points = {p['point']: p for p in result['monitor'] or []}
+        road = points.get('road', {}).get('accuracy_deg')
+        if road is None or road > PASS_ROAD_DEG:
+            reasons.append('도로 중앙 %s (%.1f° 이하)' % ('측정 실패' if road is None else '%.1f°' % road, PASS_ROAD_DEG))
+        lost = [name for name, p in points.items() if 'mirror' in name and 'accuracy_deg' not in p]
+        if lost:
+            reasons.append('측정 안 된 미러: ' + ', '.join(lost))
+        mean = (result.get('monitor_summary') or {}).get('accuracy_mean_deg')
+        if mean is None or mean > PASS_MONITOR_MEAN_DEG:
+            reasons.append('모니터 평균 %s (%.1f° 이하)' % ('-' if mean is None else '%.1f°' % mean, PASS_MONITOR_MEAN_DEG))
+    if 'display' in result:
+        measured = True
+        median = (result.get('display_summary') or {}).get('accuracy_median_deg')
+        if median is None or median > PASS_DISPLAY_MEDIAN_DEG:
+            reasons.append('안경 화면 중앙값 %s (%.1f° 이하)' % ('-' if median is None else '%.1f°' % median,
+                                                         PASS_DISPLAY_MEDIAN_DEG))
+    return (not reasons, reasons) if measured else None
+
+
 def run(host, devices, out_dir, screen, result):
     link = None
     try:
@@ -552,6 +580,11 @@ def main():
                      100 * (s['gaze_valid_share'] or 0)))
         elif key.split('_')[0] in result:
             print('%-16s not measured' % name)
+    verdict = judge(result)
+    if verdict is not None:
+        result['pass'], result['pass_reasons'] = verdict
+        print()
+        print('%s' % ('통과' if verdict[0] else '다시 착용: ' + ', '.join(verdict[1])))
     if screen.aborted:
         print('Stopped (Esc)')
     with open(os.path.join(out_dir, 'g2_validation.json'), 'w', encoding='utf-8') as handle:

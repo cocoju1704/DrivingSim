@@ -41,6 +41,11 @@ AIM_V = -6.5
 # limits: green (good), yellow (still tracked); beyond: tracking breaks up
 TRACK_SPHERE = {'left': (32.5, -27.0, -19.0), 'right': (-32.5, -27.0, -19.0)}
 GREEN_MM, YELLOW_MM = 10.0, 12.5
+# the fit check ("착용 OK"): the camera aimed and both pupils within FIT_MAX_MM of their place, the two
+# within FIT_ASYM_MM of each other (more: the glasses sit tilted, one eye drops out); from the
+# 2026-11-11 pilot, where the Ray-Ban Display under the Glasses 2 keeps them 12-13 mm out at best
+FIT_MAX_MM = 13.0
+FIT_ASYM_MM = 2.0
 
 
 def offset_deg(x, y):
@@ -135,9 +140,9 @@ def main():
     side = mons[-1] if len(mons) > 1 else middle
     view = window(side, '#111')
     sw, sh = side[2] - side[0], side[3] - side[1]
-    scale = min(sw * 0.9 / v.SCENE_PX[0], sh * 0.7 / v.SCENE_PX[1])
+    scale = min(sw * 0.9 / v.SCENE_PX[0], sh * 0.62 / v.SCENE_PX[1])
     iw, ih = int(v.SCENE_PX[0] * scale), int(v.SCENE_PX[1] * scale)
-    ix, iy = (sw - iw) // 2, 40
+    ix, iy = (sw - iw) // 2, 80
     view.winfo_toplevel().focus_force()
     updates = queue.Queue()
     work = tempfile.mkdtemp(prefix='g2_aim_')
@@ -162,6 +167,7 @@ def main():
             root.after(100, show)
             return
         view.delete('all')
+        aimed = False
         if frame is None:
             view.create_text(sw / 2, sh / 2, fill='white', font=('Malgun Gothic', 28),
                              text='장면 영상이 없습니다' + (': %s' % found if isinstance(found, str) else ''))
@@ -207,9 +213,24 @@ def main():
             lines.append(('%s: 기준에서 %.1f mm (%s, 위아래 %+.0f, 좌우 %+.0f mm)' % (name, dist, depth, d[1], d[0]), colour))
         for k, (text, colour) in enumerate(lines):
             view.create_text(sw / 2, iy + ih + 170 + 40 * k, text=text, fill=colour, font=('Malgun Gothic', 22))
+        dists = {e: math.sqrt(sum(c * c for c in d)) for e, d in eyes.items()}
+        problems = []
+        if not aimed:
+            problems.append('카메라 각도')
+        if len(dists) < 2:
+            problems.append('동공')
+        else:
+            if max(dists.values()) > FIT_MAX_MM:
+                problems.append('눈과의 거리 (%.0f mm 이하)' % FIT_MAX_MM)
+            if abs(dists['left'] - dists['right']) > FIT_ASYM_MM:
+                problems.append('좌우 기울기 (차이 %.1f mm)' % abs(dists['left'] - dists['right']))
+        fit = not problems
+        view.create_text(sw / 2, 20, anchor='n', font=('Malgun Gothic', 34, 'bold'),
+                         fill='#6f6' if fit else '#f96',
+                         text='착용 OK' if fit else '착용 확인: ' + ', '.join(problems))
         if eyes:
-            print('eyes ' + ', '.join('%s %.1f mm (z %+.1f)' % (e, math.sqrt(sum(c * c for c in d)), d[2])
-                                      for e, d in sorted(eyes.items())))
+            print('eyes ' + ', '.join('%s %.1f mm (z %+.1f)' % (e, dists[e], d[2]) for e, d in sorted(eyes.items()))
+                  + ('  fit ok' if fit else '  fit: ' + ', '.join(problems)))
             sys.stdout.flush()
         root.after(100, show)
 
