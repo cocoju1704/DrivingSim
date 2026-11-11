@@ -661,6 +661,8 @@ def build_args():
     parser.add_argument('--sim-driver', choices=('safe', 'unsafe', 'brake'),
                         help='checking the TOR: a scripted driver takes over 1 s after the alert and changes '
                              'to the safe or the unsafe lane, or brakes')
+    parser.add_argument('--snap', type=float, nargs='+', metavar='T',
+                        help='checking: save the screen and each mirror inset (x3) at these block times, to <data>/snaps/')
     parser.add_argument('--hud-preview', action='store_true',
                         help="the outline of the HUD's video area right of the cluster (for setting up)")
     parser.add_argument('--gaze', action='store_true', help='Tobii Pro Nano: gaze_bridge.py sends the gaze (UDP)')
@@ -733,10 +735,12 @@ def run(args):
             from g2_link import G2Link
             block.g2 = G2Link(args.g2, os.path.basename(block.log.dir or 'abc'), record=args.g2_record,
                               stream_dir=None if args.g2_no_stream else block.log.dir)
-            display = os.path.join(HERE, 'g2_display.json')  # the glasses display in the Glasses 2 gaze (g2_calibrate.py)
-            if block.log.dir and os.path.isfile(display):
-                import shutil
-                shutil.copy(display, os.path.join(block.log.dir, 'g2_display.json'))
+            # the glasses display in the Glasses 2 gaze (g2_calibrate.py) and the gaze's accuracy (g2_validate.py)
+            for name in ('g2_display.json', 'g2_validation.json'):
+                path = os.path.join(HERE, name)
+                if block.log.dir and os.path.isfile(path):
+                    import shutil
+                    shutil.copy(path, os.path.join(block.log.dir, name))
         if args.video:
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start))
@@ -847,6 +851,7 @@ def run(args):
         block._marks_done.update(k for e in schedule['events'] if e['t'] < args.start_at for k in (e['id'], e['id'] + '/end'))
         fixed_frames = 0
         holding = True  # the start speed (START_HOLD_S)
+        snaps = sorted(args.snap or [])
         clock = pygame.time.Clock()
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
         for player in block.media:
@@ -993,6 +998,14 @@ def run(args):
             overlay.render(display, block.mode, speed_kmh, pedal,
                            block.tor.alert_wall if block.tor is not None and block.mode in (TOR, STOPPED) else None)
             pygame.display.flip()
+            if snaps and t >= snaps[0]:
+                snaps.pop(0)
+                save_snapshot(display, world.camera_manager, t, state, mirrors, block.log.dir or DATA_DIR)
+                # saving takes seconds: the next steps one frame each, not that long (as after a question)
+                ticker.wait()
+                settings.fixed_delta_seconds = 1.0 / args.fps
+                sim_world.apply_settings(settings)
+                fixed_frames = RESUME_FIXED_FRAMES
         # the end of the block
         block.mark(t, 'block end')
     finally:
@@ -1049,6 +1062,27 @@ def run(args):
                 logging.exception('Feedback screen')
         pygame.quit()
     return aborted
+
+
+def save_snapshot(display, manager, t, state, mirrors, directory):
+    """--snap: the whole window and each mirror inset (3 x larger, as it is drawn) as PNG files, named
+    with the time and the event cars' dx and mirrors."""
+    folder = os.path.join(directory, 'snaps')
+    os.makedirs(folder, exist_ok=True)
+    events = ['%s_dx%.0f_%s' % (cid, dx, '+'.join('%s%.0fpx' % kv for kv in sorted(mirrors.get(cid, {}).items())) or 'none')
+              for cid, (lane, dx, dv) in sorted(state.items()) if cid.split('-')[1][:1] in 'SR' and '-B' not in cid
+              and '-Q' not in cid and '-F' not in cid]
+    name = 't%06.1f_%s' % (t, '_'.join(events) or 'noevent')
+    pygame.image.save(display, os.path.join(folder, name + '_screen.png'))
+    for rect, camera, _ in getattr(manager, 'mirror_views', []):
+        offset = camera.get_transform().location - manager._parent.get_location()  # pylint: disable=protected-access
+        right = manager._parent.get_transform().get_right_vector()  # pylint: disable=protected-access
+        side = offset.x * right.x + offset.y * right.y
+        which = 'left' if side < -0.5 else 'right' if side > 0.5 else 'rear'
+        crop = display.subsurface(rect.clip(display.get_rect())).copy()
+        crop = pygame.transform.scale(crop, (crop.get_width() * 3, crop.get_height() * 3))
+        pygame.image.save(crop, os.path.join(folder, '%s_%s.png' % (name, which)))
+    logging.info('Snapshot %s', name)
 
 
 def sim_driver(kind, tor, route, s, transform, lateral, speed, wanted_kmh):

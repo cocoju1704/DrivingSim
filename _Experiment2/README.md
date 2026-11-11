@@ -14,6 +14,12 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 아이패드(SAGAT)는 Safari에서 시작 창에 표시된 `http://<PC IP>:5011/`을 열어 둡니다. 실행 사이에도
 그대로 열어 두면 되고, 홈 화면에 추가하면 전체 화면으로 쓸 수 있습니다.
 
+아이패드 대신 **노트북**으로 받으려면(카톡방 NDRT와 같은 방식, 둘 다 mocap Wi-Fi) `sagat_laptop.bat` 한 파일만
+노트북에 복사해 실행합니다. 실험 PC가 응답할 때까지(블록이 시작될 때까지) 기다렸다가 Edge/Chrome 전체 화면(키오스크)으로
+페이지를 엽니다. 마우스로 칸·버튼을 누르고 제출하면 되고, 블록 사이에도 그대로 두면 다시 연결됩니다(Alt+F4로 닫기).
+실험 PC 주소가 `192.168.0.68`이 아니면 `sagat_laptop.bat <주소>`로 실행하거나 파일 안의 `PC=` 줄을 고칩니다.
+노트북의 화면 끄기·절전은 "안 함"으로 해 둡니다. 실험 PC 방화벽은 python.exe를 개인 네트워크(mocap)에서 허용하고 있습니다.
+
 | 옵션 | 내용 |
 |---|---|
 | 테스트 | 데이터를 `Data/test/<월일시분초>/`에 저장 (끄면 `Data/P03_B1_A_glasses/`) |
@@ -21,6 +27,18 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 | Tobii Pro Nano | `gaze_bridge.py`를 별도 콘솔로 띄우고 `--gaze`로 실행 (frames.csv에 gaze_* 열, gaze_*.csv) |
 | Tobii Glasses 2 주소 | 사건마다 G2 녹화에 이벤트 마커 (`abc_*`). "녹화도 시작/종료"를 켜면 녹화도 직접 시작·종료: 글래스를 켠 뒤 한 캘리브레이션의 참가자로 녹화하고, 없으면 이전 캘리브레이션으로 대신함(경고). 유선 랜: `fe80::76fe:48ff:fe2f:3ff0%15` (`%15`는 이 PC 랜 포트 번호), 글래스 Wi-Fi: `192.168.71.50` |
 | NDRT 영상 서버 | mrbd-video 서버 주소. SAGAT 때 안경 영상이 함께 멈추고 가려짐 (`video_link.py`). 부하 때문에 다른 노트북에서 서버를 띄우면 그 주소(예: `http://192.168.0.69:8080`, 기본값은 `devices.json`의 `video`), 안경도 그 노트북 주소로 접속 |
+
+## 글래스 착용과 캘리브레이션 (글래스 조건, 참가자마다)
+
+자세한 안내와 근거: Notion "글래스 착용 안내사항".
+
+1. 자리: 눈과 가운데 모니터 사이 0.9 m(화면당 43°로 렌더링), 눈높이는 가운데 모니터 중앙쯤. 모니터 양 끝 사이 172 cm(옆 모니터 43°).
+2. 연결: 실험 PC, 영상 서버 노트북, Meta AI 폰이 같은 핫스팟(학교망은 `video.cocoju.dev`를 막음). 안경 앱 홈 화면에 v13 이상(블록 시작 때 영상이 안 열려 있으면 앱이 직접 엶: `--video-file`, 없으면 안경에 마지막으로 저장한 영상).
+3. 착용: Glasses 2를 코받침이 닿게 끝까지 올려 얼굴에 밀착, 양쪽 귀 높이를 같게. 앞머리는 넘기고 진한 아이 메이크업은 피함.
+4. 착용 점검: `python g2_aim.py --aim-v=-3.5 --good=2`, 오른쪽 모니터에 "착용 OK"(카메라 세로 −2 ~ −5°, 두 눈 13 mm 이하, 좌우 차이 2 mm 이하). Esc로 끔.
+5. 캘리브레이션: `python g2_calibrate.py` (1단계 고개 고정·고리 가운데, 2단계 눈으로만 빨간 점).
+6. 검증: `python g2_validate.py`, 끝에 "통과"(도로 중앙 1.5° 이하, 모니터·미러 평균 3° 이하·미러 셋 다 측정, 안경 화면 중앙값 3° 이하). 아니면 3번부터 다시.
+7. 휴식 뒤나 안경을 만진 뒤에는 5·6번을 다시.
 
 ## 블록 배정 (`launcher.py`의 `assignment()`)
 
@@ -101,7 +119,11 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 
 - 뒤쪽 차는 80 m 뒤, 앞쪽 차는 250 m 앞에서 나타나고 사라집니다(`spawn_dx_m`, `spawn_ahead_dx_m`: 80 m 앞에서는
   눈앞에서 생기고 사라지는 게 보였음). 120 m보다 먼 앞에서는 상대 속도 25 km/h 이상으로 다가오거나 멀어집니다
-  (`FAR_AHEAD_M`, `FAR_DV`). 배경 차의 상대 속도 10–25 km/h, 70 %는 자기 차보다 빠름(`faster_share`).
+  (`FAR_AHEAD_M`, `FAR_DV`). 배경 차의 상대 속도 10–25 km/h. 1차로가 추월 차로(`fast_lane` 1): 1차로 차의 85 %는
+  자기 차보다 빠르고 3차로 차의 85 %는 느림(`fast_lane_share`). 반대로는 `abc_schedule.py --fast-lane 3`
+  (또는 `fast_lane` 3), 차로 구분 없이 `faster_share`로는 `--fast-lane 0`.
+- 도로의 맨 왼쪽 차로(중앙분리대 옆, 스케줄의 차로 0: 자기 차의 두 차로 왼쪽)에도 배경 차가 80 m 안에 1–2대
+  (`lane0_n_within_80m`, 속도는 1차로와 같은 방향). SAGAT 격자 밖이라 정답·질문에 들어가지 않고, TOR 정리 때 같이 사라집니다.
 - SAGAT 질문 5 s 전부터(`hold_s`) 격자(±50 m)에 차가 들고 나거나 칸이 바뀌지 않습니다(`_holds`): 질문 배치의 차는
   그동안 자기 차와 나란히(상대 ±1.2 km/h) 달리고, 다가오는 차만 자기 칸 안에서 계속 다가옵니다.
 - 세트 B의 시드는 2202(202에서는 50 m 안 차 수가 평균 2.8대로 적었음).
@@ -216,11 +238,14 @@ SAGAT 점수는 문항마다 (격자 8칸 정답률 + 접근 차량 정답 + 안
 | abc_schedule.py | 스케줄 생성·점검, SAGAT 배치 계산, 커브 피하기 |
 | abc_ego.py | 자기 차 속도·곡률 프로파일, 출발 위치별 커브 시간표 |
 | sagat_server.py, sagat_app/ | 태블릿 서버·페이지 (`python sagat_server.py` 단독 실행 시 20초마다 시험 문항) |
+| sagat_laptop.bat | 노트북용: 실험 PC의 SAGAT 페이지를 기다렸다가 전체 화면으로 열기 |
 | g2_link.py | Tobii Pro Glasses 2 REST API (마커, 녹화) |
 | g2_stream.py | 글래스의 실시간 시선·장면 영상을 블록 데이터 폴더에 저장 (`--g2`이면 자동, 별도 프로세스): `g2_scene.ts`, `g2_data.jsonl`, `g2_sync.json` (영상 PTS → 글래스 시계 → PC 시각). 끄기: `--g2-no-stream` |
 | g2_calibrate.py | 글래스 캘리브레이션 (Controller 없이): 참가자가 타깃 중앙을 보면 Enter. 이어서 안경 화면 보정: Ray-Ban Display에 가운데·네 꼭짓점 점을 띄워(mrbd-video `calib`) 그 시선으로 안경 화면의 윤곽(장면 카메라 좌표) → `g2_display.json`(블록마다 데이터 폴더로 복사). `--display-only`, `--no-display` |
-| calibration_target/ | 캘리브레이션 타깃 (매뉴얼 부록 D 치수: 고리 43 mm): 인쇄용 SVG(100 %), 화면용 HTML |
-| video_link.py | mrbd-video 연동 (freeze / resume) |
+| g2_validate.py | 캘리브레이션 뒤 시선 정확도(도): 모니터(주 모니터에 타깃 9개, 장면 영상에서 타깃을 찾아 프레임마다 시선과 비교, OpenCV 필요)와 안경 화면(보정에 안 쓴 점 8개, `g2_display.json` 윤곽으로 예측한 위치와 비교). 점마다 정확도(중앙값 각도)·정밀도(RMS-S2S, SD) → `g2_validation.json`(블록마다 데이터 폴더로 복사), 스트림은 `g2_validation/<시각>/`. `--monitor`, `--display` |
+| calibration_target/ | 캘리브레이션 타깃 (매뉴얼 부록 D 치수: 고리 43 mm): 인쇄용 SVG(100 %), 화면용 HTML (`?y=85`: 타깃 높이 %, 장면 카메라가 아래를 향할 때) |
+| mirror_gaze.py | 장면 영상에서 미러 응시 판정: 시선 주변에서 미러(유리·검은 하우징 윤곽, `mirror_ref/`)를 찾아 시선이 그 유리 안인지. 블록 폴더에 `mirror_gaze.csv`(프레임), `mirror_glances.csv`(응시 구간), `mirror_windows.csv`(사건 창·TOR별 AOI 미러 응시 여부, 첫 응시, 머문 시간). `--images`: 응시마다 그림(`mirror_gaze/`) |
+| video_link.py | mrbd-video 연동 (play: 영상 직접 열기, freeze / resume, TOR은 글래스에 문구 없이 정지·가림) |
 | carla_base.py | `_Experiment/takeover_experiment.py`의 복사본 (휠, 미러, 계기판, 자율주행) |
 | gaze_tracking.py, gaze_bridge.py, road_signs.py | `_Experiment`에서 복사 |
 
