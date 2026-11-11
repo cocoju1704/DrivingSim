@@ -554,9 +554,27 @@ def main():
             print('%-16s not measured' % name)
     if screen.aborted:
         print('Stopped (Esc)')
-    for path in (os.path.join(out_dir, 'g2_validation.json'), RESULT_FILE):
-        with open(path, 'w', encoding='utf-8') as handle:
-            json.dump(result, handle, indent=1)
+    with open(os.path.join(out_dir, 'g2_validation.json'), 'w', encoding='utf-8') as handle:
+        json.dump(result, handle, indent=1)
+    # RESULT_FILE keeps the other part from the last run when only one was measured (--monitor,
+    # --display): it goes into each block's data folder
+    latest = dict(result)
+    if '--monitor' in sys.argv or '--display' in sys.argv:
+        try:
+            with open(RESULT_FILE, encoding='utf-8') as handle:
+                before = json.load(handle)
+        except (OSError, ValueError):
+            before = {}
+        for part in ('monitor', 'display'):
+            if part not in result and part in before:
+                latest[part] = before[part]
+                latest[part + '_summary'] = before.get(part + '_summary')
+                latest[part + '_time'] = before.get(part + '_time', before.get('time'))
+    for part in ('monitor', 'display'):
+        if part in result:
+            latest[part + '_time'] = result['time']
+    with open(RESULT_FILE, 'w', encoding='utf-8') as handle:
+        json.dump(latest, handle, indent=1)
     print('-> %s' % RESULT_FILE)
     return 0 if result.get('monitor_summary') or result.get('display_summary') else 3
 
