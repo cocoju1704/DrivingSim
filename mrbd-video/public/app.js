@@ -10,6 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
+const APP_VERSION = 9;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -772,16 +773,40 @@ function control(d) {
 
 // 시선 보정 점: 화면(600x600) 가장자리에서 CALIB_INSET px 안쪽의 꼭짓점, 또는 중심
 const CALIB_INSET = 30;
+// The look is set here too (inline), so the dot shows even with an old style.css in the glasses' cache.
 function calibDot(dot) {
   const box = $('#calib');
-  if (!dot || dot === 'off') { box.hidden = true; return; }
+  if (!dot || dot === 'off') { box.hidden = true; box.style.display = 'none'; return; }
   if (mode && !P.paused()) P.pause();
   const w = window.innerWidth, h = window.innerHeight, i = CALIB_INSET;
   const at = { c: [w / 2, h / 2], tl: [i, i], tr: [w - i, i], br: [w - i, h - i], bl: [i, h - i] }[dot] || [w / 2, h / 2];
+  Object.assign(box.style, { display: 'block', position: 'fixed', left: '0', top: '0', width: w + 'px',
+    height: h + 'px', background: '#000', zIndex: '110' });
   const el = $('#calib-dot');
-  el.style.left = at[0] + 'px';
-  el.style.top = at[1] + 'px';
+  Object.assign(el.style, { position: 'absolute', width: '28px', height: '28px', margin: '-14px 0 0 -14px',
+    borderRadius: '50%', boxSizing: 'border-box', border: '5px solid #ff2a2a', background: '#fff',
+    left: at[0] + 'px', top: at[1] + 'px' });
   box.hidden = false;
+}
+
+// Home: 보정 점 시험 = the five dots here, without the server (1.5 s each)
+let calibTest = null;
+const calibTestButton = $('#calib-test');  // null with an old index.html in the cache
+if (calibTestButton) calibTestButton.addEventListener('click', () => {
+  clearTimeout(calibTest);
+  const seq = ['c', 'tl', 'tr', 'br', 'bl', 'off'];
+  const step = (k) => { calibDot(seq[k]); report('calib_test', seq[k]); if (k < seq.length - 1) calibTest = setTimeout(() => step(k + 1), 1500); };
+  step(0);
+});
+if ($('#app-ver')) $('#app-ver').textContent = 'v' + APP_VERSION;
+
+function calibState() {
+  const box = $('#calib'), el = $('#calib-dot');
+  if (!box || box.hidden) return null;
+  const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
+    border: cs.borderTopColor, bg: cs.backgroundColor, boxDisplay: getComputedStyle(box).display,
+    win: [window.innerWidth, window.innerHeight] };
 }
 
 function report(action, id) {
@@ -789,6 +814,7 @@ function report(action, id) {
     action: action || 'status', id: id || '', screen: current, mode: mode || '',
     title: $('#osd-title').textContent || '', t: mode ? Math.round(P.time() * 1000) / 1000 : null,
     paused: mode ? P.paused() : null, frozen: !!(held && held.frozen), ts: Date.now(),
+    v: APP_VERSION, calib: calibState(),
   };
   fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body), keepalive: true }).catch(() => {});
