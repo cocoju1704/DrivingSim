@@ -74,10 +74,29 @@ def load_schedule(name):
 # -- courses -----------------------------------------------------------------------------------
 
 
+def _outside(x, exit_dx):
+    if isinstance(exit_dx, (tuple, list)):
+        return x < -exit_dx[0] or x > exit_dx[1]
+    return abs(x) > exit_dx
+
+
+FAR_AHEAD_M = 120.0        # m: farther ahead than this a car closes in or pulls away at FAR_DV at least,
+FAR_DV = 25.0 / 3.6        # m/s (a 70 km/h car, or a 120 km/h one): cars appear and leave 300 m ahead
+FAR_ACCEL = 0.5            # m/s^2 between that and its own speed (out of sight), not minutes on the way
+
+
+def _far(x, target):
+    """The target speed with the far rule: FAR_DV at least (its own direction) beyond FAR_AHEAD_M."""
+    if x > FAR_AHEAD_M and target != 0.0:
+        return math.copysign(max(abs(target), FAR_DV), target)
+    return target
+
+
 def simulate(t0, x0, v0, commands, t_end, exit_dx=None, min_t=None):
     """dx samples every DT from t0: the speed (m/s, relative) moves towards the target of the latest
-    command [(time, target m/s, accel m/s^2 or None = at once)] at that acceleration. Stops at t_end,
-    or once |dx| > exit_dx after min_t (leaving the area)."""
+    command [(time, target m/s, accel m/s^2 or None = at once)] at that acceleration (FAR_ACCEL when
+    the far rule changes it, _far). Stops at t_end, or once |dx| > exit_dx after min_t (leaving the
+    area); exit_dx (behind, ahead): out behind or ahead."""
     xs = []
     t, x, v = t0, x0, v0
     commands = sorted(commands, key=lambda c: c[0])
@@ -87,17 +106,29 @@ def simulate(t0, x0, v0, commands, t_end, exit_dx=None, min_t=None):
         while k < len(commands) and commands[k][0] <= t + 1e-9:
             _, target, accel = commands[k]
             if accel is None:
-                v = target
+                v = _far(x, target)
             k += 1
         xs.append(round(x, 3))
-        if exit_dx is not None and abs(x) > exit_dx and (min_t is None or t >= min_t):
+        if exit_dx is not None and _outside(x, exit_dx) and (min_t is None or t >= min_t):
             break
-        if accel is not None:
-            step = accel * DT
-            v += max(-step, min(target - v, step))
+        goal = _far(x, target)
+        step = (accel if accel is not None and goal == target else FAR_ACCEL) * DT
+        v += max(-step, min(goal - v, step))
         x += v * DT
         t += DT
     return xs
+
+
+def _steps_to(x0, v0, target, accel, x_goal):
+    """Steps from x0 (moving back towards the ego car from ahead) until x <= x_goal, as simulate()."""
+    x, v, n = x0, v0, 0
+    while x > x_goal and n < 100000:
+        goal = _far(x, target)
+        step = (accel if goal == target else FAR_ACCEL) * DT
+        v += max(-step, min(goal - v, step))
+        x += v * DT
+        n += 1
+    return n
 
 
 class Car(object):
@@ -189,48 +220,92 @@ def rear_window(car, event, template):
     return [event['t'], round(t_exit + template['window_after_exit_s'], 2)], round(t_exit, 2)
 
 
-def pass_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind='bg', follow=None):
-    """Lanes 1 and 3: a constant dv (m/s) car that is at x_at at t_at; it enters at -spawn_dx (faster
-    than the ego car) or +spawn_dx (slower) and leaves at the other end. follow (time, dv, accel):
+def pass_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind='bg', follow=None, hold=None):
+    """Lanes 1 and 3: a constant dv (m/s) car that is at x_at at t_at; it enters behind (faster than
+    the ego car) or ahead (slower) and leaves at the other end; spawn_dx (behind, ahead), m. follow (time, dv, accel):
     from then on it slows down to the speed of the car ahead of it (an approaching car that has
-    caught up with the cars in its lane)."""
-    entry = -spawn_dx if dv > 0 else spawn_dx
-    t_start = t_at - (x_at - entry) / dv
-    t_start = math.ceil(t_start / DT) * DT
-    x_start = x_at - dv * (t_at - t_start)
-    commands = [follow] if follow else []
-    xs = simulate(t_start, x_start, dv, commands, t_end, exit_dx=spawn_dx, min_t=follow[0] if follow else None)
+    caught up with the cars in its lane): follow may be a list of such commands. hold (from, to, dv):
+    at that relative speed from `from` to `to` (alongside the ego car for a question), ramping at
+    HOLD_ACCEL, then back at dv."""
+    follows = (follow if isinstance(follow, list) else [follow]) if follow else []
+    if hold is not None:
+        return _held_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind, follows, hold)
+    commands = list(follows)
+    if dv > 0:  # from behind, at dv all the way in
+        entry = -spawn_dx[0]
+        t_start = t_at - (x_at - entry) / dv
+        t_start = math.ceil(t_start / DT) * DT
+        x_start, v_start = x_at - dv * (t_at - t_start), dv
+    else:  # from far ahead: FAR_DV, then dv from FAR_AHEAD_M on (_far)
+        x_start, v_start = spawn_dx[1], _far(spawn_dx[1], dv)
+        t_start = math.floor((t_at - _steps_to(x_start, v_start, dv, FAR_ACCEL, x_at) * DT) / DT) * DT
+        commands.append((t_start, dv, FAR_ACCEL))
+    xs = simulate(t_start, x_start, v_start, commands, t_end, exit_dx=spawn_dx,
+                  min_t=follows[-1][0] if follows else None)
+    return Car(cid, kind, lane, t_start, xs, [], dv_kmh=round(dv / KMH, 1))
+
+
+HOLD_ACCEL = 1.0   # m/s^2 a car slows to (or leaves) the ego car's speed at for a question's hold
+
+
+def _held_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind, follows, hold):
+    """pass_car with a hold: its start time found so that it is at x_at at t_at."""
+    t_from, t_to, dv_hold = hold
+    ramp = abs(dv - dv_hold) / HOLD_ACCEL
+    commands = [(t_from - ramp, dv_hold, HOLD_ACCEL), (t_to, dv, HOLD_ACCEL)] + list(follows)
+    if dv > 0:
+        x_start, v_start = -spawn_dx[0], dv
+        t_start = t_at - (x_at - x_start) / dv
+    else:
+        x_start, v_start = spawn_dx[1], _far(spawn_dx[1], dv)
+        t_start = t_at - _steps_to(x_start, v_start, dv, FAR_ACCEL, x_at) * DT
+    for _ in range(8):
+        t_start = round(t_start / DT) * DT
+        if t_start > t_from - ramp:
+            t_start = math.floor((t_from - ramp) / DT) * DT
+        xs = simulate(t_start, x_start, v_start, [(t_start, dv, FAR_ACCEL if dv < 0 else None)] + commands,
+                      t_at + DT, exit_dx=None)
+        k = int(round((t_at - t_start) / DT))
+        if k >= len(xs):
+            break
+        error = xs[k] - x_at
+        if abs(error) < 0.3:
+            break
+        t_start += error / dv
+    xs = simulate(t_start, x_start, v_start, [(t_start, dv, FAR_ACCEL if dv < 0 else None)] + commands,
+                  t_end, exit_dx=spawn_dx, min_t=t_to)
     return Car(cid, kind, lane, t_start, xs, [], dv_kmh=round(dv / KMH, 1))
 
 
 def lead_car(cid, hold_from, hold_to, x_hold, v_in, v_out, spawn_dx, t_end, brakes=(), kind='lead',
              brake_template=None):
-    """Lane 2 ahead: comes back from +spawn_dx at -v_in (a slower car), holds x_hold from hold_from,
+    """Lane 2 ahead: comes back from spawn_dx[1] ahead at -v_in (a slower car), holds x_hold from hold_from,
     brakes at each time in `brakes` (brake light, -8 km/h for 3 s), pulls away at +v_out from hold_to."""
     a = 0.5
     d_decel = v_in * v_in / (2.0 * a)
     t_decel = hold_from - v_in / a
-    t_start = math.ceil((t_decel - (spawn_dx - x_hold - d_decel) / v_in) / DT) * DT
-    x_start = x_hold + d_decel + v_in * (t_decel - t_start)
-    commands = [(t_start, -v_in, None), (t_decel, 0.0, a), (hold_to, v_out, a)]
+    # from far ahead (spawn_dx[1]): at FAR_DV until FAR_AHEAD_M (_far), then v_in
+    x_start, v_first = spawn_dx[1], _far(spawn_dx[1], -v_in)
+    t_start = math.floor((t_decel - _steps_to(x_start, v_first, -v_in, a, x_hold + d_decel) * DT) / DT) * DT
+    commands = [(t_start, -v_in, a), (t_decel, 0.0, a), (hold_to, v_out, a)]
     lights = []
     if brake_template:
         for t_brake in brakes:
             seconds = brake_template['brake_s']
             commands += [(t_brake, brake_template['decel_dv_kmh'] * KMH, 2.0), (t_brake + seconds, 0.0, 2.0)]
             lights.append([t_brake, t_brake + seconds, 'brake'])
-    xs = simulate(t_start, x_start, -v_in, commands, t_end, exit_dx=spawn_dx, min_t=hold_to)
+    xs = simulate(t_start, x_start, v_first, commands, t_end, exit_dx=spawn_dx, min_t=hold_to)
     return Car(cid, kind, 2, t_start, xs, lights)
 
 
 def rear2_car(cid, hold_from, hold_to, x_hold, v_in, spawn_dx, t_end, kind='rear2'):
-    """Lane 2 behind: comes up from -spawn_dx at +v_in (m/s), slowing down gently (0.4 m/s^2) to hold
+    """Lane 2 behind: comes up from spawn_dx[0] behind at +v_in (m/s), slowing down gently (0.4 m/s^2) to hold
     x_hold (-48 .. -42 m: never closer than -40 m, and slower than 3 km/h by the time it is in the
     grid's 50 m), falls back at -8 km/h from hold_to."""
     a = 0.4
     d_decel = v_in * v_in / (2.0 * a)
     t_decel = hold_from - v_in / a
-    t_start = math.ceil((t_decel - (x_hold - d_decel + spawn_dx) / v_in) / DT) * DT
+    t_start = math.ceil((t_decel - (x_hold - d_decel + spawn_dx[0]) / v_in) / DT) * DT
     x_start = x_hold - d_decel - v_in * (t_decel - t_start)
     commands = [(t_start, v_in, None), (t_decel, 0.0, a), (hold_to, -8.0 * KMH, 0.5)]
     xs = simulate(t_start, x_start, v_in, commands, t_end, exit_dx=spawn_dx, min_t=hold_to)
@@ -319,6 +394,28 @@ def question_ok(cars, q, qt, partial=False):
             dv = (x - before) / window / KMH
             if abs(dv - qt['approach_dv_kmh']) < 1.5:
                 return False
+    return all(_holds(car, q['t'], qt) for car in cars)
+
+
+def _holds(car, t, qt):
+    """From hold_s before the question to it, the car neither enters nor leaves the grid (+-50 m)
+    nor changes cell: the layout asked about has been there to be seen, not just appeared."""
+    hold = qt.get('hold_s', 0.0)
+    if not hold:
+        return True
+    cell_dx = qt['cell_dx_m']
+
+    def where(time):
+        x = car.at(time)
+        if x is None or abs(x) > 50.0:
+            return None
+        return cell_of(car.lane, x, cell_dx) or 'own'
+    now = where(t)
+    k = 1
+    while k * 0.5 <= hold + 1e-9:
+        if where(t - k * 0.5) != now:
+            return False
+        k += 1
     return True
 
 
@@ -387,6 +484,9 @@ CURVE_MARGIN = 1.0
 CURVE_WEIGHT = 20.0           # cost of a second in a curve, in seconds moved
 MOVE_MAX = 25                 # s an event may move from its time in the document
 START_STEP = 10.0             # m between the start points tried along the loop
+START_BELOW_KMH = 5.0         # only start points where the profile is at most this much below the cruise speed: a start in a curve's slow part
+                              # leaves the autonomous driving out of step with the profile for a minute (its
+                              # controller starts from rest there), 6.5 s behind the predicted curves after
 PLAN_TRIES = 20               # start points tried, best first, until the questions' cars can be placed
 CAR_LEAD = {'S': 14.1, 'SD': 14.1, 'R': 15.9}   # s from a car's appearance to its T
 CAR_TAIL = {'S': 15.4, 'SD': 15.4, 'R': 15.3}   # s from its T to its removal
@@ -529,13 +629,17 @@ def plan_times(events, block, curves, tor=None, avoid=()):
     return total, times
 
 
-def rank_starts(events, block, profile, name, tor=None, avoid=()):
+def rank_starts(events, block, profile, name, tor=None, avoid=(), cruise_kmh=0.0):
     """The start points along the loop with their event times, best first: the events in the
     curves as little as can be (plan_times). [(cost, start m, {id: time}, CurveTimes)]"""
     import abc_ego  # next to this script
     plans = []
     start = 0.0
+    speeds, size = profile['speed_mps'], profile['bin_m']
     while start < profile['length_m']:
+        if speeds[int(start / size) % len(speeds)] * 3.6 < cruise_kmh - START_BELOW_KMH:
+            start += START_STEP
+            continue
         curves = abc_ego.CurveTimes(profile, start, block['block_end_s'])
         plan = plan_times(events, block, curves, tor, avoid)
         if plan is not None:
@@ -547,8 +651,8 @@ def rank_starts(events, block, profile, name, tor=None, avoid=()):
     return plans
 
 
-def choose_start(events, block, profile, name, tor=None, avoid=()):
-    return rank_starts(events, block, profile, name, tor, avoid)[0]
+def choose_start(events, block, profile, name, tor=None, avoid=(), cruise_kmh=0.0):
+    return rank_starts(events, block, profile, name, tor, avoid, cruise_kmh)[0]
 
 
 # -- making a schedule -------------------------------------------------------------------------
@@ -562,7 +666,9 @@ def make_schedule(config, name, plan=None):
     rng = random.Random(block['seed'])
     templates = config['templates']
     bg = config['background']
-    spawn = bg['spawn_dx_m']
+    # (behind, ahead): ahead far beyond 80 m, where a car would pop up in plain view (55 px wide at
+    # 80 m on a 1920 px, 43 degree monitor; 15 px at 300 m)
+    spawn = (bg['spawn_dx_m'], bg.get('spawn_ahead_dx_m', bg['spawn_dx_m']))
     t_end = block['block_end_s']
     t_first = -200.0  # cars on the road at the start were placed before it
     tor_template = templates.get('TOR')
@@ -687,7 +793,7 @@ def make_schedule(config, name, plan=None):
                                 and not any(c.extra.get('f_event') == f['id'] for c in cars)
                                 and f_time_ok(f, f['t'])]
                     for car in anchor_cars(new_id, event, rng, targets, v_low, v_anchor, spawn, t_end,
-                                           nearby_f[:1], templates['F']):
+                                           nearby_f[:1], templates['F'], qt.get('hold_s', 0.0)):
                         if car.t0 < t_first or not rules.ok(car, cars + placed):
                             break
                         placed.append(car)
@@ -765,7 +871,7 @@ def make_schedule(config, name, plan=None):
                 car = rear2_car(new_id('B'), t_at - rng.uniform(5, 30), t_at + rng.uniform(5, 40),
                                 rng.uniform(-49, -41), rng.uniform(6, 15) * KMH, spawn, t_end, kind='bg')
         else:
-            dv = rng.uniform(v_low, v_high) * KMH * rng.choice((-1, 1))
+            dv = rng.uniform(v_low, v_high) * KMH * (1 if rng.random() < bg.get('faster_share', 0.5) else -1)
             car = pass_car(new_id('B'), lane, dv, t_at, rng.uniform(-48, 48), spawn, t_end)
         if car.t0 < t_first:
             count[0] -= 1
@@ -841,7 +947,7 @@ def make_schedule(config, name, plan=None):
             'report': report}
 
 
-def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(), f_template=None):
+def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(), f_template=None, hold_s=0.0):
     """The cars of question q's target cells. The cars of one cell lane (1 or 3) drive at the same
     speed, a group: at different speeds one would overtake the other in the same lane. A lane with
     an approaching car behind is faster than the ego car, a lane with a car behind that is not
@@ -879,6 +985,14 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
             dv = rng.uniform(v_low, (v_low + v_high) / 2.0) * KMH * rng.choice((-1, 1))
             fast = rng.uniform(max(v_low, 6.0, dv / KMH + 6.0), max(v_high, dv / KMH + 8.0)) * KMH
             follow = (t + 0.5, dv, 2.0)
+        # hold_s: the lane's cars that do not approach stay alongside (about the ego car's speed) from
+        # before the hold to just after the question (_holds), then drive on at dv
+        hold = None
+        if hold_s:
+            dv_hold = rng.uniform(-1.2, 1.2) * KMH
+            hold = (t - hold_s - 0.5, t + 2.0, dv_hold)
+        if follow and hold:  # the approaching car follows them at their hold, then on at dv
+            follow = [(t + 0.5, hold[2], 2.0), (hold[1], dv, HOLD_ACCEL)]
         elif lane in q['approach']:
             dv = rng.uniform(max(v_low, 6.0), v_high) * KMH
         elif 'rear' in zones:
@@ -891,8 +1005,11 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
                 low, high = targets[key]
                 cars.append(pass_car(new_id('Q'), lane, fast, t, rng.uniform(low, (low + high) / 2.0), spawn, t_end,
                                      follow=follow))
-            else:
+            elif lane in q['approach'] and zone == 'rear':  # the approaching car: on at its speed
                 cars.append(pass_car(new_id('Q'), lane, dv, t, rng.uniform(*targets[key]), spawn, t_end))
+            else:
+                cars.append(pass_car(new_id('Q'), lane, dv, t, rng.uniform(*targets[key]), spawn, t_end,
+                                     hold=hold))
     return cars
 
 
@@ -968,7 +1085,8 @@ def main():
             schedule = None
             events = sorted([dict(e) for e in config['sets'][name]], key=lambda e: e['t'])
             for k, plan in enumerate(rank_starts(events, config['blocks'][name], profile, name,
-                                                 config['templates'].get('TOR'), avoid)[:PLAN_TRIES]):
+                                                 config['templates'].get('TOR'), avoid,
+                                                 config['ego']['speed_kmh'])[:PLAN_TRIES]):
                 try:
                     schedule = make_schedule(config, name, plan)
                     break

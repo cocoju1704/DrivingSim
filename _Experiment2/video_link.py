@@ -106,5 +106,9 @@ class VideoLink(object):
     def alert_off(self, eid=''):
         self._send('alert_off', id=eid)
 
+    def calib(self, dot):
+        """Gaze calibration (g2_calibrate.py): one dot on a black screen, c / tl / tr / br / bl, 'off'."""
+        self._send('calib', dot=dot)
+
     def stop(self):
         self._send('pause')

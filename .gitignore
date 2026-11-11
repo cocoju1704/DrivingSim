@@ -15,6 +15,11 @@
 /_Experiment/Data/**/*.part
 !/_Experiment2/
 /_Experiment2/launcher_last.json
+/_Experiment2/g2_calibration.json
+/_Experiment2/g2_display.json
+# the glasses' live video and data of each block (g2_stream.py): large, on this PC only
+/_Experiment2/Data/**/g2_scene.ts
+/_Experiment2/Data/**/g2_data.jsonl
 # test runs (launcher "테스트") stay local
 /_Experiment2/Data/test/
 !/carla-audio-engine/

@@ -45,7 +45,7 @@ mimetypes.add_type("text/javascript", ".js")
 _clients: set[queue.Queue] = set()
 _clients_lock = threading.Lock()
 _state: dict = {}  # 안경이 마지막으로 보고한 플레이어 상태 (/api/state)
-CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_off"}
+CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_off", "calib"}
 
 
 def broadcast(event: str, data: dict) -> int:

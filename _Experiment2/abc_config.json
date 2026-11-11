@@ -7,7 +7,7 @@
     "3": 4
   },
   "ego": {
-    "speed_kmh": 95
+    "speed_kmh": 70
   },
   "event_vehicle": "vehicle.mercedes.coupe_2020",
   "event_colors": [
@@ -22,11 +22,14 @@
       7
     ],
     "dv_kmh": [
-      5,
-      15
+      10,
+      25
     ],
     "anchor_dv_kmh_max": 18,
     "spawn_dx_m": 80,
+    "spawn_ahead_dx_m": 250,
+    "faster_share": 0.7,
+    "colors": ["205,30,30", "25,75,210", "235,195,20", "30,150,60", "235,110,15", "245,245,245", "130,40,170", "15,160,170", "225,60,140"],
     "min_gap_m": 15,
     "lane2_rear_max_dx_m": -40,
     "lane2_front_min_dx_m": 28
@@ -126,6 +129,7 @@
         10
       ],
       "approach_window_s": 5,
+        "hold_s": 5,
       "approach_dv_kmh": 3,
       "margin_m": 2.5
     },
@@ -152,6 +156,7 @@
         "lane": 2,
         "spawn_rel_s": -3,
         "spawn_dx_m": 270,
+        "spawn_nominal_kmh": 95,
         "stopped": true,
         "hazard_lights": true,
         "blueprint": "vehicle.tesla.model3",
@@ -191,7 +196,7 @@
     "B": {
       "adaptation_end_s": 60,
       "block_end_s": 680,
-      "seed": 202,
+      "seed": 2202,
       "last_event_s": 580
     },
     "C": {

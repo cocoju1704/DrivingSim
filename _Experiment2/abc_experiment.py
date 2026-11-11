@@ -7,7 +7,7 @@ Scenario ABC: one block of the glasses / phone / HUD experiment (Notion: 주행 
     python _Experiment2\\abc_experiment.py --set A --block 1 --condition glasses --participant 3
     python _Experiment2\\abc_experiment.py --set P --test      practice drive, data to Data/test/
 
-The ego car drives itself in lane 2 (Town04's real lane 3) at 95 km/h until the TOR and reacts to
+The ego car drives itself in lane 2 (Town04's real lane 3) at 70 km/h (abc_config ego) until the TOR and reacts to
 nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc_schedule.py):
 
     S   a car comes up in lane 1 or 3 behind the car and signals towards lane 2 for 5 s (left or right
@@ -93,6 +93,10 @@ RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variabl
 FRONT_CELLS = ('1_front', '2_front', '3_front')
 APPROACH_ANSWER = {'left': 1, 'behind': 2, 'right': 3}
 SAFE_ANSWER = {'left': '1', 'right': '3', 'both': 'both', 'none': 'none'}
+HUD_OFF_GLASS = (10, 12, 16, 110)       # the switched-off HUD on the windshield: a faint dark pane
+HUD_OFF_RIM = (90, 95, 105, 150)
+CAMERA_ISO = 250.0                     # manual exposure of the monitor cameras: brighter than automatic
+FOG = (3.0, 60.0, 1.0)                 # fog_density, fog_distance m, fog_falloff: a light haze far ahead
 WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the blocks (the server's comes back after)
 GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
@@ -320,17 +324,45 @@ class Overlay(object):
 
     _draw_cluster = base.TakeoverExperiment._draw_cluster
     HUD_DEG = 8.0     # degrees across, as the glasses' display
-    HUD_GAP = 24      # px between the cluster and the HUD area
+    HUD_RIGHT_DEG = 9.5   # the HUD's centre, degrees right of straight ahead: clear of the badge and the TOR alert above the cluster
+    HUD_ABOVE_PX = 12     # px between the HUD's bottom and the cluster's top (the dashboard)
+    HUD_NEAR_M = 0.75     # m from the driver's eyes to the HUD's bottom edge on the windshield
+    WINDSHIELD_RAKE_DEG = 62.0   # the windshield's lean back from vertical (28 degrees above horizontal)
 
     def _cluster_face(self, size):
         face = base.TakeoverExperiment._cluster_face(size)
         width, height = size
         panel_w = face['face'].get_width()
         hud = self.hud_size(size)
-        left = (width - (panel_w + self.HUD_GAP + hud)) // 2  # the pair centred on the monitor
+        # the cluster centred on the monitor, in front of the driver: wide enough to hide the steering wheel
+        left = (width - panel_w) // 2
         face['origin'] = (left, face['origin'][1])
-        self.hud_rect = pygame.Rect(left + panel_w + self.HUD_GAP, height - hud, hud, hud)
+        # the HUD on the windshield, lower right of straight ahead (as the glasses' display), its bottom
+        # just above the dashboard (the cluster's top)
+        fov = self._world.camera_manager.screen_fov if hasattr(self._world.camera_manager, 'screen_fov') else 43.0
+        bottom = face['origin'][1] - self.HUD_ABOVE_PX
+        self.hud_poly = self._hud_polygon(width, height, fov, bottom)
+        xs, ys = [p[0] for p in self.hud_poly], [p[1] for p in self.hud_poly]
+        self.hud_rect = pygame.Rect(min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)  # its bounds
         return face
+
+    def _hud_polygon(self, width, height, fov, bottom):
+        """The HUD's corners in monitor pixels (bottom left, bottom right, top right, top left): a square
+        HUD_DEG wide lying on the windshield, which leans back (WINDSHIELD_RAKE_DEG from vertical), so
+        its top is farther away: a trapezoid, narrower and foreshortened at the top. Its bottom edge is
+        HUD_NEAR_M ahead of the driver's eyes at the pixel row `bottom`, its centre HUD_RIGHT_DEG right."""
+        focal = width / 2.0 / math.tan(math.radians(fov / 2.0))
+        z0 = self.HUD_NEAR_M
+        y0 = -z0 * (bottom - height / 2.0) / focal             # m below the eyes (the camera's own pitch left out)
+        side = 2.0 * z0 * math.tan(math.radians(self.HUD_DEG / 2.0))  # m: HUD_DEG across at its bottom
+        x_mid = z0 * math.tan(math.radians(self.HUD_RIGHT_DEG))
+        rake = math.radians(self.WINDSHIELD_RAKE_DEG)
+        z1, y1 = z0 + side * math.sin(rake), y0 + side * math.cos(rake)  # its top edge, up the glass
+
+        def pixel(x, y, z):
+            return int(round(width / 2.0 + focal * x / z)), int(round(height / 2.0 - focal * y / z))
+        return [pixel(x_mid - side / 2.0, y0, z0), pixel(x_mid + side / 2.0, y0, z0),
+                pixel(x_mid + side / 2.0, y1, z1), pixel(x_mid - side / 2.0, y1, z1)]
 
     def hud_size(self, size):
         """px across HUD_DEG at the middle monitor's field of view."""
@@ -341,6 +373,7 @@ class Overlay(object):
         self._world = world
         self._condition = condition
         self.hud_rect = None
+        self.hud_poly = None   # the HUD's trapezoid on the windshield (monitor pixels of the middle monitor)
         self._hud_preview = hud_preview
         self._phone_cluster = None
         self._cluster = None
@@ -368,6 +401,8 @@ class Overlay(object):
         """alert_since: time.monotonic() of the TOR alert while it is on (it blinks), else None."""
         self._speed_kmh, self._pedal = speed_kmh, pedal
         self._draw_cluster(display)
+        if self._world.camera_manager.transform_index == 0 and self.hud_rect is not None:
+            self._draw_hud_off(display)
         if alert_since is not None and self._world.camera_manager.transform_index == 0 and self._cluster is not None:
             self._draw_alert(display, alert_since)
         if self._world.camera_manager.transform_index == 0 and self._cluster is not None:
@@ -384,6 +419,19 @@ class Overlay(object):
                 label = self.badge.render('HUD 영상 영역 (%.0f°)' % self.HUD_DEG, True, (90, 200, 255))
                 display.blit(label, label.get_rect(center=rect.center))
 
+    def _draw_hud_off(self, display):
+        """The HUD's display, switched off, in every condition (so the cockpit looks the same in all
+        three; in the HUD condition the alert and the video are drawn over it)."""
+        x0, _, _ = self.middle()
+        rect = self.hud_rect.move(x0, 0)
+        if getattr(self, '_hud_off', None) is None or self._hud_off.get_size() != rect.size:
+            panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+            corners = [(x - self.hud_rect.x, y - self.hud_rect.y) for x, y in self.hud_poly]
+            pygame.draw.polygon(panel, HUD_OFF_GLASS, corners)
+            pygame.draw.polygon(panel, HUD_OFF_RIM, corners, width=2)
+            self._hud_off = panel
+        display.blit(self._hud_off, rect)
+
     def _draw_alert(self, display, since):
         if int((time.monotonic() - since) * 2 * base.TOR_BLINK_HZ) % 2:
             return  # the off half of the blink
@@ -395,7 +443,7 @@ class Overlay(object):
         display.blit(text, text.get_rect(center=box.center))
         if self._condition == 'hud' and self.hud_rect is not None:  # the NDRT screen: the same text
             rect = self.hud_rect.move(x0, 0)
-            pygame.draw.rect(display, (220, 30, 30), rect, border_radius=10)
+            pygame.draw.polygon(display, (220, 30, 30), [(x + x0, y) for x, y in self.hud_poly])
             for k, line in enumerate(('지금 직접', '운전하세요')):
                 line_text = self.big.render(line, True, (255, 255, 255))
                 display.blit(line_text, line_text.get_rect(center=(rect.centerx, rect.centery + (k - 0.5) * 56)))
@@ -582,17 +630,24 @@ def build_args():
                         help='the end screen stays this long at most (a key closes it)')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('-p', '--port', type=int, default=2000)
-    parser.add_argument('--res', default='7680x1440')
-    parser.add_argument('--window-pos', default='-2560,0')
+    # three 1920x1080 monitors: at 2560x1440 the GPU (RTX 3070 Ti) draws 28 fps on average with a stall every
+    # 0.2 s; at 1080p, capped at 34 fps, 33-35 fps with none (block A, 40 cars). The monitors are set to
+    # 1920x1080 in Windows (they scale it up themselves)
+    parser.add_argument('--res', default='5760x1080')
+    parser.add_argument('--window-pos', default='-1920,0')
     parser.add_argument('--screens', type=int, default=3)
     parser.add_argument('--screen-fov', type=float, default=43.0)
     parser.add_argument('--no-mirrors', action='store_true')
     parser.add_argument('--render-scale', type=float, default=1.0)
-    parser.add_argument('--fps', type=float, default=60.0)
+    parser.add_argument('--fps', type=float, default=34.0, help='frame cap: under what the GPU keeps up with (even frames)')
     parser.add_argument('--filter', default=base.DEFAULT_VEHICLE)
     parser.add_argument('--view', choices=['driver', 'windshield', 'chase'], default='driver')
     parser.add_argument('--gamma', type=float, default=2.2)
     parser.add_argument('--trees', action='store_true')
+    parser.add_argument('--camera-iso', type=float, default=CAMERA_ISO,
+                        help='manual exposure of the monitor cameras (the automatic one keeps the view dim)')
+    parser.add_argument('--fog', type=float, nargs=3, default=FOG, metavar=('DENSITY', 'DISTANCE', 'FALLOFF'),
+                        help='carla.WeatherParameters fog_density (0-100), fog_distance (m), fog_falloff')
     parser.add_argument('--no-sound', action='store_true')
     parser.add_argument('--no-audio-engine', action='store_true')
     parser.add_argument('--input', choices=['auto', 'keyboard', 'wheel'], default='auto')
@@ -613,6 +668,8 @@ def build_args():
     parser.add_argument('--gaze-tolerance', type=float, default=45.0)
     parser.add_argument('--g2', metavar='HOST', help='Tobii Pro Glasses 2 recording unit: event markers')
     parser.add_argument('--g2-record', action='store_true', help='with --g2: start and stop a recording too')
+    parser.add_argument('--g2-no-stream', action='store_true',
+                        help='with --g2: do not save the live gaze and scene video in the data folder')
     parser.add_argument('--video', metavar='HOST[:PORT]',
                         help='the NDRT video player on the glasses / phone (mrbd_video): paused at the questions')
     parser.add_argument('--video-file', default=None, help='the video the player plays (its name on the device)')
@@ -674,7 +731,12 @@ def run(args):
         sagat = SagatServer(args.sagat_port)
         if args.g2:
             from g2_link import G2Link
-            block.g2 = G2Link(args.g2, os.path.basename(block.log.dir or 'abc'), record=args.g2_record)
+            block.g2 = G2Link(args.g2, os.path.basename(block.log.dir or 'abc'), record=args.g2_record,
+                              stream_dir=None if args.g2_no_stream else block.log.dir)
+            display = os.path.join(HERE, 'g2_display.json')  # the glasses display in the Glasses 2 gaze (g2_calibrate.py)
+            if block.log.dir and os.path.isfile(display):
+                import shutil
+                shutil.copy(display, os.path.join(block.log.dir, 'g2_display.json'))
         if args.video:
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start))
@@ -685,7 +747,10 @@ def run(args):
             logging.info('Loading %s...', base.MAP_NAME)
             sim_world = client.load_world(base.MAP_NAME)
         server_weather = sim_world.get_weather()
-        sim_world.set_weather(getattr(carla.WeatherParameters, WEATHER))  # clear: no fog over the far cars
+        weather = getattr(carla.WeatherParameters, WEATHER)
+        # a light haze: the far cars (they appear and leave spawn_ahead_dx_m ahead) fade in, not pop up
+        weather.fog_density, weather.fog_distance, weather.fog_falloff = args.fog
+        sim_world.set_weather(weather)
         trees = {tree.id for tree in sim_world.get_environment_objects(carla.CityObjectLabel.Vegetation)}
         sim_world.enable_environment_objects(trees, args.trees)
         gore = {o.id for o in sim_world.get_environment_objects(carla.CityObjectLabel.Any)
@@ -697,7 +762,11 @@ def run(args):
         async_settings.fixed_delta_seconds = None
         settings = sim_world.get_settings()
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = None   # each step as long as the frame: real time
+        # a fixed step, 1 / --fps (the frame cap the GPU keeps up with: real time). Not a variable one
+        # (each step as long as the frame): when the server is held up, its step jumps (0.8 .. 2.4 s
+        # in one frame) while the physics moves at most 0.1 s, so the ego car fell behind its
+        # schedule (10 s in a lap) and the predicted curves were off
+        settings.fixed_delta_seconds = 1.0 / args.fps
         sim_world.apply_settings(settings)
         traffic_manager.set_synchronous_mode(True)
         ticker = base.SimTicker(sim_world)
@@ -727,11 +796,18 @@ def run(args):
         # the set's start point along the loop: its events on the straights (abc_schedule, abc_ego)
         start_m = schedule.get('ego_start_m', 0.0)
         speed = block.config['ego']['speed_kmh']
-        if args.start_at > 0:  # checking: where the car would be by then, at its speed there
-            import abc_ego
-            if os.path.isfile(abc_ego.PROFILE_FILE):
-                start_m, v = abc_ego.position(abc_ego.load_profile(), start_m, args.start_at)
-                speed = v * 3.6
+        # the speed of the profile there (in a curve's slow part not 95 km/h, which the prediction of the
+        # curves would not match); --start-at (checking): where the car would be by then, at its speed there
+        import abc_ego
+        if os.path.isfile(abc_ego.PROFILE_FILE):
+            start_m, v = abc_ego.position(abc_ego.load_profile(), start_m, args.start_at)
+            speed = v * 3.6
+        start_throttle = None  # the autonomous driving's throttle there in the profile run
+        if os.path.isfile(abc_ego.PROFILE_FILE):
+            profile = abc_ego.load_profile()
+            if 'throttle' in profile:
+                start_throttle = profile['throttle'][int((start_m % profile['length_m']) / profile['bin_m'])
+                                                     % len(profile['throttle'])]
         start_index = traffic.ego_route.index_at(start_m)
         traffic.start(start_index)
         logging.info('Start %.0f m along the loop (route point %d), %.0f km/h', start_m, start_index, speed)
@@ -784,8 +860,8 @@ def run(args):
             dt = snapshot.timestamp.delta_seconds
             if fixed_frames:
                 fixed_frames -= 1
-                if not fixed_frames:  # back to real-time steps
-                    settings.fixed_delta_seconds = None
+                if not fixed_frames:  # back to the block's own steps
+                    settings.fixed_delta_seconds = 1.0 / args.fps
                     sim_world.apply_settings(settings)
             keys = pygame.key.get_pressed()
             for event in pygame.event.get():
@@ -864,6 +940,8 @@ def run(args):
                 else:
                     holding = False
                     follower.engage()  # from the speed it has now
+                    if start_throttle is not None:
+                        follower.prime(start_throttle)  # as when it has been driving the loop for a while
             world.player.apply_control(control)
             driver_input.force_feedback(speed_kmh)
             lights = base.BRAKE_LIGHT if control.brake > 0.0 else 0
@@ -1263,7 +1341,7 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock):
     sagat.ask(q['id'], number, seconds)
     started = time.monotonic()
     if not sagat.connected():
-        logging.warning('SAGAT tablet not connected: open %s on the iPad', sagat.url)
+        logging.warning('SAGAT tablet not connected: open %s on the iPad or the laptop (sagat_laptop.bat)', sagat.url)
     answer = None
     skipped = False
     while True:

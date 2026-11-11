@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tobii Pro Glasses 2 calibration target (User Manual v2.0.2, Appendix D), true size on A4:
+     black ring 43 mm across, white disc 23 mm across (10 mm from the dot's edge), centre dot 3 mm.
+     Print at 100 % (no "fit to page"); check the 43 mm with a ruler. Glue onto card, matte paper. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297">
+  <rect width="210" height="297" fill="#fff"/>
+  <g transform="translate(55 70)">
+    <circle r="21.5" fill="#000"/><circle r="11.5" fill="#fff"/><circle r="1.5" fill="#000"/>
+    <rect x="-32" y="-32" width="64" height="64" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="2 2"/>
+  </g>
+  <g transform="translate(155 70)">
+    <circle r="21.5" fill="#000"/><circle r="11.5" fill="#fff"/><circle r="1.5" fill="#000"/>
+    <rect x="-32" y="-32" width="64" height="64" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="2 2"/>
+  </g>
+  <g transform="translate(55 170)">
+    <circle r="21.5" fill="#000"/><circle r="11.5" fill="#fff"/><circle r="1.5" fill="#000"/>
+    <rect x="-32" y="-32" width="64" height="64" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="2 2"/>
+  </g>
+  <g transform="translate(155 170)">
+    <circle r="21.5" fill="#000"/><circle r="11.5" fill="#fff"/><circle r="1.5" fill="#000"/>
+    <rect x="-32" y="-32" width="64" height="64" fill="none" stroke="#999" stroke-width="0.3" stroke-dasharray="2 2"/>
+  </g>
+  <g font-family="sans-serif" font-size="4" fill="#555">
+    <text x="20" y="235">Tobii Pro Glasses 2 calibration target. Print at 100 % (actual size).</text>
+    <text x="20" y="242">Check: the black ring must be 43 mm across. Cut along the dashed lines.</text>
+    <line x1="20" y1="252" x2="120" y2="252" stroke="#555" stroke-width="0.3"/>
+    <line x1="20" y1="249" x2="20" y2="255" stroke="#555" stroke-width="0.3"/>
+    <line x1="120" y1="249" x2="120" y2="255" stroke="#555" stroke-width="0.3"/>
+    <text x="60" y="260">100 mm</text>
+  </g>
+</svg>

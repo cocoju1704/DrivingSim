@@ -309,7 +309,7 @@ REAR_CAMERA_Z = 2.1                # ... and height share of the half height (ju
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 # The gauges (throttle pedal, speed) on a tablet standing at the bottom middle of the middle monitor,
 # where a car's instrument cluster sits (the car's own cluster is below the view, DRIVER_VIEW_PITCH).
-CLUSTER_PANEL = (0.40, 0.21)   # tablet width, height: shares of the monitor; on the bottom edge
+CLUSTER_PANEL = (0.52, 0.21)   # tablet width, height: shares of the monitor; on the bottom edge (wide: it hides the wheel)
 CLUSTER_BEZEL = (22, 23, 26)   # the tablet's frame
 CLUSTER_EDGE = (78, 80, 86)    # its rim catching the light
 CLUSTER_SCREEN = ((24, 29, 38), (9, 11, 15))  # screen, top and bottom of its gradient
@@ -381,14 +381,17 @@ WHEEL_FRICTION = 0.5           # friction: resists turning the wheel at all, sha
 WHEEL_CENTER_FORCE = 0.3       # share of --wheel-force (and of the spring's speed scaling)
 WHEEL_CENTER_RAMP = 0.03       # axis travel to the full push: ~15 degrees on a 900 degree wheel
 WHEEL_CENTER_SIGN = 1          # -1 if the wheel pushes away from the center instead
-CURVE_LATERAL_ACCEL = 3.0      # m/s^2 autonomous driving keeps to in curves: slows down before them
-CURVE_DECEL = 0.8              # m/s^2 it slows down at before a curve
+CURVE_LATERAL_ACCEL = 4.0      # m/s^2 autonomous driving keeps to in curves: slows down before them
+CURVE_DECEL = 0.6              # m/s^2 it slows down at before a curve
+CRUISE_ACCEL = 1.5             # m/s^2 it speeds up at after a curve (below AUTO_ACCEL), and between two curves close
+                               # together it does not speed up only to slow down again
+CURVE_SPAN_M = 40.0            # m the curvature is taken over: one waypoint's yaw jitter is no curve
 AUTO_ACCEL = 2.0               # m/s^2 at most it speeds up at (from standstill, out of a curve)
 AUTO_BRAKE_OVER = 8.0          # km/h over its target speed at which it brakes (below: less throttle)
-AUTO_GAIN_P = 0.02             # throttle per km/h off the target speed
+AUTO_GAIN_P = 0.04             # throttle per km/h off the target speed
 AUTO_GAIN_I = 0.005            # throttle per km/h per second (hills, HOLD_THROTTLE's error)
 AUTO_I_RANGE = 5.0             # km/h: the I part adds up only this close to the target (no wind-up while speeding up)
-AUTO_THROTTLE_RATE = 0.3       # throttle change per second at most: the engine sound changes slowly
+AUTO_THROTTLE_RATE = 0.6       # throttle change per second at most: the engine sound changes slowly
 # manual_control's camera positions, in its order (they come after the experiment's views)
 STOCK_VIEW_NAMES = ['Behind the car', 'Hood', 'Front side', 'Far behind', 'Low side']
 LANES = (1, 2, 3)
@@ -857,10 +860,11 @@ def add_driver_view(world, args):
         if sensor[0].startswith('sensor.camera'):
             sensor[-1].set_attribute('image_size_x', str(manager.render_size[0]))
             sensor[-1].set_attribute('image_size_y', str(manager.render_size[1]))
-        if sensor[0] == 'sensor.camera.rgb' and args.scenario == 0:
-            # practice drive in bright daylight: the automatic exposure keeps the view dim
+        iso = getattr(args, 'camera_iso', None) or (PRACTICE_ISO if args.scenario == 0 else None)
+        if sensor[0] == 'sensor.camera.rgb' and iso:
+            # bright daylight: the automatic exposure keeps the view dim (practice drive, _Experiment2)
             sensor[-1].set_attribute('exposure_mode', 'manual')
-            sensor[-1].set_attribute('iso', str(PRACTICE_ISO))
+            sensor[-1].set_attribute('iso', str(iso))
 
     def render(display):
         _, mirrored = manager.view_options.get(manager.transform_index, (None, False))
@@ -1045,7 +1049,7 @@ class LoopFollower(object):
     """Drives a vehicle around a closed route forever with a BasicAgent.
 
     The agent steers (and stops for hazards); the speed is this class's own: the cruise speed, or
-    less before and in curves (CURVE_LATERAL_ACCEL), reached gently (AUTO_ACCEL, CURVE_DECEL) with
+    less before, in and after curves (CURVE_LATERAL_ACCEL, CURVE_DECEL, CRUISE_ACCEL) with
     the throttle that holds a speed plus a PI correction, changing slowly (AUTO_THROTTLE_RATE),
     so the engine sound stays even. The agent's own speed PID
     gives full throttle 1 km/h below its target and none above it: on and off in every curve.
@@ -1085,6 +1089,14 @@ class LoopFollower(object):
         self._integral = 0.0
         self._throttle = self._vehicle.get_control().throttle
         self._last = None
+
+    def prime(self, throttle):
+        """Right after engage(): the state it has there when it has been driving the loop for a while
+        (_Experiment2's block start): the throttle it drives with there, the target speed of the profile.
+        From rest (engage: the current speed and throttle) it would be out of step with its own lap for
+        a minute after a start in a curve's slow part."""
+        self._throttle = throttle
+        self._target = self._wanted_speed()
 
     def _wanted_speed(self):
         """km/h: the cruise speed, or the curve limit at the route point nearest the car."""
@@ -1379,9 +1391,10 @@ def _distance_text(metres):
 
 def curve_speed_limits(route):
     """km/h the car can drive at each point of the closed `route` with CURVE_LATERAL_ACCEL sideways,
-    lowered before curves so it slows down at CURVE_DECEL at most."""
+    lowered before curves so it slows down at CURVE_DECEL at most, and after them so it speeds up at
+    CRUISE_ACCEL at most: a speed profile a driver would keep, not a speed held exactly at each point."""
     count = len(route)
-    half = 5  # route points on either side: the curvature over 20 m
+    half = max(1, int(round(CURVE_SPAN_M / (2 * ROUTE_RESOLUTION))))  # route points on either side
     limits = []
     for i in range(count):
         a = route[(i - half) % count].transform.rotation.yaw
@@ -1393,6 +1406,11 @@ def curve_speed_limits(route):
     for k in range(2 * count, 0, -1):
         i, after = (k - 1) % count, k % count
         reachable = math.sqrt((limits[after] / 3.6) ** 2 + 2.0 * CURVE_DECEL * ROUTE_RESOLUTION) * 3.6
+        limits[i] = min(limits[i], reachable)
+    # forwards the same way: out of a curve no faster than CRUISE_ACCEL allows
+    for k in range(1, 2 * count + 1):
+        i, before = k % count, (k - 1) % count
+        reachable = math.sqrt((limits[before] / 3.6) ** 2 + 2.0 * CRUISE_ACCEL * ROUTE_RESOLUTION) * 3.6
         limits[i] = min(limits[i], reachable)
     return limits
 

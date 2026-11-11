@@ -172,6 +172,9 @@ class ScriptedTraffic(object):
         self._ref_hint = {}
         library = sim_world.get_blueprint_library()
         self._event_blueprint = library.find(config['event_vehicle'])
+        # background cars: bright, saturated colours (the recommended ones are mostly dark grey, black
+        # and silver: hard to tell apart in the mirrors and at a SAGAT question)
+        self._colors = config.get('background', {}).get('colors') or None
         self._blueprints = sorted(
             [bp for bp in library.filter('vehicle.*')
              if bp.has_attribute('base_type') and bp.get_attribute('base_type').as_str() == 'car'
@@ -269,7 +272,7 @@ class ScriptedTraffic(object):
             blueprint = self._blueprints[digest % len(self._blueprints)]
             color = None
             if blueprint.has_attribute('color'):
-                values = blueprint.get_attribute('color').recommended_values
+                values = self._colors or blueprint.get_attribute('color').recommended_values
                 color = values[(digest // 7) % len(values)] if values else None
         if color and blueprint.has_attribute('color'):
             blueprint.set_attribute('color', color)
@@ -432,7 +435,9 @@ class TorScene(object):
         ahead it went."""
         settings = self.template['obstacle']
         v_alert = max(ego_speed + max(ego_accel, 0.0) * lead_s, 1.0)
-        ttc = settings['spawn_dx_m'] / nominal_speed - lead_s   # 7.2 s: 270 m - 3 s at 95 km/h
+        # its TTC at the alert as designed (7.2 s: 270 m - 3 s at 95 km/h), also at a slower cruise speed
+        nominal_speed = settings.get('spawn_nominal_kmh', nominal_speed * 3.6) / 3.6
+        ttc = settings['spawn_dx_m'] / nominal_speed - lead_s
         self.obstacle_spawn_dx = ttc * v_alert + lead_s * (ego_speed + v_alert) / 2.0
         s = ego_s + self.obstacle_spawn_dx
         actor = self._place(settings, 'vehicle.tesla.model3', 2, s, 0.0)

@@ -735,6 +735,7 @@ function connectEvents() {
  *   alert {text}  TOR: 일시정지 + 가림 + 빨간 경고 문구 (깜빡임)
  *   alert_off     경고 문구만 지움 (가림·정지는 그대로: 블록 끝까지 수동 운전)
  *   pause / play / seek {t}   블록 시작·끝
+ *   calib {dot}   시선 보정: 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; off = 끔)
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
 
@@ -763,8 +764,24 @@ function control(d) {
     P.play();
   } else if (a === 'seek') {
     P.seekTo(+d.t || 0);
+  } else if (a === 'calib') {
+    calibDot(d.dot);
   }
   report(a, d.id);
+}
+
+// 시선 보정 점: 화면(600x600) 가장자리에서 CALIB_INSET px 안쪽의 꼭짓점, 또는 중심
+const CALIB_INSET = 30;
+function calibDot(dot) {
+  const box = $('#calib');
+  if (!dot || dot === 'off') { box.hidden = true; return; }
+  if (mode && !P.paused()) P.pause();
+  const w = window.innerWidth, h = window.innerHeight, i = CALIB_INSET;
+  const at = { c: [w / 2, h / 2], tl: [i, i], tr: [w - i, i], br: [w - i, h - i], bl: [i, h - i] }[dot] || [w / 2, h / 2];
+  const el = $('#calib-dot');
+  el.style.left = at[0] + 'px';
+  el.style.top = at[1] + 'px';
+  box.hidden = false;
 }
 
 function report(action, id) {

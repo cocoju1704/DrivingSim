@@ -29,8 +29,7 @@ PROFILE_FILE = os.path.join(HERE, 'schedules', 'ego_profile.json')
 BIN = 2.0                 # m per profile point
 CURVE_RADIUS = 800.0      # m: tighter than this is a curve
 STEP = 0.05               # s, prediction
-START_SPEED = 95.0 / 3.6  # m/s at the block start
-CURVE_DECEL = 0.8         # m/s^2, carla_base.CURVE_DECEL
+CURVE_DECEL = 0.6         # m/s^2, carla_base.CURVE_DECEL
 AUTO_ACCEL = 2.0          # m/s^2, carla_base.AUTO_ACCEL
 
 
@@ -56,16 +55,20 @@ def make_profile(path, start_m=0.0):
         raise RuntimeError('%s does not go once round the loop' % path)
     bins = int(math.ceil(length / BIN))
     moved, spent = [0.0] * bins, [0.0] * bins  # per bin: metres driven and seconds spent in it
+    pedal = [0.0] * bins  # throttle x seconds: the autonomous driving's throttle there (abc_experiment's start)
     where = [None] * bins
     for k in range(1, len(rows)):
         b = int(((dist[k] + start_m) % length) / BIN) % bins
         if ts[k] > 40.0 and rows[k]['mode'] == 'AUTO':  # past the start's speed-up, before any TOR
             moved[b] += dist[k] - dist[k - 1]
             spent[b] += ts[k] - ts[k - 1]
+            pedal[b] += float(rows[k]['throttle']) * (ts[k] - ts[k - 1])
         if where[b] is None:
             where[b] = (xs[k], ys[k])
     speed = [moved[b] / spent[b] if spent[b] > 0 else None for b in range(bins)]
     _fill(speed)
+    throttle = [pedal[b] / spent[b] if spent[b] > 0 else None for b in range(bins)]
+    _fill(throttle)
     _fill(where)
     half = 10  # bins on each side: the turn between the 20 m before and the 20 m after (as log_intervals)
     curvature = []
@@ -74,6 +77,7 @@ def make_profile(path, start_m=0.0):
         turn = (math.atan2(y2 - y1, x2 - x1) - math.atan2(y1 - y0, x1 - x0) + math.pi) % (2 * math.pi) - math.pi
         curvature.append(abs(turn) / (2 * half * BIN))
     return {'length_m': round(length, 2), 'bin_m': BIN, 'speed_mps': [round(v, 3) for v in speed],
+            'throttle': [round(v, 3) for v in throttle],
             'curvature': [round(c, 6) for c in curvature], 'source': os.path.relpath(path, HERE),
             'source_start_m': start_m}
 
@@ -116,12 +120,12 @@ def _predict(profile, start_m, t_end, radius=CURVE_RADIUS):
     n = len(speed)
     out = []
     s, t = start_m % length, 0.0
-    v = START_SPEED
+    v = speed[int(s / size) % n]  # the block starts at the profile's speed there (abc_experiment)
     while t <= t_end + 1e-9:
         b = int(s / size) % n
         out.append((round(t, 3), curvature[b] > 1.0 / radius))
         # as LoopFollower: towards the speed of the profile, at most CURVE_DECEL slower or AUTO_ACCEL
-        # faster per second (it starts at 95 km/h, also where the profile is slower)
+        # faster per second
         v += max(-CURVE_DECEL * STEP, min(speed[b] - v, AUTO_ACCEL * STEP))
         s = (s + v * STEP) % length
         t += STEP
@@ -134,7 +138,8 @@ def position(profile, start_m, t):
     lag, scale = profile.get('lag_s', 0.0), profile.get('time_scale', 1.0)
     length, size = profile['length_m'], profile['bin_m']
     speed = profile['speed_mps']
-    s, v, now = start_m % length, START_SPEED, 0.0
+    s, now = start_m % length, 0.0
+    v = speed[int(s / size) % len(speed)]
     t = max(0.0, (t - lag) / scale)
     while now < t - 1e-9:
         b = int(s / size) % len(speed)

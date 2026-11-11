@@ -19,7 +19,7 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 | 테스트 | 데이터를 `Data/test/<월일시분초>/`에 저장 (끄면 `Data/P03_B1_A_glasses/`) |
 | 저장 폴더 | 직접 지정 (비우면 위 규칙) |
 | Tobii Pro Nano | `gaze_bridge.py`를 별도 콘솔로 띄우고 `--gaze`로 실행 (frames.csv에 gaze_* 열, gaze_*.csv) |
-| Tobii Glasses 2 주소 | 사건마다 G2 녹화에 이벤트 마커 (`abc_*`). "녹화도 시작/종료"를 켜면 녹화도 직접 시작·종료 |
+| Tobii Glasses 2 주소 | 사건마다 G2 녹화에 이벤트 마커 (`abc_*`). "녹화도 시작/종료"를 켜면 녹화도 직접 시작·종료: 글래스를 켠 뒤 한 캘리브레이션의 참가자로 녹화하고, 없으면 이전 캘리브레이션으로 대신함(경고). 유선 랜: `fe80::76fe:48ff:fe2f:3ff0%15` (`%15`는 이 PC 랜 포트 번호), 글래스 Wi-Fi: `192.168.71.50` |
 | NDRT 영상 서버 | mrbd-video 서버 주소. SAGAT 때 안경 영상이 함께 멈추고 가려짐 (`video_link.py`). 부하 때문에 다른 노트북에서 서버를 띄우면 그 주소(예: `http://192.168.0.69:8080`, 기본값은 `devices.json`의 `video`), 안경도 그 노트북 주소로 접속 |
 
 ## 블록 배정 (`launcher.py`의 `assignment()`)
@@ -37,9 +37,15 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
   이 선은 출구 분기점(고어)을 곧장 지나가는데, 루프의 세 분기점에 있는 충격흡수 드럼·조명 기둥·속도 표지에
   3차로 차들이 부딪혀 2차로로 튕겨 나왔습니다(바퀴마다 8–13 m 경로 이탈, 세트 C에서는 자기 차와 충돌).
   그래서 실험 중에는 이 물체들을 맵에서 끕니다(`GORE_OBJECTS`, 나무를 끄는 것과 같은 방식).
-- 자기 차: 95 km/h, 차로 고정, 사건에 반응하지 않음(`ignore_vehicles`). 단, 루프의 급커브에서는
-  기존 실험과 같은 커브 감속이 있습니다(가장 급한 곳 약 46 km/h). 주변 차는 모두 자기 차 기준
-  상대 위치로 움직이므로 사건의 모양은 커브에서도 같습니다.
+- 자기 차: 70 km/h(`abc_config.json` ego, 문서의 95 km/h에서 낮춤), 차로 고정, 사건에 반응하지 않음(`ignore_vehicles`).
+  커브는 옆 가속도 4.0 m/s²까지(`CURVE_LATERAL_ACCEL`, 가장 급한 곳 약 53 km/h), 커브 전 0.6 m/s²로 감속,
+  커브 뒤 1.5 m/s²로 다시 가속(`CURVE_DECEL`, `CRUISE_ACCEL`; 곡률은 40 m에 걸쳐 봄). 주행 시간의 약 80 %가 순항 속도.
+  주변 차는 모두 자기 차 기준 상대 위치로 움직이므로 사건의 모양은 커브에서도 같습니다.
+- 시뮬레이션은 고정 간격(1/`--fps`, 34 fps)으로 진행합니다. 가변 간격(프레임 시간만큼)에서는 서버가 잠깐 막힐 때
+  한 프레임에 0.8–2.4 s가 지나가는데 물리는 0.1 s만 움직여, 자기 차가 일정보다 바퀴당 10 s까지 늦었습니다.
+- 블록은 프로파일 속도가 순항보다 5 km/h 이내로 느린 곳에서만 시작하고(`START_BELOW_KMH`), 그곳의 프로파일
+  속도와 스로틀로 시작합니다(`LoopFollower.prime`): 커브 느린 곳에서 시작하면 첫 1분이 프로파일과 달라
+  이후 커브 시각이 모두 6.5 s 어긋났습니다. 이제 예측 오차 0.5 s 이내.
 - 출발: 차를 0.5 m 위에 95 km/h로 놓으면 멈춰 있던 바퀴가 노면에 닿으며 크게 감속했습니다(B: 95 → 17 km/h,
   이후 모든 시각이 예측보다 5.7 s 늦어 TOR이 커브 직후에 걸림). 처음 1 s 동안 출발 속도를 유지한 뒤
   자율주행을 다시 잡습니다(`START_HOLD_S`). 이제 예측과 실제 커브 시각 차이는 세트에 상관없이 1 s 이내입니다.
@@ -92,6 +98,13 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 
 모든 주변 차는 미리 만든 궤적 `dx(t)`(자기 차보다 몇 m 앞인지)를 따라갑니다. 그래서 같은 세트는 매번
 같게 진행되고, SAGAT 시점의 배치를 미리 정할 수 있습니다. 채점은 실제 정지 시점의 위치로 합니다.
+
+- 뒤쪽 차는 80 m 뒤, 앞쪽 차는 250 m 앞에서 나타나고 사라집니다(`spawn_dx_m`, `spawn_ahead_dx_m`: 80 m 앞에서는
+  눈앞에서 생기고 사라지는 게 보였음). 120 m보다 먼 앞에서는 상대 속도 25 km/h 이상으로 다가오거나 멀어집니다
+  (`FAR_AHEAD_M`, `FAR_DV`). 배경 차의 상대 속도 10–25 km/h, 70 %는 자기 차보다 빠름(`faster_share`).
+- SAGAT 질문 5 s 전부터(`hold_s`) 격자(±50 m)에 차가 들고 나거나 칸이 바뀌지 않습니다(`_holds`): 질문 배치의 차는
+  그동안 자기 차와 나란히(상대 ±1.2 km/h) 달리고, 다가오는 차만 자기 칸 안에서 계속 다가옵니다.
+- 세트 B의 시드는 2202(202에서는 50 m 안 차 수가 평균 2.8대로 적었음).
 
 ```
 venv_carla\Scripts\python.exe _Experiment2\abc_schedule.py           # 4세트 모두 다시 만들기 (약 4분)
@@ -167,9 +180,15 @@ venv_carla\Scripts\python.exe _Experiment2\abc_experiment.py --set P --test --st
 
 ## 화면
 
-- 계기판은 중앙 모니터 하단 왼쪽, 그 오른쪽에 HUD 영상 영역(8°, 정사각형: 글래스 화면과 같은 크기·
-  오른쪽 아래 위치)이 붙습니다. 둘을 한 쌍으로 가운데 정렬합니다. `--hud-preview`(추가 인자)로 HUD 영역
-  테두리를 볼 수 있습니다. 영상은 영상 단계에서 이 영역(`Overlay.hud_rect`)에 그립니다.
+- 모니터 3대 1920×1080(`--res 5760x1080`, Windows에서 모니터 해상도도 1920×1080): 2560×1440에서는 GPU(RTX 3070 Ti)가
+  평균 28 fps에 0.2 s마다 끊겼고, 1080p·34 fps 제한(`--fps 34`)에서 33–35 fps로 끊김이 없습니다(블록 A, 차 40대).
+- 밝기: 카메라 수동 노출 ISO 250(`--camera-iso`, 자동 노출은 어두움). 옅은 안개(`--fog 3 60 1`): 먼 차가 갑자기
+  나타나지 않게. 배경 차는 채도 높은 색(`abc_config.json` background colors), 사건 차는 문서의 색 그대로.
+- 계기판은 중앙 모니터 하단 가운데, 폭 52 %(`CLUSTER_PANEL`): 핸들을 모두 가립니다.
+- HUD(8°)는 앞유리 아래쪽, 정면에서 오른쪽 9.5°(`HUD_RIGHT_DEG`), 앞유리 면에 놓인 정사각형이라 사다리꼴
+  (`Overlay.hud_poly`: 유리 기울기 수직에서 62°, 눈에서 0.75 m). 모든 조건에서 꺼진 HUD(옅은 어두운 판)를 그리고,
+  HUD 조건의 TOR 경고는 같은 사다리꼴을 빨갛게 채웁니다. 영상은 영상 단계에서 이 사다리꼴에 맞춰 그립니다.
+  `--hud-preview`(추가 인자)로 HUD 영역 테두리를 볼 수 있습니다.
 - SAGAT 중에는 차량 소리도 멈춥니다(carla-audio-engine `fmain.py`의 UDP 5006 "mute"/"unmute").
 
 ## 데이터
@@ -198,6 +217,9 @@ SAGAT 점수는 문항마다 (격자 8칸 정답률 + 접근 차량 정답 + 안
 | abc_ego.py | 자기 차 속도·곡률 프로파일, 출발 위치별 커브 시간표 |
 | sagat_server.py, sagat_app/ | 태블릿 서버·페이지 (`python sagat_server.py` 단독 실행 시 20초마다 시험 문항) |
 | g2_link.py | Tobii Pro Glasses 2 REST API (마커, 녹화) |
+| g2_stream.py | 글래스의 실시간 시선·장면 영상을 블록 데이터 폴더에 저장 (`--g2`이면 자동, 별도 프로세스): `g2_scene.ts`, `g2_data.jsonl`, `g2_sync.json` (영상 PTS → 글래스 시계 → PC 시각). 끄기: `--g2-no-stream` |
+| g2_calibrate.py | 글래스 캘리브레이션 (Controller 없이): 참가자가 타깃 중앙을 보면 Enter. 이어서 안경 화면 보정: Ray-Ban Display에 가운데·네 꼭짓점 점을 띄워(mrbd-video `calib`) 그 시선으로 안경 화면의 윤곽(장면 카메라 좌표) → `g2_display.json`(블록마다 데이터 폴더로 복사). `--display-only`, `--no-display` |
+| calibration_target/ | 캘리브레이션 타깃 (매뉴얼 부록 D 치수: 고리 43 mm): 인쇄용 SVG(100 %), 화면용 HTML |
 | video_link.py | mrbd-video 연동 (freeze / resume) |
 | carla_base.py | `_Experiment/takeover_experiment.py`의 복사본 (휠, 미러, 계기판, 자율주행) |
 | gaze_tracking.py, gaze_bridge.py, road_signs.py | `_Experiment`에서 복사 |

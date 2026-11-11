@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>G2 Calibration Target</title>
+<!-- Tobii Pro Glasses 2 calibration target on a screen, at true size: ring 43 mm, white disc 23 mm, dot 3 mm.
+     Set the scale once: +/- until the card outline matches a credit card (85.6 x 54 mm) held to the screen.
+     Size from the monitor (?inch=32&aspect=16:9 default) and its width in CSS px. Keys: fine correction up / down 10 %, + / - 1 %, 0 none, f full screen, h hide the help. The scale is remembered in this browser. -->
+<style>
+  :root { color-scheme: light; }
+  html, body { margin: 0; height: 100%; background: #fff; overflow: hidden; font-family: sans-serif; }
+  #t { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  #card { position: absolute; left: 16px; bottom: 16px; border: 1px dashed #888; box-sizing: border-box; }
+  #help { position: absolute; left: 16px; top: 12px; color: #555; font-size: 14px; line-height: 1.6; }
+</style></head><body>
+<svg id="t" viewBox="-22 -22 44 44"><circle r="21.5" fill="#000"/><circle r="11.5" fill="#fff"/><circle r="1.5" fill="#000"/></svg>
+<div id="card"></div>
+<div id="help">
+  <b>크기</b>: 모니터 크기로 자동 계산됩니다 (기본 32인치 16:9, 다른 모니터는 주소 뒤에 <code>?inch=27</code>). 신용카드를 왼쪽 아래 점선에 대 보고 다르면 <b>+ / −</b>(1 %), <b>↑ / ↓</b>(10 %), <b>0</b>: 자동값으로.<br>
+  <b>f</b>: 전체 화면 · <b>h</b>: 안내 숨기기 · 현재 <span id="s"></span> px/mm (고리 지름 43 mm)
+</div>
+<script>
+  // the monitor's size: ?inch=32&aspect=16:9 (default: the simulator's 32 inch 16:9 curved monitors; the
+  // panel is 708 mm wide along its curve, which over the 43 mm target is flat). CSS px per mm from the
+  // monitor's width in CSS px, so it holds at any resolution and Windows scaling. +/- keys: a fine
+  // correction on top, remembered in this browser (0 = none).
+  const q = new URLSearchParams(location.search);
+  const inch = parseFloat(q.get('inch')) || 32;
+  const [aw, ah] = (q.get('aspect') || '16:9').split(':').map(Number);
+  const widthMm = inch * 25.4 * aw / Math.hypot(aw, ah);
+  const base = screen.width / widthMm;
+  let fine = 1.0;
+  try { const v = parseFloat(localStorage.getItem('g2_fine_' + inch)); if (v > 0.3 && v < 3) fine = v; } catch (e) {}
+  let pxmm = base * fine;
+  function draw() {
+    const t = document.getElementById('t'), c = document.getElementById('card');
+    t.style.width = t.style.height = (44 * pxmm) + 'px';
+    c.style.width = (85.6 * pxmm) + 'px'; c.style.height = (54 * pxmm) + 'px';
+    document.getElementById('s').textContent = pxmm.toFixed(2) + ' (' + inch + ' inch, ' + screen.width + ' px wide' +
+      (fine !== 1 ? ', x' + fine.toFixed(3) : '') + ')';
+    try { localStorage.setItem('g2_fine_' + inch, fine); } catch (e) {}
+  }
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp') fine *= 1.1;
+    else if (e.key === 'ArrowDown') fine /= 1.1;
+    else if (e.key === '+' || e.key === '=') fine *= 1.01;
+    else if (e.key === '-' || e.key === '_') fine /= 1.01;
+    else if (e.key === '0') fine = 1.0;
+    pxmm = base * fine;
+    else if (e.key === 'f') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
+    else if (e.key === 'h') { const h = document.getElementById('help'), c = document.getElementById('card');
+      const v = h.style.display === 'none' ? '' : 'none'; h.style.display = v; c.style.display = v; }
+    draw();
+  });
+  draw();
+</script>
+</body></html>
