@@ -3,19 +3,24 @@
 """
 Tobii Pro Glasses 2: how accurate the gaze is after g2_calibrate.py, in degrees, on two kinds of target.
 
-    python g2_validate.py [HOST]          both: the monitor, then the glasses display
-    python g2_validate.py --monitor       only the monitor
+    python g2_validate.py [HOST]          both: the monitors, then the glasses display
+    python g2_validate.py --monitor       only the monitors
     python g2_validate.py --display       only the glasses display (Meta Ray-Ban Display)
 
 The glasses' live streams are saved meanwhile (g2_stream.py) in VALIDATION_DIR/<time>/, the result in
 there and in RESULT_FILE (the latest, copied into each block's data folder by abc_experiment).
 
-1. Monitor. A full-screen window on the main monitor (the middle one) shows a target like the
-   calibration one (black ring, white disc, black dot) at MONITOR_POINTS in turn. The participant
-   keeps the head still and looks at the dot of each target until it moves (SETTLE_S + COLLECT_S).
-   Ground truth: where the target is in each scene camera frame (found in the video), so a head
-   movement does not count as an error; the gaze sample nearest each frame (glasses clock) is compared
-   with it. Needs OpenCV (pip install opencv-python-headless).
+A white window over all the monitors guides the participant: "이제 모니터를 보세요" before the
+monitor targets, "이제 글래스를 보세요" before the glasses display's dots (that one on the glasses
+too, as the app's alert text, MESSAGE_S each). Esc on the window stops.
+
+1. Monitors. A target like the calibration one (black ring, white disc, black dot) at MONITOR_POINTS
+   in turn, over the three monitors (the middle one's centre and corners, the outer part of the side
+   ones). The participant looks at the dot of each target until it moves (SETTLE_S + COLLECT_S); the
+   head may turn to the side monitors. Ground truth: where the target is in each scene camera frame
+   (found in the video), so a head movement does not count as an error; the gaze sample nearest each
+   frame (glasses clock) is compared with it. A target the scene camera does not see is reported as
+   such. Needs OpenCV (pip install opencv-python-headless).
 
 2. Glasses display. The app (mrbd-video) shows a dot at DISPLAY_POINTS, points g2_calibrate.py did not
    use: the middle of each edge and four points between the centre and the corners. Ground truth:
@@ -33,12 +38,15 @@ gaze around its median.
 from __future__ import print_function
 
 import ctypes
+import ctypes.wintypes
 import json
 import math
 import os
+import queue
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -49,12 +57,13 @@ SCENE_FOV_DEG = (82.0, 52.0)
 SCENE_PX = (960, 540)                # the live scene video
 SETTLE_S = 1.0                       # s after a target appears before its gaze counts
 COLLECT_S = 1.5                      # s of gaze per target
+MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
 MIN_SAMPLES = 20
-# the monitor: fractions of its width and height (the centre first); the scene camera of this setup points
-# low, so the rows sit in the lower two thirds
-MONITOR_POINTS = [(0.5, 0.6), (0.2, 0.35), (0.5, 0.35), (0.8, 0.35), (0.8, 0.6), (0.8, 0.85),
-                  (0.5, 0.85), (0.2, 0.85), (0.2, 0.6)]
-TARGET_DIAMETER = 0.045              # the ring's outer diameter, of the monitor width (32 inch: 32 mm)
+# the monitors: (monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height)
+MONITOR_POINTS = [(0, 0.5, 0.5), (0, 0.08, 0.12), (0, 0.92, 0.12), (0, 0.92, 0.88), (0, 0.08, 0.88),
+                  (-1, 0.5, 0.5), (-1, 0.1, 0.15), (-1, 0.1, 0.85),
+                  (1, 0.5, 0.5), (1, 0.9, 0.15), (1, 0.9, 0.85)]
+TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
 DISPLAY_POINTS = [(300, 30), (570, 300), (300, 570), (30, 300), (165, 165), (435, 165), (435, 435), (165, 435)]
 
@@ -115,6 +124,7 @@ class Recording(object):
         with open(os.path.join(self.dir, 'g2_sync.json'), encoding='utf-8') as handle:
             self.sync = json.load(handle)
         self.gaze = []                  # (glasses ts us, PC time, x, y): valid gp samples
+        self.gaze_packets = 0
         with open(os.path.join(self.dir, 'g2_data.jsonl'), encoding='utf-8') as handle:
             for line in handle:
                 pc, _, text = line.partition(' ')
@@ -122,9 +132,14 @@ class Recording(object):
                     p = json.loads(text)
                 except ValueError:
                     continue
-                if 'gp' in p and p.get('s') == 0:
-                    self.gaze.append((p['ts'], float(pc), p['gp'][0], p['gp'][1]))
+                if 'gp' in p:
+                    self.gaze_packets += 1
+                    if p.get('s') == 0:
+                        self.gaze.append((p['ts'], float(pc), p['gp'][0], p['gp'][1]))
         self.gaze.sort()
+
+    def valid_share(self):
+        return round(len(self.gaze) / float(self.gaze_packets), 3) if self.gaze_packets else None
 
     def pc_to_ts(self, pc):
         a, b = self.sync['ts_to_pc']
@@ -191,57 +206,153 @@ def _children(h, first):
         j = h[j][0]
 
 
-# ---------------------------------------------------------------- 1. the monitor
-def show_monitor_targets(points):
-    """A full-screen window on the main monitor with each target in turn: [(point, PC time shown)]."""
-    import tkinter as tk
+# ---------------------------------------------------------------- the window over the monitors
+def monitors():
+    """The monitors' rectangles (left, top, right, bottom), physical px, left to right."""
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
     except (AttributeError, OSError):
         pass
-    root = tk.Tk()
-    root.configure(background='white', cursor='none')
-    root.attributes('-fullscreen', True)
-    root.attributes('-topmost', True)
-    w, h = root.winfo_screenwidth(), root.winfo_screenheight()
-    canvas = tk.Canvas(root, width=w, height=h, background='white', highlightthickness=0)
-    canvas.pack()
-    r = TARGET_DIAMETER * w / 2.0
-    shown = []
+    found = []
+    proc = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+                              ctypes.POINTER(ctypes.wintypes.RECT), ctypes.wintypes.LPARAM)
 
-    def draw(k):
-        canvas.delete('all')
-        if k >= len(points):
-            root.after(300, root.destroy)
-            return
-        x, y = points[k][0] * w, points[k][1] * h
-        for radius, colour in ((r, 'black'), (r * 23 / 43.0, 'white'), (r * 3 / 43.0, 'black')):
-            canvas.create_oval(x - radius, y - radius, x + radius, y + radius, fill=colour, outline=colour)
-        root.update_idletasks()
-        shown.append((points[k], time.time()))
-        root.after(int((SETTLE_S + COLLECT_S) * 1000), lambda: draw(k + 1))
+    def callback(handle, dc, rect, data):
+        r = rect.contents
+        found.append((r.left, r.top, r.right, r.bottom))
+        return 1
 
-    root.after(1500, lambda: draw(0))   # the window settles first
-    root.mainloop()
-    return shown
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, proc(callback), 0)
+    return sorted(found)
 
 
-def validate_monitor(host, out_dir):
+class Screen(object):
+    """A white window on each monitor (one window over all of them is cut to one monitor by Windows), drawn
+    by the Tk thread (the main one); the steps run in another thread and call message() / target() /
+    clear() / close()."""
+
+    def __init__(self):
+        import tkinter as tk
+        self.monitors = monitors()
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.canvases = []
+        for left, top, right, bottom in self.monitors:
+            window = tk.Toplevel(self.root)
+            window.overrideredirect(True)
+            window.geometry('%dx%d%+d%+d' % (right - left, bottom - top, left, top))
+            window.configure(background='white', cursor='none')
+            window.attributes('-topmost', True)
+            canvas = tk.Canvas(window, width=right - left, height=bottom - top, background='white',
+                               highlightthickness=0)
+            canvas.pack()
+            window.bind('<Escape>', lambda e: self._abort())
+            self.canvases.append(canvas)
+        self.canvases[len(self.canvases) // 2].winfo_toplevel().focus_force()
+        self.aborted = False
+        self._todo = queue.Queue()
+        self.root.after(30, self._poll)
+
+    def _abort(self):
+        self.aborted = True
+
+    def _poll(self):
+        try:
+            while True:
+                job = self._todo.get_nowait()
+                if job is None:
+                    self.root.destroy()
+                    return
+                job()
+        except queue.Empty:
+            pass
+        self.root.after(15, self._poll)
+
+    def _call(self, job):
+        """Runs job in the Tk thread and waits for it."""
+        done = threading.Event()
+
+        def run():
+            job()
+            self.root.update_idletasks()
+            done.set()
+
+        self._todo.put(run)
+        done.wait(5)
+
+    def message(self, text, sub=''):
+        def draw():
+            for canvas, (left, top, right, bottom) in zip(self.canvases, self.monitors):
+                canvas.delete('all')
+                x, y = (right - left) / 2.0, (bottom - top) / 2.0
+                canvas.create_text(x, y - 20, text=text, fill='black', font=('Malgun Gothic', 44, 'bold'))
+                if sub:
+                    canvas.create_text(x, y + 50, text=sub, fill='#444', font=('Malgun Gothic', 22))
+        self._call(draw)
+
+    def target(self, point):
+        """Draws the target at MONITOR_POINTS entry point; False when that monitor is not there."""
+        index, fx, fy = point
+        k = len(self.monitors) // 2 + index
+        if not 0 <= k < len(self.monitors):
+            return False
+        left, top, right, bottom = self.monitors[k]
+        x, y = fx * (right - left), fy * (bottom - top)
+        r = TARGET_DIAMETER * (right - left) / 2.0
+
+        def draw():
+            for canvas in self.canvases:
+                canvas.delete('all')
+            for radius, colour in ((r, 'black'), (r * 23 / 43.0, 'white'), (r * 3 / 43.0, 'black')):
+                self.canvases[k].create_oval(x - radius, y - radius, x + radius, y + radius, fill=colour,
+                                             outline=colour)
+        self._call(draw)
+        return True
+
+    def clear(self):
+        self._call(lambda: [canvas.delete('all') for canvas in self.canvases])
+
+    def close(self):
+        self._todo.put(None)
+
+
+def glasses_alert(link, text):
+    """The glasses app's alert text (red, blinking); None clears it."""
+    if link is None:
+        return
+    try:
+        link._post('/api/control', {'action': 'alert', 'text': text} if text else {'action': 'resume'})
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------- 1. the monitors
+def validate_monitor(host, out_dir, screen, link):
     try:
         import cv2
     except ImportError:
         print('The monitor check needs OpenCV: python -m pip install opencv-python-headless')
-        return None
+        return None, None
     rec = Recording(host, os.path.join(out_dir, 'monitor'))
-    time.sleep(1.0)
-    print('\nMonitor: the participant keeps the head still and looks at the dot of each target on the main '
-          'monitor (%d targets, %.0f s)' % (len(MONITOR_POINTS), len(MONITOR_POINTS) * (SETTLE_S + COLLECT_S)))
-    shown = show_monitor_targets(MONITOR_POINTS)
+    print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s)'
+          % (len(MONITOR_POINTS), len(MONITOR_POINTS) * (SETTLE_S + COLLECT_S)))
+    screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요')
+    glasses_alert(link, '이제 모니터를 보세요')
+    time.sleep(MESSAGE_S)
+    glasses_alert(link, None)
+    shown = []
+    for point in MONITOR_POINTS:
+        if screen.aborted:
+            break
+        if screen.target(point):
+            shown.append((point, time.time()))
+            time.sleep(SETTLE_S + COLLECT_S)
+    screen.clear()
     time.sleep(0.5)
     rec.stop()
     if 'pts_to_ts' not in rec.sync:
         print('No video sync from the glasses: not measured')
-        return None
+        return None, rec.valid_share()
     video = os.path.join(rec.dir, 'g2_scene.ts')
     pts0 = first_video_pts(video)
     a, b = rec.sync['pts_to_ts']
@@ -255,6 +366,7 @@ def validate_monitor(host, out_dir):
         found = find_target(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cv2)
         frames.append((a * pts + b, None if found is None else (found[0] / SCENE_PX[0], found[1] / SCENE_PX[1])))
     results = []
+    names = {-1: 'left', 0: 'middle', 1: 'right'}
     for point, at in shown:
         t0, t1 = rec.pc_to_ts(at + SETTLE_S), rec.pc_to_ts(at + SETTLE_S + COLLECT_S)
         gaze = [(t, x, y) for t, _, x, y in rec.gaze if t0 <= t <= t1]
@@ -266,9 +378,9 @@ def validate_monitor(host, out_dir):
             if abs(t - ft) <= 30000:
                 errors.append(angle((x, y), target))
                 targets.append(target)
-        results.append(_point_result('monitor %.2f,%.2f' % point, gaze, targets, errors,
-                                     len([1 for ft, _ in frames if t0 <= ft <= t1])))
-    return results
+        name = '%s %.2f,%.2f' % (names.get(point[0], point[0]), point[1], point[2])
+        results.append(_point_result(name, gaze, targets, errors, len([1 for ft, _ in frames if t0 <= ft <= t1])))
+    return results, rec.valid_share()
 
 
 def _point_result(name, gaze, targets, errors, frames=None):
@@ -293,17 +405,58 @@ def _point_result(name, gaze, targets, errors, frames=None):
 
 
 # ---------------------------------------------------------------- 2. the glasses display
-def validate_display(host, video_address, out_dir):
-    from video_link import VideoLink
+def validate_display(host, out_dir, screen, link):
     try:
         with open(DISPLAY_FILE, encoding='utf-8') as handle:
             display = json.load(handle)
     except (OSError, ValueError):
         print('No %s: run g2_calibrate.py first' % DISPLAY_FILE)
-        return None
+        return None, None
     corners = [display['dots'][d] for d in ('tl', 'tr', 'br', 'bl')]
     h = homography([c['display_px'] for c in corners], [c['gp'] for c in corners])
-    link = VideoLink(video_address)
+    rec = Recording(host, os.path.join(out_dir, 'display'))
+    print('\nGlasses display: the participant looks at each red dot on the glasses display until it moves '
+          '(%d dots, %.0f s)' % (len(DISPLAY_POINTS), len(DISPLAY_POINTS) * (SETTLE_S + COLLECT_S)))
+    screen.message('이제 글래스를 보세요', '안경 화면의 빨간 점을 따라 봐 주세요')
+    glasses_alert(link, '이제 글래스를 보세요')
+    time.sleep(MESSAGE_S)
+    shown = []
+    try:
+        for x, y in DISPLAY_POINTS:
+            if screen.aborted:
+                break
+            link._post('/api/control', {'action': 'calib', 'dot': 'px:%d,%d' % (x, y)})
+            shown.append(((x, y), time.time()))
+            time.sleep(SETTLE_S + COLLECT_S)
+    finally:
+        link._post('/api/control', {'action': 'calib', 'dot': 'off'})
+        glasses_alert(link, None)
+    time.sleep(0.5)
+    rec.stop()
+    results = []
+    for (x, y), at in shown:
+        target = apply(h, x, y)
+        gaze = rec.gaze_between(at + SETTLE_S, at + SETTLE_S + COLLECT_S)
+        errors = [angle((gx, gy), target) for _, gx, gy in gaze]
+        results.append(_point_result('display %d,%d px' % (x, y), gaze, [target] * len(errors), errors))
+    return results, rec.valid_share()
+
+
+def summary(results, valid):
+    ok = [r for r in results or [] if 'accuracy_deg' in r]
+    if not ok:
+        return None
+    acc = [r['accuracy_deg'] for r in ok]
+    return {'points': len(results), 'measured': len(ok), 'accuracy_mean_deg': round(sum(acc) / len(acc), 2),
+            'accuracy_median_deg': round(statistics.median(acc), 2), 'accuracy_max_deg': round(max(acc), 2),
+            's2s_rms_mean_deg': round(sum(r['s2s_rms_deg'] for r in ok) / len(ok), 3),
+            'sd_mean_deg': round(sum(r['sd_deg'] for r in ok) / len(ok), 3), 'gaze_valid_share': valid}
+
+
+def open_video_link(address):
+    """The glasses app's link, or None (reason printed)."""
+    from video_link import VideoLink
+    link = VideoLink(address)
     try:
         delivered = link._post('/api/control', {'action': 'calib', 'dot': 'off'}).get('delivered', 0)
     except OSError as error:
@@ -312,40 +465,27 @@ def validate_display(host, video_address, out_dir):
     if not delivered:
         print('The glasses app is not connected to %s: open it on the glasses' % link.base)
         return None
-    rec = Recording(host, os.path.join(out_dir, 'display'))
-    time.sleep(1.0)
-    print('\nGlasses display: the participant looks at each red dot on the glasses display until it moves '
-          '(%d dots, %.0f s)' % (len(DISPLAY_POINTS), len(DISPLAY_POINTS) * (SETTLE_S + COLLECT_S)))
-    shown = []
+    return link
+
+
+def run(host, devices, out_dir, screen, result):
     try:
-        for x, y in DISPLAY_POINTS:
-            link._post('/api/control', {'action': 'calib', 'dot': 'px:%d,%d' % (x, y)})
-            shown.append(((x, y), time.time()))
-            time.sleep(SETTLE_S + COLLECT_S)
+        link = open_video_link(devices['video']) if devices.get('video') else None
+        if '--display' not in sys.argv:
+            result['monitor'], valid = validate_monitor(host, out_dir, screen, link)
+            result['monitor_summary'] = summary(result['monitor'], valid)
+        if '--monitor' not in sys.argv and not screen.aborted:
+            if link is None:
+                print('No glasses app: the glasses display check is skipped')
+            else:
+                result['display'], valid = validate_display(host, out_dir, screen, link)
+                result['display_summary'] = summary(result['display'], valid)
+        if link is not None:
+            link.close()
+        screen.message('끝났습니다')
+        time.sleep(1.0)
     finally:
-        link._post('/api/control', {'action': 'calib', 'dot': 'off'})
-        link.close()
-    time.sleep(0.5)
-    rec.stop()
-    results = []
-    for (x, y), at in shown:
-        target = apply(h, x, y)
-        gaze = rec.gaze_between(at + SETTLE_S, at + SETTLE_S + COLLECT_S)
-        errors = [angle((gx, gy), target) for _, gx, gy in gaze]
-        targets = [target] * len(errors)
-        results.append(_point_result('display %d,%d px' % (x, y), gaze, targets, errors))
-    return results
-
-
-def summary(results):
-    ok = [r for r in results or [] if 'accuracy_deg' in r]
-    if not ok:
-        return None
-    acc = [r['accuracy_deg'] for r in ok]
-    return {'points': len(results), 'measured': len(ok), 'accuracy_mean_deg': round(sum(acc) / len(acc), 2),
-            'accuracy_max_deg': round(max(acc), 2),
-            's2s_rms_mean_deg': round(sum(r['s2s_rms_deg'] for r in ok) / len(ok), 3),
-            'sd_mean_deg': round(sum(r['sd_deg'] for r in ok) / len(ok), 3)}
+        screen.close()
 
 
 def main():
@@ -362,24 +502,25 @@ def main():
             result['g2_calibration'] = json.load(handle).get('ca_id')
     except (OSError, ValueError):
         pass
-    if '--display' not in sys.argv:
-        result['monitor'] = validate_monitor(host, out_dir)
-        result['monitor_summary'] = summary(result['monitor'])
-    if '--monitor' not in sys.argv:
-        if devices.get('video'):
-            result['display'] = validate_display(host, devices['video'], out_dir)
-            result['display_summary'] = summary(result['display'])
-        else:
-            print('No video server in devices.json: the glasses display check is skipped')
+    screen = Screen()
+    result['monitors'] = screen.monitors
+    worker = threading.Thread(target=run, args=(host, devices, out_dir, screen, result), daemon=True)
+    worker.start()
+    screen.root.mainloop()          # Tk in the main thread; the worker closes the window at the end
+    worker.join(30)
     print()
-    for key, name in (('monitor_summary', 'Monitor'), ('display_summary', 'Glasses display')):
+    for key, name in (('monitor_summary', 'Monitors'), ('display_summary', 'Glasses display')):
         s = result.get(key)
         if s:
-            print('%-16s accuracy %.2f deg mean (max %.2f), precision RMS-S2S %.2f / SD %.2f deg, %d of %d points'
-                  % (name, s['accuracy_mean_deg'], s['accuracy_max_deg'], s['s2s_rms_mean_deg'], s['sd_mean_deg'],
-                     s['measured'], s['points']))
+            print('%-16s accuracy %.2f deg mean, %.2f median (max %.2f), precision RMS-S2S %.2f / SD %.2f deg, '
+                  '%d of %d points, gaze valid %.0f %%'
+                  % (name, s['accuracy_mean_deg'], s['accuracy_median_deg'], s['accuracy_max_deg'],
+                     s['s2s_rms_mean_deg'], s['sd_mean_deg'], s['measured'], s['points'],
+                     100 * (s['gaze_valid_share'] or 0)))
         elif key.split('_')[0] in result:
             print('%-16s not measured' % name)
+    if screen.aborted:
+        print('Stopped (Esc)')
     for path in (os.path.join(out_dir, 'g2_validation.json'), RESULT_FILE):
         with open(path, 'w', encoding='utf-8') as handle:
             json.dump(result, handle, indent=1)
