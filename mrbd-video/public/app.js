@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 11;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 12;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -736,7 +736,7 @@ function connectEvents() {
  *   alert {text}  TOR: 일시정지 + 가림 + 빨간 경고 문구 (깜빡임)
  *   alert_off     경고 문구만 지움 (가림·정지는 그대로: 블록 끝까지 수동 운전)
  *   pause / play / seek {t}   블록 시작·끝
- *   calib {dot}   시선 보정 (calib.js): 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; px:X,Y = 600x600 화면의 한 점; off = 끔)
+ *   calib {dot}   시선 보정 (calib.js): 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; px:X,Y = 600x600 화면의 한 점; blank = 점 없이 비움; off = 끔)
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
 
@@ -766,7 +766,7 @@ function control(d) {
   } else if (a === 'seek') {
     P.seekTo(+d.t || 0);
   } else if (a === 'calib') {
-    if (typeof calibDot === 'function') calibDot(d.dot);  // calib.js
+    if (typeof calibDot === 'function') calibDot(d.dot, d.text);  // calib.js
   }
   report(a, d.id);
 }

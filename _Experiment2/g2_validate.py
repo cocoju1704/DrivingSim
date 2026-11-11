@@ -15,9 +15,9 @@ monitor targets, "이제 글래스를 보세요" before the glasses display's do
 too, as the app's alert text, MESSAGE_S each). Esc on the window stops.
 
 1. Monitors. A target like the calibration one (black ring, white disc, black dot) at MONITOR_POINTS
-   in turn, over the three monitors (the middle one's centre and corners, the side ones' part next to
-   it). The participant looks at the dot of each target until it moves (SETTLE_S + COLLECT_S), the
-   head kept still. Ground truth: where the target is in each scene camera frame
+   in turn: the middle monitor's centre and corners, then where the experiment's side and rear-view
+   mirrors are. The participant looks at the dot of each target until it moves (SETTLE_S + COLLECT_S);
+   for the mirrors the head may turn, as while driving. The glasses app stays blank (its menu hidden). Ground truth: where the target is in each scene camera frame
    (found in the video), so a head movement does not count as an error; the gaze sample nearest each
    frame (glasses clock) is compared with it. A target the scene camera does not see is reported as
    such. Needs OpenCV (pip install opencv-python-headless).
@@ -59,10 +59,14 @@ SETTLE_S = 1.0                       # s after a target appears before its gaze 
 COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
 MIN_SAMPLES = 20
-# the monitors: (monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). Without
-# turning the head the side monitors are seen only near the middle one: their inner part
-MONITOR_POINTS = [(0, 0.5, 0.5), (0, 0.08, 0.15), (0, 0.92, 0.15), (0, 0.92, 0.85), (0, 0.08, 0.85),
-                  (-1, 0.85, 0.3), (-1, 0.85, 0.7), (1, 0.15, 0.3), (1, 0.15, 0.7)]
+# the monitors: (name, monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). The
+# middle monitor's centre and corners, then where the experiment's mirrors are (abc_experiment's driver
+# view over 3 x 1920 x 1080, measured on its screen snapshot): for those the head may turn, as it does
+# while driving
+MONITOR_POINTS = [('road', 0, 0.5, 0.45), ('middle top left', 0, 0.08, 0.15), ('middle top right', 0, 0.92, 0.15),
+                  ('middle bottom right', 0, 0.92, 0.85), ('middle bottom left', 0, 0.08, 0.85),
+                  ('left mirror', -1, 0.60, 0.80), ('rear-view mirror', 1, 0.50, 0.14),
+                  ('right mirror', 1, 0.935, 0.76)]
 TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
 DISPLAY_POINTS = [(300, 30), (570, 300), (300, 570), (30, 300), (165, 165), (435, 165), (435, 435), (165, 435)]
@@ -291,7 +295,7 @@ class Screen(object):
         self._call(draw)
 
     def target(self, point):
-        """Draws the target at MONITOR_POINTS entry point; False when that monitor is not there."""
+        """Draws the target at (monitor, x, y) of a MONITOR_POINTS entry; False when that monitor is not there."""
         index, fx, fy = point
         k = len(self.monitors) // 2 + index
         if not 0 <= k < len(self.monitors):
@@ -316,12 +320,12 @@ class Screen(object):
         self._todo.put(None)
 
 
-def glasses_alert(link, text):
-    """The glasses app's alert text (red, blinking); None clears it."""
+def glasses_cue(link, text=None):
+    """The glasses app blank (its menu hidden), with a line of guidance or none."""
     if link is None:
         return
     try:
-        link._post('/api/control', {'action': 'alert', 'text': text} if text else {'action': 'resume'})
+        link.calib('blank', text)
     except OSError:
         pass
 
@@ -336,15 +340,15 @@ def validate_monitor(host, out_dir, screen, link):
     rec = Recording(host, os.path.join(out_dir, 'monitor'))
     print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s)'
           % (len(MONITOR_POINTS), len(MONITOR_POINTS) * (SETTLE_S + COLLECT_S)))
-    screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요')
-    glasses_alert(link, '이제 모니터를 보세요')
+    screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요 (미러 자리는 고개를 돌려도 됩니다)')
+    glasses_cue(link, '이제 모니터를 보세요')
     time.sleep(MESSAGE_S)
-    glasses_alert(link, None)
+    glasses_cue(link)
     shown = []
     for point in MONITOR_POINTS:
         if screen.aborted:
             break
-        if screen.target(point):
+        if screen.target(point[1:]):
             shown.append((point, time.time()))
             time.sleep(SETTLE_S + COLLECT_S)
     screen.clear()
@@ -366,7 +370,6 @@ def validate_monitor(host, out_dir, screen, link):
         found = find_target(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cv2)
         frames.append((a * pts + b, None if found is None else (found[0] / SCENE_PX[0], found[1] / SCENE_PX[1])))
     results = []
-    names = {-1: 'left', 0: 'middle', 1: 'right'}
     for point, at in shown:
         t0, t1 = rec.pc_to_ts(at + SETTLE_S), rec.pc_to_ts(at + SETTLE_S + COLLECT_S)
         gaze = [(t, x, y) for t, _, x, y in rec.gaze if t0 <= t <= t1]
@@ -378,7 +381,7 @@ def validate_monitor(host, out_dir, screen, link):
             if abs(t - ft) <= 30000:
                 errors.append(angle((x, y), target))
                 targets.append(target)
-        name = '%s %.2f,%.2f' % (names.get(point[0], point[0]), point[1], point[2])
+        name = point[0]
         results.append(_point_result(name, gaze, targets, errors, len([1 for ft, _ in frames if t0 <= ft <= t1])))
     return results, rec.valid_share()
 
@@ -418,19 +421,18 @@ def validate_display(host, out_dir, screen, link):
     print('\nGlasses display: the participant looks at each red dot on the glasses display until it moves '
           '(%d dots, %.0f s)' % (len(DISPLAY_POINTS), len(DISPLAY_POINTS) * (SETTLE_S + COLLECT_S)))
     screen.message('이제 글래스를 보세요', '안경 화면의 빨간 점을 따라 봐 주세요')
-    glasses_alert(link, '이제 글래스를 보세요')
+    glasses_cue(link, '이제 글래스를 보세요')
     time.sleep(MESSAGE_S)
     shown = []
     try:
         for x, y in DISPLAY_POINTS:
             if screen.aborted:
                 break
-            link._post('/api/control', {'action': 'calib', 'dot': 'px:%d,%d' % (x, y)})
+            link.calib('px:%d,%d' % (x, y))
             shown.append(((x, y), time.time()))
             time.sleep(SETTLE_S + COLLECT_S)
     finally:
-        link._post('/api/control', {'action': 'calib', 'dot': 'off'})
-        glasses_alert(link, None)
+        glasses_cue(link)
     time.sleep(0.5)
     rec.stop()
     results = []
@@ -453,24 +455,11 @@ def summary(results, valid):
             'sd_mean_deg': round(sum(r['sd_deg'] for r in ok) / len(ok), 3), 'gaze_valid_share': valid}
 
 
-def open_video_link(address):
-    """The glasses app's link, or None (reason printed)."""
-    from video_link import VideoLink
-    link = VideoLink(address)
-    try:
-        delivered = link._post('/api/control', {'action': 'calib', 'dot': 'off'}).get('delivered', 0)
-    except OSError as error:
-        print('The video server at %s is not reached (%s)' % (link.base, error))
-        return None
-    if not delivered:
-        print('The glasses app is not connected to %s: open it on the glasses' % link.base)
-        return None
-    return link
-
-
 def run(host, devices, out_dir, screen, result):
+    link = None
     try:
-        link = open_video_link(devices['video']) if devices.get('video') else None
+        from g2_calibrate import glasses_link      # the menu hidden (calib blank) until the end
+        link = glasses_link(devices['video']) if devices.get('video') else None
         if '--display' not in sys.argv:
             result['monitor'], valid = validate_monitor(host, out_dir, screen, link)
             result['monitor_summary'] = summary(result['monitor'], valid)
@@ -480,11 +469,15 @@ def run(host, devices, out_dir, screen, result):
             else:
                 result['display'], valid = validate_display(host, out_dir, screen, link)
                 result['display_summary'] = summary(result['display'], valid)
-        if link is not None:
-            link.close()
         screen.message('끝났습니다')
         time.sleep(1.0)
     finally:
+        if link is not None:
+            try:
+                link.calib('off')      # the menu back
+            except OSError:
+                pass
+            link.close()
         screen.close()
 
 

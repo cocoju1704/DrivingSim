@@ -50,11 +50,36 @@ class VideoLink(object):
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
 
-    def _post(self, path, data):
-        request = urllib.request.Request(self.base + path, data=json.dumps(data).encode('utf-8'), method='POST',
-                                         headers=dict(HEADERS, **{'Content-Type': 'application/json'}))
-        with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
-            return json.loads(response.read().decode('utf-8') or '{}')
+    def _post(self, path, data, tries=3):
+        """POST JSON; tried again (up to tries) on a failure: through the tunnel a request now and then
+        comes back 400 (its body cut) or 5xx, and the next one goes through."""
+        body = json.dumps(data).encode('utf-8')
+        for attempt in range(tries):
+            request = urllib.request.Request(self.base + path, data=body, method='POST',
+                                             headers=dict(HEADERS, **{'Content-Type': 'application/json'}))
+            try:
+                with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
+                    return json.loads(response.read().decode('utf-8') or '{}')
+            except urllib.error.HTTPError as error:
+                if error.code not in (400, 408, 429, 500, 502, 503, 504) or attempt == tries - 1:
+                    raise
+            except OSError:
+                if attempt == tries - 1:
+                    raise
+            time.sleep(0.2)
+
+    def calib(self, dot, text=None):
+        """The glasses app's calibration layer (calib.js): dot 'c' / 'tl' ... / 'px:X,Y' (600x600 px),
+        'blank' (black, i.e. see-through, over the menu), 'off'; text: a line of guidance on it.
+        Returns how many apps got it. Raises when the server is not reached."""
+        data = {'action': 'calib', 'dot': dot}
+        if text:
+            data['text'] = text
+        return self._post('/api/control', data).get('delivered', 0)
+
+    def app_version(self):
+        """The glasses app's version (APP_VERSION) from its last report, 0 if none or older than v9."""
+        return int(self.state().get('v') or 0)
 
     def state(self):
         """The glasses' last report (position t in s, paused, frozen, title), {} if none."""

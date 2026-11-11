@@ -15,7 +15,8 @@ then finds where the Meta Ray-Ban Display's screen is in the Glasses 2 gaze (gla
    light on the target, its distance).
 
 2. The glasses display. The participant wears the Ray-Ban Display too, its app open (mrbd-video, the
-   server at devices.json's video). The app shows a dot in the middle of its screen and then in each
+   server at devices.json's video). The app's menu is hidden (calib 'blank') through both steps;
+   "이제 글래스를 보세요" on it, then a dot in the middle of its screen and then near each
    corner (CALIB_INSET px in from the edges); the participant looks at each dot until it moves on
    (DOT_SETTLE_S + DOT_COLLECT_S each). Both glasses sit on the head, so where the display is in the
    Glasses 2 scene camera stays the same while they are worn: the median gaze at each dot (gaze
@@ -40,7 +41,11 @@ import g2_stream
 HERE = os.path.dirname(os.path.abspath(__file__))
 DISPLAY_FILE = os.path.join(HERE, 'g2_display.json')
 DISPLAY_PX = (600, 600)      # the Ray-Ban Display's screen (mrbd-video's app)
-CALIB_INSET = 30             # px from its edges to the corner dots (app.js CALIB_INSET)
+CALIB_INSET = 60             # px from its edges to the corner dots: the display's bottom edge sits at the
+                             # bottom of the scene camera's view, where the gaze is lost; the outline
+                             # (g2_validate.py's homography) reaches the edges from these four
+MIN_APP_VERSION = 12         # the glasses app's calib.js with 'blank' and text
+CUE_S = 3.0                  # s of "이제 글래스를 보세요" before the dots
 DOTS = ('c', 'tl', 'tr', 'br', 'bl')
 DOT_SETTLE_S = 1.2           # s after a dot appears before its gaze counts (the eyes get there)
 DOT_COLLECT_S = 1.5          # s of gaze per dot
@@ -136,18 +141,34 @@ def _median_point(points):
     return mx, my, spread
 
 
-def calibrate_display(g2_host, video_address, calibration):
+def glasses_link(video_address):
+    """The glasses app's link with its menu hidden (calib 'blank'), or None (why printed)."""
     from video_link import VideoLink
     link = VideoLink(video_address)
     try:
-        delivered = link._post('/api/control', {'action': 'calib', 'dot': 'off'}).get('delivered', 0)
+        delivered = link.calib('blank')
     except OSError as error:
         print('The video server at %s is not reached (%s): start it, open the app on the glasses' % (
             link.base, error))
-        return False
+        link.close()
+        return None
     if not delivered:
         print('The glasses app is not connected to %s: open it on the glasses first' % link.base)
-        return False
+        link.close()
+        return None
+    time.sleep(0.5)                     # its report with the version
+    version = link.app_version()
+    if version < MIN_APP_VERSION:
+        print('The glasses app is v%d, these steps need v%d (calib blank): update it (git pull where the '
+              'server runs, then reopen the app; or disconnect and connect the web app in Meta AI)'
+              % (version, MIN_APP_VERSION))
+        link.calib('off')
+        link.close()
+        return None
+    return link
+
+
+def calibrate_display(g2_host, link, calibration):
     gaze = GazeReceiver(g2_host)
     try:
         time.sleep(1.5)
@@ -160,10 +181,12 @@ def calibrate_display(g2_host, video_address, calibration):
                   'moves (5 dots, %.0f s). Enter: start > ' % (len(DOTS) * (DOT_SETTLE_S + DOT_COLLECT_S)))
         except EOFError:
             pass
+        link.calib('blank', '이제 글래스를 보세요')
+        time.sleep(CUE_S)
         found = {}
         for dot in DOTS:
             for attempt in range(2):
-                link._post('/api/control', {'action': 'calib', 'dot': dot})
+                link.calib('px:%d,%d' % dot_px(dot))
                 shown = time.time()
                 time.sleep(DOT_SETTLE_S + DOT_COLLECT_S)
                 points = gaze.between(shown + DOT_SETTLE_S, shown + DOT_SETTLE_S + DOT_COLLECT_S)
@@ -177,10 +200,9 @@ def calibrate_display(g2_host, video_address, calibration):
                     print('  %-2s unsteady (spread %.3f): again' % (dot, spread))
                 else:
                     print('  %-2s too few valid samples (%d): again' % (dot, len(points)))
-        link._post('/api/control', {'action': 'calib', 'dot': 'off'})
+        link.calib('blank')
     finally:
         gaze.close()
-        link.close()
     if len(found) < len(DOTS):
         print('Glasses display not found: %s missing. Run again (--display-only).'
               % ', '.join(d for d in DOTS if d not in found))
@@ -211,6 +233,23 @@ def main():
         devices = json.load(handle)
     host = args[0] if args else devices['g2']
     g2 = G2Link(host, 'calibration')     # only its requests (no markers, no recording)
+    link = None
+    if devices.get('video'):
+        link = glasses_link(devices['video'])      # the menu hidden from here to the end
+        if link is None and '--no-display' not in sys.argv:
+            return 3
+    try:
+        return _steps(g2, host, devices, link)
+    finally:
+        if link is not None:
+            try:
+                link.calib('off')       # the menu back
+            except OSError:
+                pass
+            link.close()
+
+
+def _steps(g2, host, devices, link):
     calibration = None
     if '--display-only' not in sys.argv:
         calibration = calibrate_glasses2(g2)
@@ -227,7 +266,7 @@ def main():
     if not devices.get('video'):
         print('No video server in devices.json: the glasses display step is skipped')
         return 0
-    return 0 if calibrate_display(host, devices['video'], calibration) else 3
+    return 0 if calibrate_display(host, link, calibration) else 3
 
 
 if __name__ == '__main__':
