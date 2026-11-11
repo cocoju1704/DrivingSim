@@ -133,7 +133,10 @@ class VideoLink(object):
         self._send('resume', id=qid)
 
     def alert(self, eid='', text=''):
-        self._send('alert', id=eid, text=text)
+        """The TOR: the video stops and is hidden (as at a question), but no message on the glasses:
+        the takeover request is on the monitors (above the cluster, and in the HUD condition the HUD),
+        the same for every condition. text is kept for the log only."""
+        self._send('freeze', id=eid)
 
     def alert_off(self, eid=''):
         self._send('alert_off', id=eid)
