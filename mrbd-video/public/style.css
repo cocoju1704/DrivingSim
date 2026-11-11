@@ -69,5 +69,9 @@ input.item::placeholder { color: #778; }
 /* 시선 보정: 검은 화면에 점 하나 (중심 / 네 꼭짓점, 가장자리에서 CALIB_INSET px) */
 #calib { position: absolute; inset: 0; background: #000; z-index: 110; }
 #calib[hidden] { display: none; }
+/* plain colours and a border only: the glasses' browser ignored a radial-gradient with two-position stops
+   (the dot was transparent). Red ring 5 px, white 8 px, red centre 8 px: 28 px across */
 #calib-dot { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%;
-  background: radial-gradient(circle, #ff2a2a 0 4px, #fff 5px 9px, #ff2a2a 10px 14px); }
+  box-sizing: border-box; border: 5px solid #ff2a2a; background: #fff; }
+#calib-dot::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px;
+  margin: -4px 0 0 -4px; border-radius: 50%; background: #ff2a2a; }

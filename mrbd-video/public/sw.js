@@ -1,6 +1,6 @@
 // 앱 셸 프리캐시 → 안경에서 앱이 네트워크 없이도 즉시 뜸.
 // 영상(/media)과 API는 캐시하지 않음 (영상은 앱이 IndexedDB에 직접 저장).
-const CACHE = 'mrbd-video-v6';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib)
+const CACHE = 'mrbd-video-v7';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib), v7: 점을 단색으로 (안경에서 그라디언트가 안 보임)
 const SHELL = ['/', '/index.html', '/app.js', '/style.css', '/manifest.json', '/icon.png'];
 
 self.addEventListener('install', (e) => {

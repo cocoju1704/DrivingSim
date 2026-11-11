@@ -30,6 +30,9 @@
   let fine = 1.0;
   try { const v = parseFloat(localStorage.getItem('g2_fine_' + inch)); if (v > 0.3 && v < 3) fine = v; } catch (e) {}
   let pxmm = base * fine;
+  // ?y=85: the target's height on the screen in % from the top (default 50: the middle)
+  const y = parseFloat(q.get('y'));
+  if (y >= 0 && y <= 100) document.getElementById('t').style.top = y + '%';
   function draw() {
     const t = document.getElementById('t'), c = document.getElementById('card');
     t.style.width = t.style.height = (44 * pxmm) + 'px';
@@ -44,10 +47,10 @@
     else if (e.key === '+' || e.key === '=') fine *= 1.01;
     else if (e.key === '-' || e.key === '_') fine /= 1.01;
     else if (e.key === '0') fine = 1.0;
-    pxmm = base * fine;
     else if (e.key === 'f') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
     else if (e.key === 'h') { const h = document.getElementById('help'), c = document.getElementById('card');
       const v = h.style.display === 'none' ? '' : 'none'; h.style.display = v; c.style.display = v; }
+    pxmm = base * fine;
     draw();
   });
   draw();
