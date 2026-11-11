@@ -15,9 +15,9 @@ monitor targets, "이제 글래스를 보세요" before the glasses display's do
 too, as the app's alert text, MESSAGE_S each). Esc on the window stops.
 
 1. Monitors. A target like the calibration one (black ring, white disc, black dot) at MONITOR_POINTS
-   in turn, over the three monitors (the middle one's centre and corners, the outer part of the side
-   ones). The participant looks at the dot of each target until it moves (SETTLE_S + COLLECT_S); the
-   head may turn to the side monitors. Ground truth: where the target is in each scene camera frame
+   in turn, over the three monitors (the middle one's centre and corners, the side ones' part next to
+   it). The participant looks at the dot of each target until it moves (SETTLE_S + COLLECT_S), the
+   head kept still. Ground truth: where the target is in each scene camera frame
    (found in the video), so a head movement does not count as an error; the gaze sample nearest each
    frame (glasses clock) is compared with it. A target the scene camera does not see is reported as
    such. Needs OpenCV (pip install opencv-python-headless).
@@ -59,10 +59,10 @@ SETTLE_S = 1.0                       # s after a target appears before its gaze 
 COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
 MIN_SAMPLES = 20
-# the monitors: (monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height)
-MONITOR_POINTS = [(0, 0.5, 0.5), (0, 0.08, 0.12), (0, 0.92, 0.12), (0, 0.92, 0.88), (0, 0.08, 0.88),
-                  (-1, 0.5, 0.5), (-1, 0.1, 0.15), (-1, 0.1, 0.85),
-                  (1, 0.5, 0.5), (1, 0.9, 0.15), (1, 0.9, 0.85)]
+# the monitors: (monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). Without
+# turning the head the side monitors are seen only near the middle one: their inner part
+MONITOR_POINTS = [(0, 0.5, 0.5), (0, 0.08, 0.15), (0, 0.92, 0.15), (0, 0.92, 0.85), (0, 0.08, 0.85),
+                  (-1, 0.85, 0.3), (-1, 0.85, 0.7), (1, 0.15, 0.3), (1, 0.15, 0.7)]
 TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
 DISPLAY_POINTS = [(300, 30), (570, 300), (300, 570), (30, 300), (165, 165), (435, 165), (435, 435), (165, 435)]
