@@ -261,6 +261,7 @@ SAGAT 점수는 문항마다 (격자 8칸 정답률 + 접근 차량 정답 + 안
 | calibration_target/ | 캘리브레이션 타깃 (매뉴얼 부록 D 치수: 고리 43 mm): 인쇄용 SVG(100 %), 화면용 HTML (`?y=85`: 타깃 높이 %, 장면 카메라가 아래를 향할 때) |
 | mirror_gaze.py | 장면 영상에서 미러 응시 판정: 시선 주변에서 미러(유리·검은 하우징 윤곽, `mirror_ref/`)를 찾아 시선이 그 유리 안인지. 블록 폴더에 `mirror_gaze.csv`(프레임), `mirror_glances.csv`(응시 구간), `mirror_windows.csv`(사건 창·TOR별 AOI 미러 응시 여부, 첫 응시, 머문 시간). `--images`: 응시마다 그림(`mirror_gaze/`) |
 | gaze_video.py | 장면 영상에 시선(원과 0.3초 궤적)과 주행 상태(블록 시각, 자율/수동, TOR 단계, 속도), 응시 중인 미러, 열린 사건 창과 최근 사건을 그려 블록 폴더에 `gaze_video.mp4`. `--from 180 --to 200`: 일부만, `--speed 0.5`: 느리게. H.264는 `pip install imageio-ffmpeg`(venv_carla에 설치됨). 미러 표시는 `mirror_gaze.py`를 먼저 돌렸을 때 |
+| postprocess.py | 블록이 끝나면 실험이 저절로 뒤에서(가장 낮은 우선순위) 실행: `mirror_gaze.py --images`, `sagat_gaze.csv`(SAGAT 직전 10초의 글래스 화면 응시 비율, 마지막으로 화면을 벗어난 뒤 시간, 미러 응시), `gaze_video.mp4`. 기록은 `postprocess.log`. 끄기: `--no-post` |
 | video_link.py | mrbd-video 연동 (play: 영상 직접 열기, freeze / resume, TOR은 글래스에 문구 없이 정지·가림). 명령마다 조건(`device`)을 실어 휴대폰 조건이면 폰 앱이 따름 |
 | carla_base.py | `_Experiment/takeover_experiment.py`의 복사본 (휠, 미러, 계기판, 자율주행) |
 | gaze_tracking.py, gaze_bridge.py, road_signs.py | `_Experiment`에서 복사 |

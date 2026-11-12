@@ -1,5 +1,5 @@
 {
-  "_comment": "Scenario ABC uses no wheel buttons (the participant answers only the SAGAT questions, on the tablet). buttons: carla_base's driving buttons, none needed here.",
+  "_comment": "Scenario ABC: the paddles behind the wheel are the turn signals (logged; at the TOR tor_events.csv has the first one after the alert). The participant answers the SAGAT questions on the tablet / laptop. Numbers: python _Experiment2/carla_base.py --wheel-test",
   "wheel": "Thrustmaster T300RS Racing Wheel",
-  "buttons": {}
+  "buttons": {"left_blinker": 0, "right_blinker": 1}
 }

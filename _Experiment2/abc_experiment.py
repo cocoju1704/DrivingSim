@@ -118,7 +118,8 @@ GORE_OBJECTS = ('SM_SecWaterDrums',                       # all water drums (the
                 'BP_HighwayLight_multiple16_47_SM_', 'BP_SpeedLimit95_3959_SM_')
 TOR_COLUMNS = ('participant', 'block', 'set', 'condition', 't_tor', 'safe_lane', 'unsafe_lane', 't_first_input',
                't_manual', 'first_input_type', 't_lane_change_start', 't_lane_change_end', 'chosen_lane',
-               'chose_safe', 'min_ttc_obstacle_s', 'min_gap_hazard_m', 'conflict', 'collision', 'no_takeover')
+               'chose_safe', 'min_ttc_obstacle_s', 'min_gap_hazard_m', 'conflict', 'collision', 'no_takeover',
+               't_blinker', 'blinker_side', 'blinker_before_lane_change', 'blinker_matches_lane')
 
 
 # ==============================================================================
@@ -317,15 +318,17 @@ class Overlay(object):
     alert (blinking above the cluster; in the HUD condition in the HUD area too), and the black
     screens of a question and of the end.
 
-    Layout at the bottom of the middle monitor: the cluster on the left and the HUD's video area
-    right next to it (where the glasses' display appears: lower right of the view), the two
-    together centred. The HUD area is square, HUD_DEG wide (as the glasses' display); hud_rect is
-    where the HUD condition's video goes (--hud-preview draws its outline)."""
+    Layout at the bottom of the middle monitor: the cluster in the middle, the HUD's video area at
+    the monitor's right edge (where the glasses' display appears in the view), a plain square
+    HUD_DEG wide (as the glasses' display, no windshield perspective), its bottom just above the
+    dashboard (the cluster's top). hud_rect is where the HUD condition's video goes (--hud-preview
+    draws its outline)."""
 
     _draw_cluster = base.TakeoverExperiment._draw_cluster
     HUD_DEG = 8.0     # degrees across, as the glasses' display
     HUD_RIGHT_DEG = 9.5   # the HUD's centre, degrees right of straight ahead: clear of the badge and the TOR alert above the cluster
     HUD_ABOVE_PX = 12     # px between the HUD's bottom and the cluster's top (the dashboard)
+    HUD_EDGE_PX = 8       # px between the HUD and the middle monitor's right edge
     HUD_NEAR_M = 0.75     # m from the driver's eyes to the HUD's bottom edge on the windshield
     WINDSHIELD_RAKE_DEG = 62.0   # the windshield's lean back from vertical (28 degrees above horizontal)
 
@@ -337,13 +340,12 @@ class Overlay(object):
         # the cluster centred on the monitor, in front of the driver: wide enough to hide the steering wheel
         left = (width - panel_w) // 2
         face['origin'] = (left, face['origin'][1])
-        # the HUD on the windshield, lower right of straight ahead (as the glasses' display), its bottom
-        # just above the dashboard (the cluster's top)
-        fov = self._world.camera_manager.screen_fov if hasattr(self._world.camera_manager, 'screen_fov') else 43.0
+        # the HUD at the middle monitor's right edge (where the glasses' display is seen), a square as
+        # the glasses' display, its bottom just above the dashboard (the cluster's top)
         bottom = face['origin'][1] - self.HUD_ABOVE_PX
-        self.hud_poly = self._hud_polygon(width, height, fov, bottom)
-        xs, ys = [p[0] for p in self.hud_poly], [p[1] for p in self.hud_poly]
-        self.hud_rect = pygame.Rect(min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)  # its bounds
+        self.hud_rect = pygame.Rect(width - self.HUD_EDGE_PX - hud, bottom - hud, hud, hud)
+        r = self.hud_rect
+        self.hud_poly = [(r.left, r.bottom), (r.right, r.bottom), (r.right, r.top), (r.left, r.top)]
         return face
 
     def _hud_polygon(self, width, height, fov, bottom):
@@ -380,7 +382,7 @@ class Overlay(object):
         self._needles = [0.0, 0.0]
         self._pedal = 0.0
         self._speed_kmh = 0.0
-        self._lights = 0  # no turn signals: the paddles only answer
+        self._lights = 0  # the turn signals the driver switched on (the cluster's arrows)
         name = pygame.font.match_font('malgungothic,applesdgothicneo,notosanscjkkr') or pygame.font.get_default_font()
         self._font_name = name
         self.big = pygame.font.Font(name, 40)
@@ -672,6 +674,8 @@ def build_args():
     parser.add_argument('--g2-record', action='store_true', help='with --g2: start and stop a recording too')
     parser.add_argument('--g2-no-stream', action='store_true',
                         help='with --g2: do not save the live gaze and scene video in the data folder')
+    parser.add_argument('--no-post', action='store_true',
+                        help='with --g2: no postprocess.py at the end (mirror glances, SAGAT gaze, gaze_video.mp4)')
     parser.add_argument('--video', metavar='HOST[:PORT]',
                         help='the NDRT video player on the glasses / phone (mrbd_video): paused at the questions')
     parser.add_argument('--video-file', default=None, help='the video the player plays (its name on the device)')
@@ -851,6 +855,7 @@ def run(args):
         block._marks_done.update(k for e in schedule['events'] if e['t'] < args.start_at for k in (e['id'], e['id'] + '/end'))
         fixed_frames = 0
         holding = True  # the start speed (START_HOLD_S)
+        blinker = None  # the turn signal on: 'left', 'right' or None
         snaps = sorted(args.snap or [])
         clock = pygame.time.Clock()
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
@@ -876,6 +881,14 @@ def run(args):
                     base.next_view(world)
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_F1:
                     world.hud.toggle_info()
+                # the turn signals: the paddles behind the wheel (wheel_buttons.json), Z / X on the keyboard;
+                # again on the same side switches it off
+                side = driver_input.light_event(event) if hasattr(driver_input, 'light_event') else None
+                if side in ('left', 'right'):
+                    blinker = None if blinker == side else side
+                    block.mark(t, 'turn signal %s' % (blinker or 'off'))
+                    if blinker and block.tor is not None:
+                        block.tor.signal(t, blinker)
             ended = block.tor is not None and block.tor.over(t)  # 5 s after the car stands still
             if t >= schedule['block_end_s'] or ended or (args.duration and t - args.start_at >= args.duration):
                 aborted = t < schedule['block_end_s'] and not ended
@@ -949,7 +962,9 @@ def run(args):
                         follower.prime(start_throttle)  # as when it has been driving the loop for a while
             world.player.apply_control(control)
             driver_input.force_feedback(speed_kmh)
-            lights = base.BRAKE_LIGHT if control.brake > 0.0 else 0
+            signal = {'left': base.LEFT_BLINKER, 'right': base.RIGHT_BLINKER}.get(blinker, 0)
+            overlay._lights = signal  # pylint: disable=protected-access  (the cluster's arrows)
+            lights = (base.BRAKE_LIGHT if control.brake > 0.0 else 0) | signal
             world.player.set_light_state(carla.VehicleLightState(lights))
             while logged_collisions < len(collisions):
                 block.mark(t, 'collision: %s' % (block.tor.what_is(collisions[logged_collisions][1])
@@ -1023,6 +1038,14 @@ def run(args):
             block.mark(t, 'run end')
             block.g2.close()
         block.log.close()
+        if block.g2 is not None and not args.g2_no_stream and not args.no_post and block.log.dir:
+            # the gaze analyses and the gaze video, in the background at idle priority (postprocess.py)
+            try:
+                import postprocess
+                postprocess.detach(block.log.dir)
+                logging.info('Gaze analyses and gaze_video.mp4 started in the background (postprocess.log)')
+            except OSError as error:
+                logging.warning('postprocess.py not started: %s', error)
         if server_weather is not None:
             try:
                 sim_world.set_weather(server_weather)
@@ -1159,6 +1182,7 @@ class TorRun(object):
         self.baseline = None       # (steer, throttle, brake) at the alert
         self.t_first_input = self.first_input_type = self.t_manual = None
         self.lc_start = self.lc_end = self.chosen = None
+        self.t_blinker = self.blinker_side = None  # the first turn signal from the alert on
         self.min_ttc = self.min_gap_hazard = None
         self.ttc = None
         self.conflict = False
@@ -1339,6 +1363,11 @@ class TorRun(object):
             self.phase = 'end'
             block.mark(t, 'the car stands still: the block ends in %.0f s' % self.tt['end_after_stop_s'], eid)
 
+    def signal(self, t, side):
+        """The driver's turn signal (left / right paddle) switched on at t."""
+        if self.t_alert is not None and t >= self.t_alert and self.t_blinker is None:
+            self.t_blinker, self.blinker_side = t, side
+
     def row(self, block):
         def r(x, n=2):
             return None if x is None else round(x, n)
@@ -1350,7 +1379,11 @@ class TorRun(object):
                 't_lane_change_end': r(self.lc_end, 3), 'chosen_lane': self.chosen,
                 'chose_safe': None if self.chosen is None else self.chosen == self.safe, 'min_ttc_obstacle_s': r(self.min_ttc),
                 'min_gap_hazard_m': r(self.min_gap_hazard), 'conflict': self.conflict, 'collision': self.collision,
-                'no_takeover': self.no_takeover}
+                'no_takeover': self.no_takeover, 't_blinker': r(self.t_blinker, 3), 'blinker_side': self.blinker_side,
+                'blinker_before_lane_change': None if self.t_blinker is None or self.lc_start is None
+                else self.t_blinker <= self.lc_start,
+                'blinker_matches_lane': None if self.t_blinker is None or self.chosen is None
+                else (self.blinker_side == 'left') == (self.chosen == 1)}
 
 
 def car_sound(on):
