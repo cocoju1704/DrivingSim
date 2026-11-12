@@ -90,9 +90,6 @@ CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유�
 AUTO, TOR, MANUAL, STOPPED = 'AUTO', 'TOR', 'MANUAL', 'STOPPED'  # TOR: the alert, still driving itself
 AUDIO_MUTE_PORT = 5006     # carla-audio-engine fmain.py: "mute" / "unmute" (the car sound during a question)
 RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variable one would be the freeze)
-FRONT_CELLS = ('1_front', '2_front', '3_front')
-APPROACH_ANSWER = {'left': 1, 'behind': 2, 'right': 3}
-SAFE_ANSWER = {'left': '1', 'right': '3', 'both': 'both', 'none': 'none'}
 HUD_OFF_GLASS = (10, 12, 16, 110)       # the switched-off HUD on the windshield: a faint dark pane
 HUD_OFF_RIM = (90, 95, 105, 150)
 CAMERA_ISO = 250.0                     # manual exposure of the monitor cameras: brighter than automatic
@@ -279,33 +276,53 @@ class MirrorVisibility(object):
 # ==============================================================================
 
 
-def sagat_truth(snapshot, qt):
-    """The answers from the cars as they are at the freeze: [(id, lane, dx, dx 5 s before)]."""
+# the questions on the tablet (sagat_app): is there a car ... (yes / no, each with its confidence 1-5)
+SAGAT_ITEMS = ('mirror_left', 'mirror_rear', 'mirror_right',   # ... big enough to make out in that mirror
+               'beside_left', 'beside_right',                  # ... alongside, lane 1 / 3, dx -5 .. 5 m
+               'ahead_left', 'ahead', 'ahead_right')            # ... ahead, lane 1 / 2 / 3, dx 5 .. 50 m
+ITEM_CELLS = {'beside_left': '1_side', 'beside_right': '3_side',
+              'ahead_left': '1_front', 'ahead': '2_front', 'ahead_right': '3_front'}
+ITEM_MIRRORS = {'mirror_left': 'left', 'mirror_rear': 'rear', 'mirror_right': 'right'}
+
+
+def sagat_truth(snapshot, qt, mirrors=None):
+    """The answers from the cars as they are at the freeze: snapshot [(id, lane, dx, dx 5 s before)],
+    mirrors {id: {mirror: px}} (MirrorVisibility, the last frame). The grid cells (cell_dx_m: front
+    5 .. 50 m, side -5 .. 5 m) answer beside / ahead; a mirror question is yes when a car is at
+    least RECOGNIZE_PX tall in that inset (any lane: the rear-view mirror shows lanes 1 and 3 too).
+    The cells, approach and safe lane of the layout are kept for the schedule's check."""
     now = [(lane, dx) for _, lane, dx, _ in snapshot]
     history = {k: before for k, (_, _, _, before) in enumerate(snapshot) if before is not None}
     cells, approach, safe = abc_schedule.layout(now, history, qt)
-    return {'cells': cells, 'approach': approach, 'safe': safe,
-            'cars': [{'id': cid, 'lane': lane, 'dx': round(dx, 2), 'dx_5s_before': None if b is None else round(b, 2)}
+    mirrors = mirrors or {}
+    in_mirror = {name: sorted(cid for cid, seen in mirrors.items()
+                              if seen.get(name, 0.0) >= MirrorVisibility.RECOGNIZE_PX)
+                 for name in ('left', 'rear', 'right')}
+    items = {key: bool(cells.get(cell)) for key, cell in ITEM_CELLS.items()}
+    items.update({key: bool(in_mirror[name]) for key, name in ITEM_MIRRORS.items()})
+    return {'items': items, 'in_mirror': in_mirror, 'cells': cells, 'approach': approach, 'safe': safe,
+            'cars': [{'id': cid, 'lane': lane, 'dx': round(dx, 2), 'dx_5s_before': None if b is None else round(b, 2),
+                      'mirrors': mirrors.get(cid, {})}
                      for cid, lane, dx, b in snapshot]}
 
 
 def sagat_score(truth, answer):
+    """Per question: correct or not, its confidence; score = the share correct (also by group)."""
     if answer is None:
         return {'answered': False}
-    marked = set(answer.get('cells', []))
-    present = set(truth['cells'])
-    cells = {cell: (cell in marked) == (cell in present) for cell in abc_schedule.CELLS}
-    front = [cells[c] for c in FRONT_CELLS]
-    around = [cells[c] for c in abc_schedule.CELLS if c not in FRONT_CELLS]
-    approach = sorted(APPROACH_ANSWER[a] for a in answer.get('approach', []) if a in APPROACH_ANSWER)
-    approach_ok = approach == sorted(truth['approach'])
-    safe_ok = SAFE_ANSWER.get(answer.get('safe')) == truth['safe']
-    grid = sum(cells.values()) / float(len(cells))
-    return {'answered': True, 'cells_correct': cells, 'grid': round(grid, 3),
-            'grid_front': round(sum(front) / float(len(front)), 3),
-            'grid_around': round(sum(around) / float(len(around)), 3),
-            'approach_correct': approach_ok, 'safe_correct': safe_ok,
-            'score': round((grid + approach_ok + safe_ok) / 3.0, 3)}
+    given = answer.get('items') or {}
+    correct, confidence = {}, {}
+    for key in SAGAT_ITEMS:
+        a = given.get(key) or {}
+        correct[key] = None if a.get('present') is None else bool(a['present']) == truth['items'][key]
+        confidence[key] = a.get('confidence')
+
+    def share(keys):
+        marks = [correct[k] for k in keys if correct[k] is not None]
+        return round(sum(marks) / float(len(marks)), 3) if marks else None
+    return {'answered': True, 'correct': correct, 'confidence': confidence,
+            'mirrors': share(ITEM_MIRRORS), 'beside': share(('beside_left', 'beside_right')),
+            'ahead': share(('ahead_left', 'ahead', 'ahead_right')), 'score': share(SAGAT_ITEMS)}
 
 
 # ==============================================================================
@@ -582,7 +599,7 @@ class Block(object):
                                               ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'first_recognizable',
                                                'window_start', 'window_end')])
         answered = [q['score'] for q in self.questions if q['score'].get('answered')]
-        sagat = round(100.0 * sum(s['score'] for s in answered) / len(answered)) if answered else None
+        sagat = round(100.0 * sum(s['score'] or 0 for s in answered) / len(answered)) if answered else None
         missing = [w['id'] for w in windows if w['type'] != 'F' and w['first_recognizable'] is None]
         summary = {
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
@@ -856,6 +873,7 @@ def run(args):
         fixed_frames = 0
         holding = True  # the start speed (START_HOLD_S)
         blinker = None  # the turn signal on: 'left', 'right' or None
+        mirrors = {}    # the last frame's mirror visibility of each car (MirrorVisibility): SAGAT truth
         snaps = sorted(args.snap or [])
         clock = pygame.time.Clock()
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
@@ -898,7 +916,7 @@ def run(args):
             if questions and t >= questions[0]['t']:
                 q = questions.pop(0)
                 q_number += 1
-                if not ask_question(block, q, q_number, t, traffic, sagat, overlay, display, clock):
+                if not ask_question(block, q, q_number, t, traffic, sagat, overlay, display, clock, mirrors):
                     return
                 settings.fixed_delta_seconds = 1.0 / args.fps  # the next step is one frame, not the freeze
                 sim_world.apply_settings(settings)
@@ -1395,10 +1413,10 @@ def car_sound(on):
         pass
 
 
-def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock):
+def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, mirrors=None):
     """SAGAT: the simulation is not stepped, the monitors are black, the tablet asks. Returns False
     if the run was ended (ESC)."""
-    truth = sagat_truth(traffic.snapshot(t, block.qt['approach_window_s']), block.qt)
+    truth = sagat_truth(traffic.snapshot(t, block.qt['approach_window_s']), block.qt, mirrors)
     block.frozen = True
     car_sound(False)
     for player in block.media:
@@ -1436,8 +1454,8 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock):
     block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if answer else 'skipped' if skipped else 'timeout'),
                q['id'])
     if score.get('answered'):
-        logging.info('   grid %.0f %%, approach %s, safe %s', 100 * score['grid'], score['approach_correct'],
-                     score['safe_correct'])
+        logging.info('   correct %.0f %% (mirrors %s, beside %s, ahead %s)', 100 * (score['score'] or 0),
+                     score['mirrors'], score['beside'], score['ahead'])
     for count in range(block.qt['countdown_s'], 0, -1):
         sagat.countdown(count)
         until = time.monotonic() + 1.0

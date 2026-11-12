@@ -28,6 +28,11 @@ mirror is looked for in the frame's left strip (whole, or cut by the edge) and t
 from the eye angles; these frames have gaze_from / edge_match in mirror_gaze.csv, and their count
 per glance is in mirror_glances.csv (frames_edge, frames_eye), to check or leave out.
 
+Two more checks (LAYOUT, STABLE_S): a mirror counts only where it is from the instrument cluster
+(found in each frame; a bright patch above the cluster is no rear-view mirror), and the frames from
+the block start until the view is stable (head up from the pedals, the scene camera's white balance
+back) are left out.
+
 Out, into the data folder:
     mirror_gaze.csv      per frame looked at: sim time, gaze px, the mirror of this frame alone (or
                          empty), the glance's mirror (with the hysteresis), score, ring, distance
@@ -97,6 +102,27 @@ OFF_MIN_SCORE_WHOLE = 0.42
 OFF_MIN_SCORE_CUT = 0.6
 OFF_CUT_STEP = 8            # px: the cuts of the template at the frame's edge
 OFF_MARGIN_PX = 100.0
+# The layout check: a light shape with a dark edge elsewhere can pass as a mirror (the bright patch
+# above the instrument cluster as the rear-view mirror, the windshield as the right mirror). The
+# cluster (the speedometer panel at the middle monitor's bottom, mirror_ref/cluster.png, from the
+# scene video) is found in each frame (score CLUSTER_MIN, sizes CLUSTER_SCALES), and a mirror counts
+# only with its glass's centre in its box (LAYOUT: dx, dy px from the cluster's centre, / the
+# cluster's size) - test drive 1112112929: the rear-view mirror dx 217-391, dy -197 to -116, the
+# false ones dx 53-132, dy -82 to 31; the left mirror dx -525 to -264; the right one dx 549-661.
+# Without the cluster (head far round) no check.
+CLUSTER_SCALES = (0.8, 0.9, 1.0, 1.1, 1.2)
+CLUSTER_MIN = 0.7
+LAYOUT = {'left': ((-720.0, -170.0), (-200.0, 130.0)), 'rear': ((165.0, 490.0), (-270.0, -98.0)),
+          'right': ((420.0, 850.0), (-170.0, 90.0))}
+# The block's start: the driver looks down at the pedals / wheel until the block starts, and the scene
+# camera's white balance takes a few seconds to come back (a green cast, a darker picture). The frames
+# are looked at from the first STABLE_S with the cluster found and the picture's green cast (G minus
+# the mean of R and B) within GREEN_TOL of the block's own (the median of GREEN_SAMPLES frames over it),
+# at the latest START_MAX_S after the block start.
+STABLE_S = 1.0
+GREEN_TOL = 3.0             # test drive 1112112929: the block's -2.5, +16 when the head comes up, -0.5 at 6.5 s
+GREEN_SAMPLES = 25
+START_MAX_S = 60.0
 EXTRAP_YAW = (25.0, 45.0)
 EXTRAP_MIN = 200            # samples for the fit, else EXTRAP_DEFAULT (from the test drive 1112112929)
 EXTRAP_DEFAULT = ((526.6, -12.10, 0.49), (292.6, 0.52, -10.39))
@@ -171,8 +197,42 @@ def ring_share(labels, patch, centre, n=8):
     return ok / float(total) if total else 0.0
 
 
-def look(cv2, gray, gx, gy, templates, poses):
-    """The mirror under the gaze (gx, gy px) or None, and per mirror (score, ring, distance px, polygon)."""
+def build_cluster(cv2):
+    """The cluster template at each of CLUSTER_SCALES, for a half-size frame: [(scale, template)]."""
+    c = cv2.imread(os.path.join(REF_DIR, 'cluster.png'), cv2.IMREAD_GRAYSCALE)
+    return [(s, cv2.resize(c, None, fx=s / 2.0, fy=s / 2.0, interpolation=cv2.INTER_AREA).astype(np.float32))
+            for s in CLUSTER_SCALES]
+
+
+def find_cluster(cv2, gray, cluster):
+    """(score, centre x px, centre y px, scale) of the instrument cluster in the frame."""
+    half = cv2.resize(gray, (gray.shape[1] // 2, gray.shape[0] // 2), interpolation=cv2.INTER_AREA).astype(np.float32)
+    best = None
+    for s, t in cluster:
+        _, value, _, loc = cv2.minMaxLoc(cv2.matchTemplate(half, t, cv2.TM_CCOEFF_NORMED))
+        if best is None or value > best[0]:
+            best = (value, loc[0] * 2 + t.shape[1], loc[1] * 2 + t.shape[0], s)
+    return best
+
+
+def layout(name, poly, cl):
+    """'ok' / 'bad': the glass (polygon px) where the mirror is from the cluster (find_cluster); '' without it."""
+    if cl is None or cl[0] < CLUSTER_MIN:
+        return ''
+    cx, cy = np.asarray(poly, np.float32).mean(0)
+    dx, dy = (cx - cl[1]) / cl[3], (cy - cl[2]) / cl[3]
+    (x0, x1), (y0, y1) = LAYOUT[name]
+    return 'ok' if x0 <= dx <= x1 and y0 <= dy <= y1 else 'bad'
+
+
+def green_cast(frame):
+    b, g, r = frame.reshape(-1, 3).mean(0)
+    return g - (r + b) / 2.0
+
+
+def look(cv2, gray, gx, gy, templates, poses, cl=None):
+    """The mirror under the gaze (gx, gy px) or None, and per mirror (score, ring, distance px, polygon,
+    layout); a mirror out of place from the cluster cl (find_cluster) is not found."""
     height, width = gray.shape
     x0, y0 = max(0, int(gx - HALF[0])), max(0, int(gy - HALF[1]))
     x1, y1 = min(width, int(gx + HALF[0])), min(height, int(gy + HALF[1]))
@@ -198,16 +258,17 @@ def look(cv2, gray, gx, gy, templates, poses):
         ring = ring_share(p['lab'], patch, centre)
         poly = templates[name]['hull'] @ p['m'][:, :2].T + p['m'][:, 2] + [loc[0] + x0, loc[1] + y0]
         distance = cv2.pointPolygonTest(poly.astype(np.float32), (float(gx), float(gy)), True)
-        detail[name] = (value, ring, distance, poly)
-        if value >= MIN_SCORE[name] and ring >= MIN_RING and distance >= -MARGIN_PX:
+        place = layout(name, poly, cl)
+        detail[name] = (value, ring, distance, poly, place)
+        if value >= MIN_SCORE[name] and ring >= MIN_RING and distance >= -MARGIN_PX and place != 'bad':
             if found is None or value > detail[found][0]:
                 found = name
     return found, detail
 
 
-def look_edge(cv2, gray, gx, gy, templates, poses, margin):
+def look_edge(cv2, gray, gx, gy, templates, poses, margin, cl=None):
     """The left mirror at the frame's left edge (whole in the strip or cut by the edge) under the gaze
-    (gx, gy px, gx may be < 0): (found, (score, ring, distance px, polygon), 'whole' / 'cut')."""
+    (gx, gy px, gx may be < 0): (found, (score, ring, distance px, polygon, layout), 'whole' / 'cut')."""
     name = OFF_MIRROR
     strip = gray[:, :OFF_STRIP_PX].astype(np.float32)
     whole = cut = None   # (score, x, y, cut px, pose)
@@ -246,8 +307,9 @@ def look_edge(cv2, gray, gx, gy, templates, poses, margin):
         ring = ring_share(labels, patch, centre)
         poly = templates[name]['hull'] @ p['m'][:, :2].T + p['m'][:, 2] + [x - c, y]
         distance = cv2.pointPolygonTest(poly.astype(np.float32), (float(gx), float(gy)), True)
-        ok = value >= (OFF_MIN_SCORE_WHOLE if kind == 'whole' else OFF_MIN_SCORE_CUT)
-        out.append((ok, (value, ring, distance, poly), kind))
+        place = layout(name, poly, cl)
+        ok = value >= (OFF_MIN_SCORE_WHOLE if kind == 'whole' else OFF_MIN_SCORE_CUT) and place != 'bad'
+        out.append((ok, (value, ring, distance, poly, place), kind))
     if not out:
         return False, None, ''
     ok, detail, kind = max(out, key=lambda o: (o[0], o[2] == 'whole', o[1][0]))
@@ -321,6 +383,9 @@ class Run(object):
     def pc_of_ts(self, ts):
         return ts / 1e6 + self.a * ts + self.b
 
+    def msec_of_pc(self, w):
+        return ((w - self.b) / (1e-6 + self.a) - self.pb) / self.pa / 90.0 - self.pts0 / 90.0
+
     def sim_of_pc(self, w):
         i = min(max(bisect.bisect_left(self.fw, w), 1), len(self.fw) - 1)
         w0, w1 = self.fw[i - 1], self.fw[i]
@@ -353,18 +418,59 @@ class Run(object):
 
 
 def _rounded(detail):
-    return {k: (round(v[0], 3), round(v[1], 2), round(v[2], 1), v[3].round(1).tolist()) for k, v in detail.items()}
+    return {k: (round(v[0], 3), round(v[1], 2), round(v[2], 1), v[3].round(1).tolist(), v[4])
+            for k, v in detail.items()}
+
+
+def stable_start(cv2, run, cluster):
+    """The pc time from which the view is stable (STABLE_S, GREEN_TOL), and the block's green cast."""
+    capture = cv2.VideoCapture(run.video)
+    t0, t1 = run.fw[0], run.fw[-1]
+    greens = []
+    for k in range(GREEN_SAMPLES):
+        capture.set(cv2.CAP_PROP_POS_MSEC, run.msec_of_pc(t0 + (t1 - t0) * (0.1 + 0.8 * k / (GREEN_SAMPLES - 1.0))))
+        ok, frame = capture.read()
+        if ok:
+            greens.append(green_cast(frame))
+    if not greens:
+        return t0, None
+    green = float(np.median(greens))
+    capture.set(cv2.CAP_PROP_POS_MSEC, run.msec_of_pc(t0))
+    since, index = None, 0
+    while True:
+        ok = capture.grab()
+        if not ok:
+            break
+        index += 1
+        if index % STEP:
+            continue
+        w = run.pc_of_ts(run.ts_of_msec(capture.get(cv2.CAP_PROP_POS_MSEC)))
+        if w < t0:
+            continue
+        if w > t0 + START_MAX_S:
+            return t0 + START_MAX_S, green
+        _, frame = capture.retrieve()
+        cl = find_cluster(cv2, cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cluster)
+        if abs(green_cast(frame) - green) <= GREEN_TOL and cl[0] >= CLUSTER_MIN:
+            since = w if since is None else since
+            if w - since >= STABLE_S:
+                return since, green
+        else:
+            since = None
+    return t0, green
 
 
 def _work(args):
-    """One worker: frames [first, last) of the video, every STEP-th; [(frame, msec, gx, gy, mirror, detail,
-    extra)], extra (gaze from 'gp' / 'eye', left-edge match '' / 'whole' / 'cut', eye yaw, eye pitch)."""
-    folder, first, last = args
+    """One worker: frames [first, last) of the video, every STEP-th, from the pc time start on; [(frame,
+    msec, gx, gy, mirror, detail, extra)], extra (gaze from 'gp' / 'eye', left-edge match '' / 'whole' /
+    'cut', eye yaw, eye pitch, the cluster (score, x, y, scale))."""
+    folder, first, last, start = args
     import cv2  # pylint: disable=import-outside-toplevel
     cv2.setNumThreads(1)
     run = Run(folder)
     templates = build_templates(cv2)
     poses = {name: build_poses(cv2, templates[name], name) for name in MIRRORS}
+    cluster = build_cluster(cv2)
     capture = cv2.VideoCapture(run.video)
     capture.set(cv2.CAP_PROP_POS_FRAMES, first)
     out = []
@@ -376,7 +482,8 @@ def _work(args):
         if (index - first) % STEP == 0:
             msec = capture.get(cv2.CAP_PROP_POS_MSEC)
             ts = run.ts_of_msec(msec)
-            if not run.in_block(run.pc_of_ts(ts)):
+            w = run.pc_of_ts(ts)
+            if not run.in_block(w) or w < start:
                 index += 1
                 continue
             gaze, eye = run.gaze_at(ts), run.eye_at(ts)
@@ -392,30 +499,33 @@ def _work(args):
             _, frame = capture.retrieve()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             found, detail, edge = None, {}, ''
+            cl = find_cluster(cv2, gray, cluster)
             if source == 'gp':
-                found, detail = look(cv2, gray, gaze[0], gaze[1], templates, poses)
+                found, detail = look(cv2, gray, gaze[0], gaze[1], templates, poses, cl)
             if found is None and edge_eye and gaze[0] < OFF_EDGE_PX:
-                ok, d, kind = look_edge(cv2, gray, gaze[0], gaze[1], templates, poses, OFF_MARGIN_PX)
+                ok, d, kind = look_edge(cv2, gray, gaze[0], gaze[1], templates, poses, OFF_MARGIN_PX, cl)
                 if d is not None and (ok or OFF_MIRROR not in detail):
                     detail[OFF_MIRROR] = d
                 if ok:
                     found, edge = OFF_MIRROR, kind
             out.append((index, msec, gaze[0], gaze[1], found, _rounded(detail),
                         (source, edge, None if eye is None else round(eye[0], 1),
-                         None if eye is None else round(eye[1], 1))))
+                         None if eye is None else round(eye[1], 1),
+                         round(cl[0], 3), int(cl[1]), int(cl[2]), cl[3])))
         index += 1
     return out
 
 
 def classify(rows):
     """[(t, mirror or None)] per looked-at frame, with the hysteresis: rows [(t, found, detail)],
-    detail {mirror: (score, ring, distance px, ...)}; found = the strict per-frame result."""
+    detail {mirror: (score, ring, distance px, polygon, layout)}; found = the strict per-frame result."""
     out = []
     current = None
     for t, found, detail in rows:
         if current is not None:
             d = detail.get(current)
-            stays = d is not None and d[0] != '' and float(d[0]) >= MIN_SCORE[current] - STAY_SCORE_DROP                 and float(d[1]) >= STAY_RING and float(d[2]) >= -STAY_MARGIN_PX
+            stays = (d is not None and d[0] != '' and float(d[0]) >= MIN_SCORE[current] - STAY_SCORE_DROP
+                     and float(d[1]) >= STAY_RING and float(d[2]) >= -STAY_MARGIN_PX and d[4] != 'bad')
             if not stays or (found and found != current):
                 current = found or None
         else:
@@ -443,10 +553,11 @@ def read_csv_rows(folder):
     rows = []
     with open(os.path.join(folder, 'mirror_gaze.csv'), encoding='utf-8') as handle:
         for r in csv.DictReader(handle):
-            detail = {m: (r['%s_score' % m], r['%s_ring' % m], r['%s_distance_px' % m], None) for m in MIRRORS
-                      if r['%s_score' % m] != ''}
-            extra = (r.get('gaze_from') or 'gp', r.get('edge_match', ''), r.get('eye_yaw') or None,
-                     r.get('eye_pitch') or None)
+            detail = {m: (r['%s_score' % m], r['%s_ring' % m], r['%s_distance_px' % m], None,
+                          r.get('%s_layout' % m, '')) for m in MIRRORS if r['%s_score' % m] != ''}
+            extra = (r.get('gaze_from') or 'gp', r.get('edge_match', '')) + tuple(
+                r.get(k) or None for k in ('eye_yaw', 'eye_pitch', 'cluster_score', 'cluster_x', 'cluster_y',
+                                           'cluster_scale'))
             rows.append((float(r['t_sim']), r['mirror'] or None, None, float(r['gaze_x_px']), float(r['gaze_y_px']),
                          detail, extra, int(r['frame'])))
     return rows
@@ -478,8 +589,11 @@ def main():
     else:
         if frames <= 0:
             raise SystemExit('Cannot read %s' % run.video)
+        start, green = stable_start(cv2, run, build_cluster(cv2))
+        print('view stable from %.1f s of the block (the green cast %s): the frames before it left out' % (
+            run.sim_of_pc(start), 'unknown' if green is None else '%.1f' % green))
         chunk = int(math.ceil(frames / float(args.workers * 4) / STEP)) * STEP
-        jobs = [(folder, k, min(frames, k + chunk)) for k in range(0, frames, chunk)]
+        jobs = [(folder, k, min(frames, k + chunk), start) for k in range(0, frames, chunk)]
         print('%d frames, %d jobs on %d workers...' % (frames, len(jobs), args.workers))
         results = []
         with multiprocessing.Pool(args.workers) as pool:
@@ -496,13 +610,15 @@ def main():
         writer = csv.writer(handle)
         # mirror: this frame alone (strict); glance: with the hysteresis (classify), what the glances use;
         # gaze_from: gp (the gaze point) or eye (extrapolated off the frame from the eye angles);
-        # edge_match: the left mirror found at the frame's left edge, whole or cut by it
+        # edge_match: the left mirror found at the frame's left edge, whole or cut by it; <mirror>_layout:
+        # ok / bad its place from the cluster (cluster_*: score, centre px, size), empty without it
         writer.writerow(['t_sim', 'frame', 'gaze_x_px', 'gaze_y_px', 'mirror', 'glance'] +
-                        ['%s_%s' % (m, f) for m in MIRRORS for f in ('score', 'ring', 'distance_px')] +
-                        ['gaze_from', 'edge_match', 'eye_yaw', 'eye_pitch'])
+                        ['%s_%s' % (m, f) for m in MIRRORS for f in ('score', 'ring', 'distance_px', 'layout')] +
+                        ['gaze_from', 'edge_match', 'eye_yaw', 'eye_pitch', 'cluster_score', 'cluster_x',
+                         'cluster_y', 'cluster_scale'])
         for (t, found, msec, gx, gy, detail, extra), index, (_, state) in zip(rows, indices, states):
             writer.writerow([round(t, 3), index, round(gx, 1), round(gy, 1), found or '', state or ''] +
-                            [x for m in MIRRORS for x in (detail.get(m, ('', '', ''))[:3])] +
+                            [x for m in MIRRORS for x in ((lambda d: d[:3] + (d[4],))(detail.get(m, ('',) * 5)))] +
                             ['' if v is None else v for v in extra])
     runs = glances(states)
     with open(os.path.join(folder, 'mirror_glances.csv'), 'w', newline='', encoding='utf-8') as handle:

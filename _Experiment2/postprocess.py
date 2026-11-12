@@ -117,7 +117,8 @@ def sagat_gaze(folder):
     path = os.path.join(folder, 'mirror_gaze.csv')
     if os.path.exists(path):
         with open(path, encoding='utf-8') as handle:
-            mirrors = [(float(r['t_sim']), r['mirror']) for r in csv.DictReader(handle) if r['mirror']]
+            mirrors = [(float(r['t_sim']), r.get('glance') or r['mirror']) for r in csv.DictReader(handle)
+                       if r.get('glance') or r['mirror']]
 
     rows = []
     for q in questions:
@@ -125,8 +126,9 @@ def sagat_gaze(folder):
         w1 = sim_to_pc(t - 0.05)
         w0 = sim_to_pc(t - PRE_S)
         samples = gaze[bisect.bisect_left(g_w, w0):bisect.bisect_right(g_w, w1)]
-        row = {'id': q['id'], 't': t, 'pre_s': PRE_S, 'valid_samples': len(samples),
-               'score': (q.get('score') or {}).get('score'), 'grid': (q.get('score') or {}).get('grid')}
+        score = q.get('score') or {}
+        row = {'id': q['id'], 't': t, 'pre_s': PRE_S, 'valid_samples': len(samples), 'score': score.get('score'),
+               'mirrors': score.get('mirrors'), 'beside': score.get('beside'), 'ahead': score.get('ahead')}
         if outline and samples:
             on = [inside(outline, x, y, DISPLAY_MARGIN) for _, x, y in samples]
             row['on_display_share'] = round(sum(on) / float(len(on)), 3)
@@ -145,7 +147,8 @@ def sagat_gaze(folder):
             row['%s_mirror_frames' % name] = sum(1 for mt, m in mirrors if t - PRE_S <= mt < t and m == name)
         rows.append(row)
     keys = ['id', 't', 'pre_s', 'valid_samples', 'on_display_share', 'since_last_off_display_s',
-            'longest_off_display_s', 'left_mirror_frames', 'rear_mirror_frames', 'right_mirror_frames', 'score', 'grid']
+            'longest_off_display_s', 'left_mirror_frames', 'rear_mirror_frames', 'right_mirror_frames', 'score',
+            'mirrors', 'beside', 'ahead']
     with open(os.path.join(folder, 'sagat_gaze.csv'), 'w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction='ignore')
         writer.writeheader()

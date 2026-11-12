@@ -8,44 +8,51 @@
 <title>주변 차량 질문</title>
 <style>
   :root { --bg: #000; --panel: #15181d; --line: #2c323b; --text: #f1f3f5; --dim: #8a929c;
-          --on: #2f7cf6; --on-text: #fff; --car: #4b525c; }
+          --on: #2f7cf6; --on-text: #fff; --no: #5b6470; --car: #4b525c; --zone: #1d3b66; --zone-line: #3f74c4; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
                font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
                -webkit-user-select: none; user-select: none; }
-  .screen { display: none; min-height: 100%; padding: 24px 28px env(safe-area-inset-bottom); }
+  .screen { display: none; min-height: 100%; padding: clamp(10px, 2.2vh, 22px) 24px env(safe-area-inset-bottom); }
+  .screen > header, .screen > .layout { max-width: 1320px; margin-left: auto; margin-right: auto; }
   .screen.on { display: block; }
   #idle, #countdown, #sent { display: none; align-items: center; justify-content: center; min-height: 100vh; }
   #idle.on, #countdown.on, #sent.on { display: flex; }
   #idle p { color: #3a3f46; font-size: 18px; }
   #countdown p { font-size: 160px; font-weight: 700; margin: 0; }
   #sent p { font-size: 28px; color: var(--dim); }
-  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-  header h1 { font-size: 24px; margin: 0; }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: clamp(6px, 1.2vh, 12px); }
+  header h1 { font-size: 22px; margin: 0; }
   #left { color: var(--dim); font-size: 18px; font-variant-numeric: tabular-nums; }
-  .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.1fr); gap: 24px; }
-  @media (orientation: portrait) { .layout { grid-template-columns: 1fr; } }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; margin-bottom: 16px; }
-  section h2 { font-size: 18px; margin: 0 0 12px; font-weight: 600; }
-  section h2 small { color: var(--dim); font-weight: 400; font-size: 15px; }
-  .grid { display: grid; grid-template-columns: 34px repeat(3, 1fr); grid-template-rows: 26px repeat(3, 96px); gap: 8px; }
-  .grid .head { color: var(--dim); font-size: 14px; display: flex; align-items: center; justify-content: center; }
-  .cell { border: 2px dashed #3d444e; border-radius: 10px; background: #0d0f12; display: flex;
-          align-items: center; justify-content: center; font-size: 15px; color: var(--dim); }
-  .cell.on { background: var(--on); border-style: solid; border-color: var(--on); color: var(--on-text); }
-  .cell.on::after { content: "차 있음"; font-weight: 600; }
-  .cell.ego { border: none; background: transparent; }
-  .ego-car { width: 46px; height: 78px; border-radius: 12px; background: var(--car); border: 2px solid #9aa3ad;
-             display: flex; align-items: center; justify-content: center; font-size: 13px; color: #e8ebee; }
-  .options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .options.five { grid-template-columns: repeat(5, 1fr); }
-  button.opt { font: inherit; font-size: 19px; padding: 16px 8px; border-radius: 10px; border: 1px solid var(--line);
-               background: #0d0f12; color: var(--text); }
-  button.opt.on { background: var(--on); border-color: var(--on); color: var(--on-text); font-weight: 600; }
-  .scale { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; margin-top: 6px; }
-  #submit { width: 100%; font: inherit; font-size: 22px; font-weight: 700; padding: 18px; border: 0;
-            border-radius: 12px; background: #2a9d52; color: #fff; }
-  #submit:disabled { background: #2a2f36; color: #5f6670; }
+  .layout { display: grid; grid-template-columns: minmax(200px, 0.55fr) minmax(560px, 1.45fr); gap: 20px; align-items: start; }
+  @media (orientation: portrait) { .layout { grid-template-columns: 1fr; } .map { display: none; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+            padding: clamp(5px, 1vh, 14px) 16px; margin-bottom: clamp(5px, 1vh, 12px); }
+  section h2 { font-size: 17px; margin: 0 0 clamp(4px, 0.8vh, 8px); font-weight: 600; }
+  section h2 small { color: var(--dim); font-weight: 400; font-size: 14px; }
+  .map svg { width: 100%; height: auto; max-height: 62vh; display: block; }
+  .map p { color: var(--dim); font-size: 13px; margin: 8px 2px 0; line-height: 1.45; }
+  .row { display: grid; grid-template-columns: 1fr 76px 76px 14px repeat(5, 40px); gap: 6px; align-items: center;
+         padding: clamp(2px, 0.4vh, 6px) 0; border-top: 1px solid #20252c; }
+  .row:first-of-type { border-top: 0; }
+  .row .q { font-size: 17px; }
+  .row .q small { display: block; color: var(--dim); font-size: 13px; }
+  .row .gap { }
+  button { outline: none; font: inherit; }
+  button.yn, button.cf { border-radius: 9px; border: 1px solid var(--line); background: #0d0f12; color: var(--text); cursor: pointer; }
+  button.yn { font-size: 17px; padding: clamp(5px, 1vh, 12px) 4px; }
+  button.cf { font-size: 15px; padding: clamp(5px, 1vh, 12px) 0; color: var(--dim); }
+  button.yn.on[data-v="yes"] { background: var(--on); border-color: var(--on); color: var(--on-text); font-weight: 600; }
+  button.yn.on[data-v="no"] { background: var(--no); border-color: var(--no); color: #fff; font-weight: 600; }
+  button.cf.on { background: #e0a526; border-color: #e0a526; color: #111; font-weight: 700; }
+  .heads { display: grid; grid-template-columns: 1fr 76px 76px 14px repeat(5, 40px); gap: 6px; color: var(--dim);
+           font-size: 12px; margin-bottom: 2px; }
+  .heads span:last-child { grid-column: 5 / span 5; display: flex; justify-content: space-between; }
+  @media (hover: hover) { button.yn:not(.on):hover, button.cf:not(.on):hover { border-color: #5a6470; background: #1b1f25; } }
+  #submit { width: 100%; font-size: 21px; font-weight: 700; padding: clamp(8px, 1.5vh, 16px); border: 0;
+            border-radius: 12px; background: #2a9d52; color: #fff; cursor: pointer; }
+  #submit:disabled { background: #2a2f36; color: #5f6670; cursor: default; }
+  #missing { color: var(--dim); font-size: 13px; text-align: center; margin-top: 6px; min-height: 16px; }
   #status { position: fixed; right: 10px; bottom: 6px; font-size: 12px; color: #3a3f46; }
 </style>
 </head>
@@ -55,51 +62,53 @@
 <div id="sent"><p>제출되었습니다</p></div>
 
 <div id="question" class="screen">
-  <header><h1>멈춘 순간의 주변 차량</h1><span id="left"></span></header>
+  <header><h1>화면이 멈춘 순간, 내 차 주변에 차가 있었나요?</h1><span id="left"></span></header>
   <div class="layout">
-    <div>
+    <div class="map">
       <section>
-        <h2>1. 차가 있던 칸을 모두 눌러 주세요 <small>(없으면 그대로)</small></h2>
-        <div class="grid" id="grid">
-          <div></div><div class="head">왼쪽 차로</div><div class="head">내 차로</div><div class="head">오른쪽 차로</div>
-          <div class="head">앞</div>
-          <div class="cell" data-cell="1_front"></div><div class="cell" data-cell="2_front"></div><div class="cell" data-cell="3_front"></div>
-          <div class="head">옆</div>
-          <div class="cell" data-cell="1_side"></div><div class="cell ego"><div class="ego-car">내 차</div></div><div class="cell" data-cell="3_side"></div>
-          <div class="head">뒤</div>
-          <div class="cell" data-cell="1_rear"></div><div class="cell" data-cell="2_rear"></div><div class="cell" data-cell="3_rear"></div>
-        </div>
+        <!-- the areas the questions mean: three lanes, the ego car in the middle -->
+        <svg viewBox="0 0 220 330" aria-hidden="true">
+          <rect x="10" y="0" width="200" height="330" fill="#0d0f12"/>
+          <!-- ahead: 50 m, three lanes -->
+          <rect x="12" y="20" width="196" height="160" fill="var(--zone)" stroke="var(--zone-line)" stroke-dasharray="4 3"/>
+          <text x="110" y="14" fill="#9fb6d8" font-size="12" text-anchor="middle">앞 50 m까지</text>
+          <text x="43" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">왼쪽 앞</text>
+          <text x="110" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">바로 앞</text>
+          <text x="177" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">오른쪽 앞</text>
+          <!-- beside: from the rear bumper to the front bumper (+/- 5 m) -->
+          <rect x="12" y="188" width="62" height="62" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
+          <rect x="146" y="188" width="62" height="62" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
+          <text x="43" y="223" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
+          <text x="177" y="223" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
+          <!-- lane lines -->
+          <line x1="77" y1="0" x2="77" y2="262" stroke="#6b7480" stroke-dasharray="10 9"/>
+          <line x1="143" y1="0" x2="143" y2="262" stroke="#6b7480" stroke-dasharray="10 9"/>
+          <!-- the ego car -->
+          <rect x="94" y="190" width="32" height="58" rx="8" fill="var(--car)" stroke="#9aa3ad" stroke-width="2"/>
+          <text x="110" y="223" fill="#fff" font-size="11" text-anchor="middle">내 차</text>
+          <!-- behind: what the mirrors show -->
+          <text x="110" y="290" fill="#8a929c" font-size="12" text-anchor="middle">뒤쪽은 미러에 보인 것으로</text>
+          <text x="110" y="306" fill="#8a929c" font-size="12" text-anchor="middle">(왼쪽·룸·오른쪽 미러)</text>
+        </svg>
+        <p>앞: 내 차 앞 50 m(차 약 10대 길이)까지.<br>바로 옆: 내 차와 나란히, 앞뒤 5 m 안 (미러에 잘 안 보이는 곳).</p>
       </section>
     </div>
     <div>
       <section>
-        <h2>2. 뒤에서 다가오던 차가 있었나요? <small>(모두 선택)</small></h2>
-        <div class="options" data-group="approach" data-multi="1">
-          <button class="opt" data-value="left">왼쪽</button>
-          <button class="opt" data-value="right">오른쪽</button>
-          <button class="opt" data-value="behind">바로 뒤</button>
-          <button class="opt" data-value="none">없음</button>
-        </div>
+        <div class="heads"><span></span><span></span><span></span><span></span><span>확신: 1 (전혀) … 5 (매우)</span></div>
+        <h2>미러에 차가 보였나요?</h2>
+        <div id="rows-mirror"></div>
       </section>
       <section>
-        <h2>3. 지금 차로를 바꾼다면 안전한 쪽은?</h2>
-        <div class="options" data-group="safe">
-          <button class="opt" data-value="left">왼쪽</button>
-          <button class="opt" data-value="right">오른쪽</button>
-          <button class="opt" data-value="both">둘 다</button>
-          <button class="opt" data-value="none">둘 다 아님</button>
-        </div>
+        <h2>내 차 바로 옆에 차가 있었나요? <small>(나란히, 앞뒤 5 m 안)</small></h2>
+        <div id="rows-beside"></div>
       </section>
       <section>
-        <h2>4. 답에 얼마나 확신하나요?</h2>
-        <div class="options five" data-group="confidence">
-          <button class="opt" data-value="1">1</button><button class="opt" data-value="2">2</button>
-          <button class="opt" data-value="3">3</button><button class="opt" data-value="4">4</button>
-          <button class="opt" data-value="5">5</button>
-        </div>
-        <div class="scale"><span>전혀 확신 없음</span><span>매우 확신</span></div>
+        <h2>앞에 차가 있었나요? <small>(50 m 안)</small></h2>
+        <div id="rows-ahead"></div>
       </section>
       <button id="submit" disabled>제출</button>
+      <div id="missing"></div>
     </div>
   </div>
 </div>
@@ -107,10 +116,47 @@
 
 <script>
 (function () {
+  // the questions: key (as abc_experiment.py scores it), group, text
+  var ITEMS = [
+    ['mirror_left', 'mirror', '왼쪽 사이드미러'],
+    ['mirror_rear', 'mirror', '룸미러'],
+    ['mirror_right', 'mirror', '오른쪽 사이드미러'],
+    ['beside_left', 'beside', '왼쪽 바로 옆'],
+    ['beside_right', 'beside', '오른쪽 바로 옆'],
+    ['ahead_left', 'ahead', '왼쪽 차로 앞'],
+    ['ahead', 'ahead', '내 차로 바로 앞'],
+    ['ahead_right', 'ahead', '오른쪽 차로 앞']
+  ];
   var current = null;       // qid on screen
   var sentFor = null;       // qid already answered
   var answer = {};
   var opened = Date.now();
+
+  ITEMS.forEach(function (item) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.setAttribute('data-item', item[0]);
+    var html = '<div class="q">' + item[2] + '</div>' +
+      '<button class="yn" data-v="yes">있었다</button><button class="yn" data-v="no">없었다</button><span class="gap"></span>';
+    for (var c = 1; c <= 5; c++) html += '<button class="cf" data-c="' + c + '">' + c + '</button>';
+    row.innerHTML = html;
+    document.getElementById('rows-' + item[1]).appendChild(row);
+    row.addEventListener('click', function (event) {
+      var button = event.target.closest('button');
+      if (!button) return;
+      var a = answer[item[0]];
+      if (button.classList.contains('yn')) {
+        Array.prototype.forEach.call(row.querySelectorAll('button.yn'), function (b) { b.classList.remove('on'); });
+        button.classList.add('on');
+        a.present = button.getAttribute('data-v') === 'yes';
+      } else {
+        Array.prototype.forEach.call(row.querySelectorAll('button.cf'), function (b) { b.classList.remove('on'); });
+        button.classList.add('on');
+        a.confidence = parseInt(button.getAttribute('data-c'), 10);
+      }
+      check();
+    });
+  });
 
   function show(id) {
     ['idle', 'countdown', 'sent', 'question'].forEach(function (name) {
@@ -119,56 +165,26 @@
   }
 
   function reset() {
-    answer = {cells: [], approach: [], safe: null, confidence: null};
+    answer = {};
+    ITEMS.forEach(function (item) { answer[item[0]] = {present: null, confidence: null}; });
     opened = Date.now();
-    Array.prototype.forEach.call(document.querySelectorAll('.on[data-cell], button.opt.on'), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll('button.yn.on, button.cf.on'), function (el) {
       el.classList.remove('on');
     });
     check();
   }
 
   function check() {
-    document.getElementById('submit').disabled =
-      !(answer.approach.length && answer.safe && answer.confidence);
+    var open = ITEMS.filter(function (item) {
+      var a = answer[item[0]];
+      return !a || a.present === null || a.confidence === null;
+    }).length;
+    document.getElementById('submit').disabled = open > 0;
+    document.getElementById('missing').textContent = open > 0 ? '남은 항목 ' + open + '개 (있었다/없었다와 확신 모두)' : '';
   }
 
-  Array.prototype.forEach.call(document.querySelectorAll('[data-cell]'), function (el) {
-    el.addEventListener('click', function () {
-      el.classList.toggle('on');
-      answer.cells = Array.prototype.map.call(document.querySelectorAll('[data-cell].on'),
-        function (c) { return c.getAttribute('data-cell'); });
-    });
-  });
-
-  Array.prototype.forEach.call(document.querySelectorAll('.options'), function (group) {
-    var name = group.getAttribute('data-group');
-    var multi = group.getAttribute('data-multi');
-    group.addEventListener('click', function (event) {
-      var button = event.target.closest('button.opt');
-      if (!button) return;
-      var value = button.getAttribute('data-value');
-      if (multi) {
-        if (value === 'none') {   // "없음" alone
-          Array.prototype.forEach.call(group.querySelectorAll('button.opt'), function (b) { b.classList.remove('on'); });
-          button.classList.add('on');
-        } else {
-          group.querySelector('[data-value="none"]').classList.remove('on');
-          button.classList.toggle('on');
-        }
-        answer[name] = Array.prototype.map.call(group.querySelectorAll('button.opt.on'),
-          function (b) { return b.getAttribute('data-value'); });
-      } else {
-        Array.prototype.forEach.call(group.querySelectorAll('button.opt'), function (b) { b.classList.remove('on'); });
-        button.classList.add('on');
-        answer[name] = name === 'confidence' ? parseInt(value, 10) : value;
-      }
-      check();
-    });
-  });
-
   document.getElementById('submit').addEventListener('click', function () {
-    var body = {qid: current, cells: answer.cells, approach: answer.approach, safe: answer.safe,
-                confidence: answer.confidence, answer_ms: Date.now() - opened};
+    var body = {qid: current, items: answer, answer_ms: Date.now() - opened};
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/answer');
     xhr.setRequestHeader('Content-Type', 'application/json');
@@ -205,6 +221,7 @@
     };
     xhr.send();
   }
+  reset();
   poll();
 })();
 </script>

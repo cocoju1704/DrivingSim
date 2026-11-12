@@ -25,7 +25,7 @@ How the background traffic is made (make_schedule):
      car (fast_lane_share), of the other lane mostly slower: a passing lane, as on a real highway
   4b. lane 0 (the road's lane 1, next to the median, two lanes left of the ego car): a few cars as
      scenery (lane0_n_within_80m), at the speeds of lane 1. Not in the SAGAT grid: not in the answers,
-     not asked about
+     not asked about, and none within lane0_clear_m from lane0_clear_before_q_s before a question
   5. the TOR at the end (its cars are not courses: abc_traffic.TorScene drives them): no background
      car from TOR-15 s on, every event car gone by then (one in lane 2 behind: by the TOR); the
      block ends 30 s after the TOR
@@ -381,11 +381,14 @@ def question_ok(cars, q, qt, partial=False):
     """The planned layout at q is its target, and no car is near a boundary there. partial: the
     question's cars are not all placed yet: no cell beyond the target, no other approaching lane."""
     cells, approach, safe = planned_layout(cars, q, qt)
+    # check_approach_safe false: only the cells must match (the SAGAT questions ask what was in the
+    # mirrors, beside and ahead, not which car approached or which lane was safe)
+    strict = qt.get('check_approach_safe', True)
     if partial:
         target = target_cells(q)
-        if any(n > target.get(cell, 0) for cell, n in cells.items()) or not set(approach) <= set(q['approach']):
+        if any(n > target.get(cell, 0) for cell, n in cells.items()) or                 (strict and not set(approach) <= set(q['approach'])):
             return False
-    elif cells != target_cells(q) or approach != sorted(q['approach']) or safe != q['safe']:
+    elif cells != target_cells(q) or (strict and (approach != sorted(q['approach']) or safe != q['safe'])):
         return False
     margin = qt['margin_m']
     edges = [-50.0, -5.0, 5.0, 50.0] + list(qt['unsafe_dx_m'])
@@ -810,6 +813,11 @@ def make_schedule(config, name, plan=None):
     # the questions first: an F near one is braked by the question's lead car
     for event in sorted(events, key=lambda e: (e['type'] != 'Q', e['t'])):
         if event['type'] == 'Q':
+            if not qt.get('check_approach_safe', True) and event['approach']:
+                # not asked (the questions: mirrors, beside, ahead): no approaching car, every car of
+                # the layout holds alongside through hold_s (an approaching one cannot stay in its cell)
+                event['approach_doc'] = event['approach']
+                event['approach'] = []
             event['t_doc'] = event['t']
             shifts = [0] + [d * sign for d in range(1, 16) for sign in (1, -1)]
             done = False
@@ -940,8 +948,21 @@ def make_schedule(config, name, plan=None):
                     out[index] = 1
             return out
         start0 = int(round(block['adaptation_end_s'] / DT)) if bg.get('lane0_after_adaptation') else 0
+        # no lane 0 car in sight (lane0_clear_m) from lane0_clear_before_q_s before each SAGAT freeze:
+        # it is not in the question's grid, and a car there drew the eye and was taken for lane 1
+        clear_m = bg.get('lane0_clear_m', 0)
+        clear = set()
+        if clear_m:
+            before = bg.get('lane0_clear_before_q_s', 10.0)
+            for event in events:
+                if event['type'] == 'Q':
+                    clear.update(range(int((event['t'] - before) / DT), int((event['t'] + 1.0) / DT) + 1))
+
+        def in_clear(car):
+            return any(car.i0 + i in clear for i, x in enumerate(car.xs) if abs(x) <= clear_m)
+
         for _ in range(PROPOSALS // 5):
-            deficit = [i for i in range(start0, fill_end) if counts0[i] < low0]
+            deficit = [i for i in range(start0, fill_end) if counts0[i] < low0 and i not in clear]
             if not deficit:
                 break
             t_at = rng.choice(deficit) * DT
@@ -956,7 +977,7 @@ def make_schedule(config, name, plan=None):
                 sign = 1 if rng.random() < faster_share(0) else -1
             car = pass_car(new_id('Z'), 0, speed * sign, t_at, x_at, spawn, t_end)
             extra = density0(car)
-            if car.t0 < t_first or any(counts0[k] + 1 > high0 for k in extra) or not rules.ok(car, cars):
+            if car.t0 < t_first or any(counts0[k] + 1 > high0 for k in extra) or in_clear(car)                     or not rules.ok(car, cars):
                 count[0] -= 1
                 continue
             cars.append(car)
@@ -1049,6 +1070,8 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
             return rng.choice((-1, 1))
         return 1 if rng.random() < share(lane) else -1
     t = q['t']
+    # lane 2's cars are in place (holding their gap) from before hold_s before the question on
+    early = max(6.0, hold_s + 1.0)
     cars = []
     by_lane = {}
     for cell in q['cells']:
@@ -1060,17 +1083,20 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
                 if zone == 'front' and f_events:
                     # an F close by: this car stays, 31 .. 40 m ahead, and brakes at the F
                     f = f_events[0]
-                    car = lead_car(new_id('Q'), min(t, f['t']) - rng.uniform(6, 20), max(t, f['t']) + rng.uniform(8, 20),
+                    car = lead_car(new_id('Q'), min(t, f['t']) - rng.uniform(early, max(early, 20)), max(t, f['t']) + rng.uniform(8, 20),
                                    rng.uniform(31, targets['front'][1]), rng.uniform(5, 12) * KMH,
-                                   rng.uniform(5, 12) * KMH, spawn, t_end, brakes=[f['t']], brake_template=f_template)
+                                   rng.uniform(10, 25) * KMH, spawn, t_end, brakes=[f['t']], brake_template=f_template)
                     car.extra['f_event'] = f['id']
                     cars.append(car)
                 elif zone == 'front':
-                    cars.append(lead_car(new_id('Q'), t - rng.uniform(6, 30), t + rng.uniform(4, 30),
-                                         rng.uniform(*targets['front']), rng.uniform(5, 12) * KMH,
-                                         rng.uniform(5, 12) * KMH, spawn, t_end, kind='bg'))
+                    # comes and pulls away at 10-25 km/h, soon after the question: its course is short (with a
+                    # 10 s hold a slow one runs into the TOR's clearing, or meets the previous question's car
+                    # ahead still leaving: one lane, they would cross)
+                    cars.append(lead_car(new_id('Q'), t - rng.uniform(early, 30), t + rng.uniform(3, 12),
+                                         rng.uniform(*targets['front']), rng.uniform(10, 25) * KMH,
+                                         rng.uniform(10, 25) * KMH, spawn, t_end, kind='bg'))
                 else:
-                    cars.append(rear2_car(new_id('Q'), t - rng.uniform(7, 30), t + rng.uniform(3, 30),
+                    cars.append(rear2_car(new_id('Q'), t - rng.uniform(early + 1, 30), t + rng.uniform(3, 12),
                                           rng.uniform(*targets['rear_lane2']), rng.uniform(6, 15) * KMH,
                                           spawn, t_end, kind='bg'))
             continue

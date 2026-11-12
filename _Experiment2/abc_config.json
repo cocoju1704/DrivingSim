@@ -32,6 +32,8 @@
     "fast_lane": 1,
     "fast_lane_share": 0.85,
     "lane0_n_within_80m": [1, 2],
+    "lane0_clear_m": 150,
+    "lane0_clear_before_q_s": 10,
     "colors": ["205,30,30", "25,75,210", "235,195,20", "30,150,60", "235,110,15", "245,245,245", "130,40,170", "15,160,170", "225,60,140"],
     "min_gap_m": 15,
     "lane2_rear_max_dx_m": -40,
@@ -132,7 +134,8 @@
         10
       ],
       "approach_window_s": 5,
-        "hold_s": 5,
+      "hold_s": 10,
+      "check_approach_safe": false,
       "approach_dv_kmh": 3,
       "margin_m": 2.5
     },

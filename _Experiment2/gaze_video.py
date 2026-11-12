@@ -12,7 +12,7 @@ with what happened in the drive.
 On each frame:
     the gaze point (circle; its last 0.3 s as a trail), grey when the glasses report no gaze
     top left: block time, auto / manual, the TOR phase, the ego car's speed
-    top right: the mirror the gaze is on (mirror_gaze.py's mirror_gaze.csv, if it was run)
+    top right: the mirror glance going on (mirror_gaze.py's mirror_glances.csv, if it was run)
     a band at the bottom: the event windows open now (S, SD, R, F: its mirror or the car ahead;
     the TOR), and the events of the last 3 s (onsets, the SAGAT freeze and answer, the TOR alert,
     the first input, the lane change)
@@ -101,8 +101,10 @@ def main():
     for r in read_csv(os.path.join(folder, 'tor_events.csv')):
         end = r.get('t_lane_change_start') or r.get('t_manual') or r['t_tor']
         windows.append((float(r['t_tor']), float(end) + 2.0, 'TOR: alert -> lane change (safe lane %s)' % r['safe_lane']))
-    mirror_rows = read_csv(os.path.join(folder, 'mirror_gaze.csv'))
-    m_frame = [int(r['frame']) for r in mirror_rows]
+    # the glances (mirror_glances.csv: frames joined with the hysteresis and short gaps bridged), not the
+    # frames one by one: the label stays on for the whole glance
+    glance_rows = [(float(r['start']), float(r['end']) + float(r['duration_s']) - (float(r['end']) - float(r['start'])),
+                    r['mirror']) for r in read_csv(os.path.join(folder, 'mirror_glances.csv'))]
 
     capture = cv2.VideoCapture(run.video)
     fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
@@ -160,10 +162,9 @@ def main():
             r = frames[k]
             phase = (' | TOR ' + r['tor_phase']) if r.get('tor_phase') else ''
             text(frame, 't %.1f s | %s%s | %.0f km/h' % (t, r['mode'], phase, float(r['speed_kmh'])), 10, 24, 0.6)
-            # mirror the gaze is on (mirror_gaze.csv: every 3rd frame)
-            j = bisect.bisect_left(m_frame, index - 1)
-            if j < len(mirror_rows) and abs(m_frame[j] - index) <= 2 and mirror_rows[j]['mirror']:
-                name = mirror_rows[j]['mirror']
+            # the mirror glance going on now (mirror_glances.csv)
+            name = next((m for a, b, m in glance_rows if a <= t <= b), None)
+            if name:
                 text(frame, 'ON %s MIRROR' % name.upper(), width - 260, 28, 0.75, COLOURS.get(name, (255, 255, 255)))
             # windows open now, events of the last few seconds
             lines = [('window  ' + label, (120, 255, 120)) for a, b, label in windows if a <= t <= b]

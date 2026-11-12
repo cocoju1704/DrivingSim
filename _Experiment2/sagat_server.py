@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 """
-SAGAT on the tablet (iPad Pro 11, Safari): this program serves the page, the tablet only opens
+SAGAT on the tablet (iPad Pro 11, Safari) or a laptop: this program serves the page, the tablet only opens
 http://<this PC>:5011/ (the page can stay open between runs; add it to the home screen for full screen).
+On a laptop on the same Wi-Fi, sagat_laptop.bat (copied there) waits for this server and opens the page
+full screen. The page fits 1280x720 and up without scrolling.
 
 The page asks GET /state every 0.3 s:
     {"phase": "idle"}                                          black, waiting
     {"phase": "question", "qid": "A-Q1", "number": 1, "left": 54.2}
     {"phase": "countdown", "count": 3}                         3, 2, 1 before the drive goes on
 and sends the answer with POST /answer:
-    {"qid": "A-Q1", "cells": ["1_front", ...], "approach": ["left", "behind"] or ["none"],
-     "safe": "left" | "right" | "both" | "none", "confidence": 1..5}
+    {"qid": "A-Q1", "items": {"mirror_left": {"present": true, "confidence": 4}, ...}, "answer_ms": 18000}
+    items: mirror_left, mirror_rear, mirror_right, beside_left, beside_right, ahead_left, ahead,
+    ahead_right (abc_experiment.SAGAT_ITEMS), each yes / no with its own confidence 1..5
 """
 
 from __future__ import print_function
@@ -92,7 +95,7 @@ class SagatServer(object):
         self._thread = threading.Thread(target=self._http.serve_forever, daemon=True)
         self._thread.start()
         self.url = 'http://%s:%d/' % (own_address() or '<this PC IP>', port)
-        logging.info('SAGAT tablet: open %s in Safari on the iPad', self.url)
+        logging.info('SAGAT: open %s on the iPad (Safari) or the laptop (sagat_laptop.bat)', self.url)
 
     def state(self):
         with self._lock:
