@@ -13,6 +13,9 @@ rem
 rem Set the laptop's screen and sleep timeouts to "never" (on battery too) for the session.
 
 setlocal
+rem Windows' own folders first: on the experiment PC the system PATH has lost System32 (chcp, ping,
+rem timeout, powershell not found)
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\WindowsPowerShell\v1.0;%PATH%"
 set "PC=%~1"
 set "LAST=%TEMP%\sagat_laptop_last.txt"
 title SAGAT laptop

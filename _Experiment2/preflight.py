@@ -162,11 +162,26 @@ def check_g2(choices):
         level = WARN
     report(level, 'Glasses 2', text)
     try:
-        _, calibration = link.calibrated_participant()
+        # calibrated_participant() warns (logging) when no calibration was made since power-on
+        import logging
+        warned = []
+        catcher = logging.Handler()
+        catcher.emit = lambda record: warned.append(record.getMessage())
+        root = logging.getLogger()
+        root.addHandler(catcher)
+        root.propagate, handlers = False, root.handlers[:]
+        root.handlers = [catcher]
+        try:
+            _, calibration = link.calibrated_participant()
+        finally:
+            root.handlers = handlers
         if calibration is None:
             report(FAIL, 'G2 보정', '보정이 없습니다: g2_calibrate.py를 먼저 하세요')
+        elif warned:
+            report(WARN, 'G2 보정', '켠 뒤로 보정이 없습니다 (예전 보정 %s를 씀): 참가자로 g2_calibrate.py를 하세요'
+                   % calibration)
         else:
-            report(OK, 'G2 보정', '사용할 보정 %s' % calibration)
+            report(OK, 'G2 보정', '이번에 켠 뒤 한 보정 %s' % calibration)
     except Exception as error:  # pylint: disable=broad-except
         report(WARN, 'G2 보정', '확인 못 함 (%s)' % str(error)[:60])
     path = os.path.join(HERE, 'g2_display.json')
