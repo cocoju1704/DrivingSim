@@ -288,15 +288,20 @@ ITEM_MIRRORS = {'mirror_left': 'left', 'mirror_rear': 'rear', 'mirror_right': 'r
 def sagat_truth(snapshot, qt, mirrors=None):
     """The answers from the cars as they are at the freeze: snapshot [(id, lane, dx, dx 5 s before)],
     mirrors {id: {mirror: px}} (MirrorVisibility, the last frame). The grid cells (cell_dx_m: front
-    5 .. 50 m, side -5 .. 5 m) answer beside / ahead; a mirror question is yes when a car is at
-    least RECOGNIZE_PX tall in that inset (any lane: the rear-view mirror shows lanes 1 and 3 too).
+    5 .. 50 m, side -5 .. 5 m) answer beside / ahead; a mirror question is yes when a car behind
+    (more than 5 m back) is at least RECOGNIZE_PX tall in that inset (any lane: the rear-view mirror
+    shows lanes 1 and 3 too).
     The cells, approach and safe lane of the layout are kept for the schedule's check."""
     now = [(lane, dx) for _, lane, dx, _ in snapshot]
     history = {k: before for k, (_, _, _, before) in enumerate(snapshot) if before is not None}
     cells, approach, safe = abc_schedule.layout(now, history, qt)
     mirrors = mirrors or {}
+    # only cars behind the 'beside' cells (dx < side's back edge, -5 m): a car alongside is projected
+    # big into the side mirror (MirrorVisibility ignores the ego car's body), but it is what the
+    # 'beside' questions ask about ('the car right beside, that the mirror does not show')
+    behind = {cid for cid, _, dx, _ in snapshot if dx < qt['cell_dx_m']['side'][0]}
     in_mirror = {name: sorted(cid for cid, seen in mirrors.items()
-                              if seen.get(name, 0.0) >= MirrorVisibility.RECOGNIZE_PX)
+                              if cid in behind and seen.get(name, 0.0) >= MirrorVisibility.RECOGNIZE_PX)
                  for name in ('left', 'rear', 'right')}
     items = {key: bool(cells.get(cell)) for key, cell in ITEM_CELLS.items()}
     items.update({key: bool(in_mirror[name]) for key, name in ITEM_MIRRORS.items()})

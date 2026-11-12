@@ -164,7 +164,9 @@ def detach(folder):
     """Starts this script on its own, idle priority, no window: the experiment does not wait."""
     flags = 0
     if os.name == 'nt':
-        flags = 0x00000008 | 0x00000200 | 0x00000040 | 0x08000000  # DETACHED, NEW_GROUP, IDLE, NO_WINDOW
+        # NEW_GROUP, IDLE, NO_WINDOW: a hidden console of its own (its multiprocessing workers share it:
+        # no windows). Not DETACHED_PROCESS: the workers then failed (PermissionError, DuplicateHandle)
+        flags = 0x00000200 | 0x00000040 | 0x08000000
     subprocess.Popen([sys.executable, os.path.abspath(__file__), folder], cwd=HERE, creationflags=flags,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
 

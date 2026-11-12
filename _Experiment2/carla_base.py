@@ -350,11 +350,12 @@ BRAKE_CURVE = [(0.0, 0.0), (0.05, 0.06), (0.1, 0.12), (0.2, 0.24), (0.3, 0.35), 
 # that fades out at a settle speed, both growing with the pedal travel like in a real car, and a
 # controller finds the CARLA throttle for it (see PedalThrottle).
 # m/s^2 asked for with the pedal fully pressed, by speed (km/h, m/s^2), before the fade towards the
-# settle speed (1 - (v / PEDAL_FULL_SPEED)^2), so that with it the car accelerates like a mid-size
-# sedan at full throttle: 3.8 m/s^2 from standstill, 3.0 at 60 km/h, 2.3 at 80, 1.3 at 120; 0-100 km/h
-# in about 9.5 s, 80-120 km/h in about 6.5 s. (Before: 4.0 at any speed, 0-100 in 7.6 s, 80-120 in 3.7 s.)
-PEDAL_ACCEL_FULL = [(0.0, 3.8), (30.0, 3.68), (60.0, 3.3), (80.0, 2.74), (100.0, 2.4), (120.0, 2.03), (150.0, 1.6), (180.0, 1.05)]
-PEDAL_ACCEL_CURVE = 1.2      # acceleration asked for grows with travel ** this: gentle at small travel
+# settle speed (1 - (v / PEDAL_FULL_SPEED)^2), so that with it the car accelerates like an ordinary
+# compact car at full throttle: 2.85 m/s^2 from standstill, about 1.6 at 70-110 km/h (0-100 km/h in
+# about 12.5 s, 80-120 km/h in about 9 s). (Before: a mid-size sedan, 3.8 from standstill, 0-100 in
+# 9.5 s; measured 2.0-2.3 m/s^2 at 70-110 km/h with the pedal fully pressed at the TOR, too strong.)
+PEDAL_ACCEL_FULL = [(0.0, 2.85), (30.0, 2.76), (60.0, 2.48), (80.0, 2.06), (100.0, 1.8), (120.0, 1.52), (150.0, 1.2), (180.0, 0.79)]
+PEDAL_ACCEL_CURVE = 1.5      # acceleration asked for grows with travel ** this: gentle at small travel (half: 35 %)
 PEDAL_FULL_SPEED = 200.0     # km/h the car settles at with the pedal fully pressed, proportionally less with less
 # CARLA throttle that holds the MKZ 2020 (with ENGINE_DAMPING) at a speed on level road, (km/h, throttle),
 # measured on the loop's flat straight at 1900-2300 m (not monotonic: the automatic shifts up)
