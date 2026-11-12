@@ -6,7 +6,8 @@ monitor (abc_experiment.Overlay.hud_rect), with the same commands as the glasses
 (video_link.VideoLink):
 
     block start   play: the video (--video-file, else the one played last, else the first in
-                  mrbd-video/), from --video-start, else from where it was left (hud_video.json)
+                  mrbd-video/), from --video-start, else from where it was left (hud_video.json; not
+                  for a set's clip with NDRT video questions: from its start)
     SAGAT         freeze: paused, nothing on the HUD (as the glasses: their display shows nothing)
     after 3-2-1   resume: playing again if it was playing before
     TOR           alert: as freeze; alert_off: still paused (manual driving to the end)
@@ -102,11 +103,12 @@ def contain(width, height, box_w, box_h):
 class HudVideo(object):
     device = 'hud'
 
-    def __init__(self, video_file=None, start_s=0.0):
+    def __init__(self, video_file=None, start_s=0.0, resume=True):
         self.results = queue.Queue()   # (time.time(), command, delivered, state): the experiment logs them
         self.path = find_video(video_file)
         self.title = os.path.basename(self.path) if self.path else (video_file or '')
         self._start = start_s
+        self._resume = resume       # start_s 0: from where it was left (False: from 0, e.g. a clip with questions)
         self._lock = threading.Lock()
         self._gen = 0               # the decoders' generation: a pause or a new size ends the old ones
         self._procs = []
@@ -326,7 +328,7 @@ class HudVideo(object):
             self._report('play')
             return
         saved = load_saved().get('pos', {}).get(self.title, 0.0)
-        self._pos = self._start if self._start > 0 else saved
+        self._pos = self._start if self._start > 0 or not self._resume else saved
         if self._duration and self._pos >= self._duration - 1:
             self._pos = 0.0
         self._frozen = False

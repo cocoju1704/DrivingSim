@@ -92,7 +92,10 @@
       "shift_s": 25
     },
     "Q": {
-      "max_answer_s": 60,
+      "_comment_ndrt": "2026-11-12: after the SAGAT questions (at most max_answer_s) the NDRT video questions (ndrt_items/ndrt_items.json: 4 frames, was this scene in the video, yes / no + confidence) come at the freeze + ndrt_at_s for everyone (the same recall delay: an early SAGAT answer waits), at most ndrt_max_answer_s",
+      "max_answer_s": 30,
+      "ndrt_at_s": 35,
+      "ndrt_max_answer_s": 40,
       "countdown_s": 3,
       "cell_dx_m": {
         "front": [

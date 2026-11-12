@@ -16,8 +16,11 @@
   .screen { display: none; min-height: 100%; padding: clamp(10px, 2.2vh, 22px) 24px env(safe-area-inset-bottom); }
   .screen > header, .screen > .layout { max-width: 1320px; margin-left: auto; margin-right: auto; }
   .screen.on { display: block; }
-  #idle, #countdown, #sent { display: none; align-items: center; justify-content: center; min-height: 100vh; }
-  #idle.on, #countdown.on, #sent.on { display: flex; }
+  #idle, #countdown, #sent, #wait { display: none; align-items: center; justify-content: center; min-height: 100vh;
+                                    flex-direction: column; }
+  #idle.on, #countdown.on, #sent.on, #wait.on { display: flex; }
+  #wait p { font-size: 28px; color: var(--dim); margin: 6px; }
+  #wait p small { font-size: 20px; }
   #idle p { color: #3a3f46; font-size: 18px; }
   #countdown p { font-size: 160px; font-weight: 700; margin: 0; }
   #sent p { font-size: 28px; color: var(--dim); }
@@ -53,6 +56,17 @@
             border-radius: 12px; background: #2a9d52; color: #fff; cursor: pointer; }
   #submit:disabled { background: #2a2f36; color: #5f6670; cursor: default; }
   #missing { color: var(--dim); font-size: 13px; text-align: center; margin-top: 6px; min-height: 16px; }
+  /* the NDRT video questions: one frame at a time */
+  #ndrt .frame { max-width: 1320px; margin: 0 auto; text-align: center; }
+  #ndrt img { max-width: 100%; max-height: 58vh; border-radius: 10px; display: block; margin: 0 auto; background: #0d0f12; }
+  #ndrt .answer { display: grid; grid-template-columns: 150px 150px 24px repeat(5, 56px); gap: 8px; justify-content: center;
+                  align-items: center; margin: clamp(8px, 2vh, 18px) 0 clamp(6px, 1.2vh, 12px); }
+  #ndrt .answer button.yn { font-size: 20px; padding: clamp(8px, 1.6vh, 16px) 4px; }
+  #ndrt .answer button.cf { font-size: 18px; padding: clamp(8px, 1.6vh, 16px) 0; }
+  #ndrt .hint { color: var(--dim); font-size: 13px; text-align: center; }
+  #ndrt-next { display: block; width: min(560px, 100%); margin: 0 auto; font-size: 21px; font-weight: 700;
+               padding: clamp(8px, 1.5vh, 16px); border: 0; border-radius: 12px; background: #2a9d52; color: #fff; cursor: pointer; }
+  #ndrt-next:disabled { background: #2a2f36; color: #5f6670; cursor: default; }
   #status { position: fixed; right: 10px; bottom: 6px; font-size: 12px; color: #3a3f46; }
 </style>
 </head>
@@ -60,6 +74,20 @@
 <div id="idle" class="on"><p>대기 중</p></div>
 <div id="countdown"><p id="count">3</p></div>
 <div id="sent"><p>제출되었습니다</p></div>
+<div id="wait"><p id="wait-head">제출되었습니다</p><p><small>잠시 후 영상 질문이 나옵니다</small></p></div>
+
+<div id="ndrt" class="screen">
+  <header><h1>이 장면이 영상에 나왔나요? <small id="ndrt-n" style="color: var(--dim); font-weight: 400"></small></h1><span id="ndrt-left"></span></header>
+  <div class="frame">
+    <img id="ndrt-img" alt="">
+    <div class="answer">
+      <button class="yn" data-v="yes">나왔다</button><button class="yn" data-v="no">안 나왔다</button><span></span>
+      <button class="cf" data-c="1">1</button><button class="cf" data-c="2">2</button><button class="cf" data-c="3">3</button><button class="cf" data-c="4">4</button><button class="cf" data-c="5">5</button>
+    </div>
+    <div class="hint">확신: 1 (전혀) … 5 (매우)</div>
+    <button id="ndrt-next" disabled>다음</button>
+  </div>
+</div>
 
 <div id="question" class="screen">
   <header><h1>화면이 멈춘 순간, 내 차 주변에 차가 있었나요?</h1><span id="left"></span></header>
@@ -165,7 +193,7 @@
   });
 
   function show(id) {
-    ['idle', 'countdown', 'sent', 'question'].forEach(function (name) {
+    ['idle', 'countdown', 'sent', 'wait', 'question', 'ndrt'].forEach(function (name) {
       document.getElementById(name).classList.toggle('on', name === id);
     });
   }
@@ -199,6 +227,45 @@
     document.getElementById('submit').disabled = true;
   });
 
+  // the NDRT video questions: the frames one at a time, each "was it in the video" and a confidence
+  var nd = {qid: null, images: [], k: 0, answers: [], shown: null, confidence: null, since: 0, opened: 0};
+  var ndSent = null;        // qid whose video answers went out
+  var preloaded = {};
+  var ndrtRow = document.querySelector('#ndrt .answer');
+  function ndrtFrame() {
+    nd.shown = null; nd.confidence = null; nd.since = Date.now();
+    Array.prototype.forEach.call(ndrtRow.querySelectorAll('button.on'), function (b) { b.classList.remove('on'); });
+    document.getElementById('ndrt-img').src = nd.images[nd.k];
+    document.getElementById('ndrt-n').textContent = (nd.k + 1) + ' / ' + nd.images.length;
+    var next = document.getElementById('ndrt-next');
+    next.textContent = nd.k + 1 < nd.images.length ? '다음' : '제출';
+    next.disabled = true;
+  }
+  ndrtRow.addEventListener('click', function (event) {
+    var button = event.target.closest('button');
+    if (!button) return;
+    var cls = button.classList.contains('yn') ? 'button.yn' : 'button.cf';
+    Array.prototype.forEach.call(ndrtRow.querySelectorAll(cls), function (b) { b.classList.remove('on'); });
+    button.classList.add('on');
+    if (cls === 'button.yn') nd.shown = button.getAttribute('data-v') === 'yes';
+    else nd.confidence = parseInt(button.getAttribute('data-c'), 10);
+    document.getElementById('ndrt-next').disabled = nd.shown === null || nd.confidence === null;
+  });
+  document.getElementById('ndrt-next').addEventListener('click', function () {
+    if (nd.shown === null || nd.confidence === null) return;
+    nd.answers.push({image: nd.images[nd.k].replace(/^\/ndrt\//, ''), shown: nd.shown, confidence: nd.confidence,
+                     ms: Date.now() - nd.since});
+    nd.k += 1;
+    if (nd.k < nd.images.length) { ndrtFrame(); return; }
+    var body = {qid: nd.qid, kind: 'ndrt', answers: nd.answers, answer_ms: Date.now() - nd.opened};
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/answer');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () { ndSent = body.qid; show('sent'); };
+    xhr.send(JSON.stringify(body));
+    document.getElementById('ndrt-next').disabled = true;
+  });
+
   var run = null;
   function poll() {
     var xhr = new XMLHttpRequest();
@@ -212,11 +279,28 @@
       run = state.run || run;
       document.getElementById('status').textContent = '';
       if (state.phase === 'question') {
+        (state.preload || []).forEach(function (src) {
+          if (!preloaded[src]) { preloaded[src] = new Image(); preloaded[src].src = src; }
+        });
         if (state.qid !== current) { current = state.qid; reset(); }
         if (sentFor === state.qid) { show('sent'); }
         else {
           show('question');
           document.getElementById('left').textContent = Math.ceil(state.left) + '초';
+        }
+      } else if (state.phase === 'wait') {
+        document.getElementById('wait-head').textContent = sentFor === state.qid ? '제출되었습니다' : '시간이 끝났습니다';
+        show('wait');
+      } else if (state.phase === 'ndrt') {
+        if (state.qid !== nd.qid) {
+          nd = {qid: state.qid, images: state.images || [], k: 0, answers: [], shown: null, confidence: null,
+                since: 0, opened: Date.now()};
+          if (nd.images.length) ndrtFrame();
+        }
+        if (ndSent === state.qid || !nd.images.length) { show('sent'); }
+        else {
+          show('ndrt');
+          document.getElementById('ndrt-left').textContent = Math.ceil(state.left) + '초';
         }
       } else if (state.phase === 'countdown') {
         document.getElementById('count').textContent = state.count;

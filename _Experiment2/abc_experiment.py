@@ -15,8 +15,11 @@ nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc
     SD  the same without the turn signal
     R   a car comes up close behind in lane 2 (rear-view mirror)
     F   the car ahead in lane 2 brakes (brake light 3 s, -8 km/h)
-    Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet;
-        after the answer (or 60 s) 3-2-1 on the monitors and the tablet, then the drive goes on
+    Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet (at most
+        Q.max_answer_s, 30 s); then the NDRT video questions (ndrt_items/: 4 frames, was this scene in
+        the video, yes / no + confidence) at the freeze + Q.ndrt_at_s (35 s) for everyone, the same
+        recall delay; after them (or Q.ndrt_max_answer_s) 3-2-1 on the monitors and the tablet, then the
+        drive goes on
     TOR at the end of every block (and of the practice drive), T = the schedule's time:
         T-15  no other car from here on (the schedule's background traffic is gone)
         T-9   the approaching car: 80 m behind in the unsafe lane, +20 km/h, no turn signal
@@ -29,7 +32,7 @@ nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc
         if the ego car comes into its lane less than 10 m ahead of it, it brakes (conflict).
         The block ends at T+30, or 5 s after the car stands still.
 
-The participant answers nothing but the SAGAT questions: the events are measured by the gaze only
+The participant answers nothing but the SAGAT and video questions: the events are measured by the gaze only
 (Tobii Pro Glasses 2 with its event markers; analysed afterwards). For that, every frame logs in
 which mirror inset each car is visible (its bounding box inside the mirror camera's field of view),
 and each event gets its gaze window (gaze_windows.csv):
@@ -39,11 +42,11 @@ and each event gets its gaze window (gaze_windows.csv):
             back past 10 m
     F       the car ahead, T .. T+5
 tor_events.csv has the TOR's measures (one row). At the end the monitors only say that the drive
-is over; the experimenter gives the video score
-(feedback.txt has the line). SAGAT scores are kept in the data, not told.
+is over; the experimenter gives the video score (the video questions' share correct; feedback.txt
+has the line). SAGAT scores are kept in the data, not told.
 
 Keys (experimenter): ESC ends the run, TAB the next camera view, F1 the info panel, N during a
-question skips it (no answer).
+question skips it (no answer; during the SAGAT questions: on to the video questions).
 
 Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMDDHHMMSS>/):
     run.json        the options, the set, versions
@@ -56,7 +59,9 @@ Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMD
                     ends, freezes, video commands
     gaze_windows.csv  each S, SD, R, F: its area of interest and gaze window
     tor_events.csv  the TOR: alert, first input, takeover, lane change, chosen lane, TTC, gaps
-    sagat.json      each question: the real layout at the freeze, the answer, the scores
+    sagat.json      each question: the real layout at the freeze, the answer, the scores, the video
+                    questions (ndrt: the frames, the answers, the score)
+    ndrt.csv        each video question: the frame, in the video or not, the answer, confidence, time
     summary.json, feedback.txt
 """
 
@@ -96,7 +101,11 @@ FOG = (3.0, 60.0, 1.0)                 # fog_density, fog_distance m, fog_fallof
 WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the blocks (the server's comes back after)
 GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
-VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 ○○점입니다.'  # said by the experimenter after the video test
+VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 %s점입니다.'  # said by the experimenter after the block
+# the NDRT video questions per set: the clip and per SAGAT stop the frames (ndrt_items/make_items.py)
+NDRT_ITEMS = os.path.join(HERE, 'ndrt_items', 'ndrt_items.json')
+NDRT_COLUMNS = ('qid', 'k', 'image', 'in_video', 'answer', 'confidence', 'ms', 'correct', 'video_t',
+                'before_stop_s', 'episode_t')
 BADGE = {AUTO: ('L3 자율주행 작동 중', (40, 160, 70)), TOR: ('L3 해제 요청', (220, 30, 30)),
          MANUAL: ('수동 운전', (40, 110, 200)), STOPPED: ('비상 정지', (220, 30, 30))}
 WHEEL_HALF_DEG = 450.0   # degrees of the wheel at full axis travel (900 lock to lock): the logged angle
@@ -136,6 +145,7 @@ class DataLog(object):
         'gaze_windows.csv': ('id', 'type', 'lane', 't', 'aoi', 'first_visible', 'first_recognizable', 'window_start',
                              'window_end'),
         'tor_events.csv': TOR_COLUMNS,
+        'ndrt.csv': NDRT_COLUMNS,
     }
 
     def __init__(self, directory):
@@ -321,6 +331,29 @@ def sagat_truth(snapshot, qt, mirrors=None):
                       'zone': abc_schedule.zone_of(lane, dx, qt) if lane in LANE_ITEMS else 'lane 0',
                       'mirrors': mirrors.get(cid, {})}
                      for cid, lane, dx, b in snapshot]}
+
+
+def load_ndrt(set_name):
+    """The set's NDRT video questions ({'clip': ..., 'stops': {qid: {'items': [...]}}}), None if none."""
+    try:
+        with open(NDRT_ITEMS, encoding='utf-8') as handle:
+            return json.load(handle).get(set_name)
+    except (OSError, ValueError):
+        return None
+
+
+def ndrt_score(stop, answer):
+    """The video questions of one stop: correct, hits (in the video, said so) and false alarms."""
+    items = stop['items']
+    if answer is None:
+        return {'answered': False, 'asked': len(items), 'correct': 0}
+    given = {a.get('image'): a for a in answer.get('answers') or []}
+    said = [(i['shown'], given[i['image']].get('shown')) for i in items if i['image'] in given]
+    return {'answered': True, 'asked': len(items), 'answered_items': len(said),
+            'correct': sum(1 for truth, a in said if a == truth),
+            'hits': sum(1 for truth, a in said if truth and a is True), 'n_in_video': sum(1 for i in items if i['shown']),
+            'false_alarms': sum(1 for truth, a in said if not truth and a is True),
+            'n_not_in_video': sum(1 for i in items if not i['shown'])}
 
 
 def sagat_score(truth, answer):
@@ -537,6 +570,7 @@ class Block(object):
         self.qt = self.config['templates']['Q']
         self.log = DataLog(output_dir(args))
         self.questions = []
+        self.ndrt = None        # the set's NDRT video questions (load_ndrt), None: none asked
         self.first_visible = {}  # event id -> first time its car was in its mirror (MIN_PX)
         self.first_recognizable = {}  # ... big enough to make out (RECOGNIZE_PX): its gaze window starts
         self.mode = AUTO
@@ -647,18 +681,24 @@ class Block(object):
         answered = [q['score'] for q in self.questions if q['score'].get('answered')]
         sagat = round(100.0 * sum(s['score'] or 0 for s in answered) / len(answered)) if answered else None
         missing = [w['id'] for w in windows if w['type'] != 'F' and w['first_recognizable'] is None]
+        asked = [q['ndrt']['score'] for q in self.questions if q.get('ndrt')]
+        n_items = sum(a['asked'] for a in asked)
+        video = round(100.0 * sum(a['correct'] for a in asked) / n_items) if n_items else None
+        feedback = VIDEO_FEEDBACK % ('○○' if video is None else video)
         summary = {
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
             'participant': self.args.participant, 'test': self.args.test, 'aborted': aborted, 't_end': round(t_end, 2),
             'gaze_windows': windows, 'never_visible_in_their_mirror': missing,
             'tor': self.tor.row(self) if self.tor is not None and self.tor.t_alert is not None else None,
             'sagat': {'score_percent': sagat, 'questions': [{'id': q['id'], **q['score']} for q in self.questions]},
-            'feedback': VIDEO_FEEDBACK}
+            'ndrt': {'score_percent': video, 'clip': self.ndrt['clip'] if self.ndrt else None,
+                     'questions': [{'id': q['id'], **q['ndrt']['score']} for q in self.questions if q.get('ndrt')]},
+            'feedback': feedback}
         self.log.json('summary.json', summary)
         if summary['tor']:
             self.log.row('tor_events.csv', [('' if summary['tor'][k] is None else summary['tor'][k]) for k in TOR_COLUMNS])
         self.log.json('sagat.json', self.questions)
-        self.log.text('feedback.txt', VIDEO_FEEDBACK + '\n(영상 시험 뒤 실험자가 읽음. 주변 차량 질문 점수는 알리지 않음)\n')
+        self.log.text('feedback.txt', feedback + '\n(블록 뒤 실험자가 읽음: 영상 질문 정답 비율. 주변 차량 질문 점수는 알리지 않음)\n')
         print()
         print('=' * 78)
         print('Block over (%s). SAGAT %s (not told to the participant). Gaze windows: %d events%s' % (
@@ -672,7 +712,7 @@ class Block(object):
                 'no takeover', tor['first_input_type'] or '-', tor['chosen_lane'] or '-',
                 'safe' if tor['chose_safe'] else '-' if tor['chose_safe'] is None else 'not the safe lane', tor['min_ttc_obstacle_s'], tor['conflict'],
                 tor['collision'] or 'none'))
-        print('After the video test: "%s"' % VIDEO_FEEDBACK)
+        print('Video questions: %s. Say: "%s"' % ('-' if video is None else '%d %% of %d' % (video, n_items), feedback))
         if self.log.dir:
             print('  data: %s' % self.log.dir)
         print('=' * 78)
@@ -806,11 +846,22 @@ def run(args):
                 if block.log.dir and os.path.isfile(path):
                     import shutil
                     shutil.copy(path, os.path.join(block.log.dir, os.path.basename(name)))
+        # the NDRT video questions after each SAGAT stop, about the set's clip: it is the video played
+        block.ndrt = load_ndrt(args.set)
+        if block.ndrt is None:
+            logging.warning('No NDRT video questions for set %s (%s): only the SAGAT questions', args.set, NDRT_ITEMS)
+        elif args.video_file is None:
+            args.video_file = block.ndrt['clip']
+            logging.info("NDRT video: %s (the set's clip, ndrt_items.json)", args.video_file)
+        elif os.path.basename(args.video_file) != block.ndrt['clip']:
+            logging.warning("--video-file %s is not set %s's clip %s: no video questions", args.video_file, args.set,
+                            block.ndrt['clip'])
+            block.ndrt = None
         if args.condition == 'hud':
             # the HUD's video: played here, in the HUD area (no glasses / phone app: the glasses app
             # would do the commands of every condition)
             from hud_video import HudVideo
-            block.media.append(HudVideo(args.video_file, args.video_start))
+            block.media.append(HudVideo(args.video_file, args.video_start, resume=block.ndrt is None))
         elif args.video:
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition))
@@ -1489,7 +1540,8 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
         player.pause(q['id'])
     block.mark(t, 'freeze (SAGAT %d)' % number, q['id'])
     seconds = block.qt['max_answer_s']
-    sagat.ask(q['id'], number, seconds)
+    stop = (block.ndrt or {}).get('stops', {}).get(q['id'])   # its NDRT video questions
+    sagat.ask(q['id'], number, seconds, [i['image'] for i in stop['items']] if stop else ())
     started = time.monotonic()
     if not sagat.connected():
         logging.warning('SAGAT tablet not connected: open %s on the iPad or the laptop (sagat_laptop.bat)', sagat.url)
@@ -1512,16 +1564,21 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
         clock.tick(30)
     answer_s = round(time.monotonic() - started, 2)
     score = sagat_score(truth, answer)
-    block.questions.append({'id': q['id'], 'number': number, 't': round(t, 3), 't_planned': q['t'],
-                            'planned': {'cells': q['cells'], 'approach': q['approach'], 'safe': q['safe']},
-                            'truth': truth, 'answer': answer, 'answer_s': answer_s,
-                            'ended_by': 'answer' if answer is not None else 'skipped' if skipped else 'timeout',
-                            'score': score})
+    entry = {'id': q['id'], 'number': number, 't': round(t, 3), 't_planned': q['t'],
+             'planned': {'cells': q['cells'], 'approach': q['approach'], 'safe': q['safe']},
+             'truth': truth, 'answer': answer, 'answer_s': answer_s,
+             'ended_by': 'answer' if answer is not None else 'skipped' if skipped else 'timeout',
+             'score': score}
+    block.questions.append(entry)
     block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if answer else 'skipped' if skipped else 'timeout'),
                q['id'])
     if score.get('answered'):
         logging.info('   correct %.0f %% (behind %s, beside %s, ahead %s; not scored: %s)', 100 * (score['score'] or 0),
                      score['behind'], score['beside'], score['ahead'], ', '.join(score['unscored']) or '-')
+    if stop and not ask_ndrt(block, q, t, stop, entry, started, sagat, overlay, display, clock):
+        sagat.idle()
+        car_sound(True)
+        return False
     for count in range(block.qt['countdown_s'], 0, -1):
         sagat.countdown(count)
         until = time.monotonic() + 1.0
@@ -1536,6 +1593,55 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
     for player in block.media:
         player.resume(q['id'])
     block.mark(t, 'resume', q['id'])
+    return True
+
+
+def ask_ndrt(block, q, t, stop, entry, started, sagat, overlay, display, clock):
+    """The NDRT video questions of a stop at the freeze (started, time.monotonic()) + ndrt_at_s: the
+    tablet waits until then; at most ndrt_max_answer_s. Into entry['ndrt'] and ndrt.csv. False if the
+    run was ended (ESC)."""
+    def frozen_until(done, until):
+        """The black monitors until done() or until (time.monotonic()): 'esc', 'skip' (N) or None."""
+        while not done() and time.monotonic() < until:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+                    return 'esc'
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_n:
+                    return 'skip'
+            overlay.black(display, ['화면이 멈췄습니다', '태블릿의 질문에 답해 주세요'])
+            pygame.display.flip()
+            clock.tick(30)
+        return None
+
+    qid = q['id']
+    sagat.wait(qid)
+    waited = frozen_until(lambda: False, started + block.qt['ndrt_at_s'])
+    if waited == 'esc':
+        return False
+    answer, ended, asked_at = None, 'skipped', None
+    if waited is None:
+        seconds = block.qt['ndrt_max_answer_s']
+        sagat.ask_ndrt(qid, [i['image'] for i in stop['items']], seconds)
+        asked_at = time.monotonic()
+        block.mark(t, 'video questions (%.1f s after the freeze)' % (asked_at - started), qid)
+        result = frozen_until(lambda: sagat.answer() is not None, asked_at + seconds)
+        if result == 'esc':
+            return False
+        answer = sagat.answer()
+        ended = 'answer' if answer is not None else 'skipped' if result == 'skip' else 'timeout'
+    score = ndrt_score(stop, answer)
+    entry['ndrt'] = {'asked_after_freeze_s': None if asked_at is None else round(asked_at - started, 2),
+                     'answer_s': None if asked_at is None else round(time.monotonic() - asked_at, 2),
+                     'ended_by': ended, 'items': stop['items'], 'answer': answer, 'score': score}
+    given = {a.get('image'): a for a in (answer or {}).get('answers') or []}
+    for k, item in enumerate(stop['items'], 1):
+        a = given.get(item['image'], {})
+        said = a.get('shown')
+        block.log.row('ndrt.csv', [qid, k, item['image'], item['shown'], '' if said is None else said,
+                                   a.get('confidence', ''), a.get('ms', ''), '' if said is None else said == item['shown'],
+                                   item.get('video_t', ''), item.get('before_stop_s', ''), item.get('episode_t', '')])
+    block.mark(t, 'video questions: %s' % ('%d / %d correct' % (score['correct'], score['asked'])
+                                           if score['answered'] else ended), qid)
     return True
 
 

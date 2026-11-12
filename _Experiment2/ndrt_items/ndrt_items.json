@@ -1,0 +1,325 @@
+{
+ "_comment": "NDRT scene questions after each SAGAT stop (make_items.py): \"이 장면이 영상에 나왔나요?\" yes/no + confidence. shown: from the clip, video_t s into it (the shot starts ~1.5 s earlier), before_stop_s before the stop; not shown: same episode outside the clip and its preview. episode_t: where the frame is in the episode. Asked in the listed order.",
+ "A": {
+  "episode": "중국.mp4",
+  "clip": "중국_A.mp4",
+  "clip_start_s": 0.0,
+  "clip_s": 690,
+  "stops": {
+   "A-Q1": {
+    "stop_t": 187,
+    "items": [
+     {
+      "image": "A/A-Q1-1.jpg",
+      "shown": false,
+      "episode_t": 2265.0
+     },
+     {
+      "image": "A/A-Q1-2.jpg",
+      "shown": true,
+      "episode_t": 137.8,
+      "video_t": 137.8,
+      "before_stop_s": 49.2
+     },
+     {
+      "image": "A/A-Q1-3.jpg",
+      "shown": true,
+      "episode_t": 172.0,
+      "video_t": 172.0,
+      "before_stop_s": 15.0
+     },
+     {
+      "image": "A/A-Q1-4.jpg",
+      "shown": true,
+      "episode_t": 157.5,
+      "video_t": 157.5,
+      "before_stop_s": 29.5
+     }
+    ]
+   },
+   "A-Q2": {
+    "stop_t": 367,
+    "items": [
+     {
+      "image": "A/A-Q2-1.jpg",
+      "shown": false,
+      "episode_t": 2341.1
+     },
+     {
+      "image": "A/A-Q2-2.jpg",
+      "shown": true,
+      "episode_t": 315.8,
+      "video_t": 315.8,
+      "before_stop_s": 51.2
+     },
+     {
+      "image": "A/A-Q2-3.jpg",
+      "shown": false,
+      "episode_t": 2310.2
+     },
+     {
+      "image": "A/A-Q2-4.jpg",
+      "shown": false,
+      "episode_t": 1624.6
+     }
+    ]
+   },
+   "A-Q3": {
+    "stop_t": 510,
+    "items": [
+     {
+      "image": "A/A-Q3-1.jpg",
+      "shown": false,
+      "episode_t": 1689.3
+     },
+     {
+      "image": "A/A-Q3-2.jpg",
+      "shown": true,
+      "episode_t": 487.5,
+      "video_t": 487.5,
+      "before_stop_s": 22.5
+     },
+     {
+      "image": "A/A-Q3-3.jpg",
+      "shown": false,
+      "episode_t": 2458.8
+     },
+     {
+      "image": "A/A-Q3-4.jpg",
+      "shown": true,
+      "episode_t": 464.7,
+      "video_t": 464.7,
+      "before_stop_s": 45.3
+     }
+    ]
+   }
+  }
+ },
+ "B": {
+  "episode": "스위스러시아.mp4",
+  "clip": "스위스러시아_B.mp4",
+  "clip_start_s": 0.0,
+  "clip_s": 690,
+  "stops": {
+   "B-Q1": {
+    "stop_t": 143,
+    "items": [
+     {
+      "image": "B/B-Q1-1.jpg",
+      "shown": false,
+      "episode_t": 794.9
+     },
+     {
+      "image": "B/B-Q1-2.jpg",
+      "shown": true,
+      "episode_t": 113.6,
+      "video_t": 113.6,
+      "before_stop_s": 29.4
+     },
+     {
+      "image": "B/B-Q1-3.jpg",
+      "shown": true,
+      "episode_t": 96.1,
+      "video_t": 96.1,
+      "before_stop_s": 46.9
+     },
+     {
+      "image": "B/B-Q1-4.jpg",
+      "shown": false,
+      "episode_t": 779.1
+     }
+    ]
+   },
+   "B-Q2": {
+    "stop_t": 303,
+    "items": [
+     {
+      "image": "B/B-Q2-1.jpg",
+      "shown": false,
+      "episode_t": 756.7
+     },
+     {
+      "image": "B/B-Q2-2.jpg",
+      "shown": false,
+      "episode_t": 1188.9
+     },
+     {
+      "image": "B/B-Q2-3.jpg",
+      "shown": true,
+      "episode_t": 271.3,
+      "video_t": 271.3,
+      "before_stop_s": 31.7
+     },
+     {
+      "image": "B/B-Q2-4.jpg",
+      "shown": false,
+      "episode_t": 903.6
+     }
+    ]
+   },
+   "B-Q3": {
+    "stop_t": 512,
+    "items": [
+     {
+      "image": "B/B-Q3-1.jpg",
+      "shown": true,
+      "episode_t": 497.7,
+      "video_t": 497.7,
+      "before_stop_s": 14.3
+     },
+     {
+      "image": "B/B-Q3-2.jpg",
+      "shown": true,
+      "episode_t": 464.4,
+      "video_t": 464.4,
+      "before_stop_s": 47.6
+     },
+     {
+      "image": "B/B-Q3-3.jpg",
+      "shown": true,
+      "episode_t": 468.8,
+      "video_t": 468.8,
+      "before_stop_s": 43.2
+     },
+     {
+      "image": "B/B-Q3-4.jpg",
+      "shown": false,
+      "episode_t": 1067.6
+     }
+    ]
+   }
+  }
+ },
+ "C": {
+  "episode": "스페인 남부.mp4",
+  "clip": "스페인남부_C.mp4",
+  "clip_start_s": 0.0,
+  "clip_s": 690,
+  "stops": {
+   "C-Q1": {
+    "stop_t": 232,
+    "items": [
+     {
+      "image": "C/C-Q1-1.jpg",
+      "shown": false,
+      "episode_t": 862.4
+     },
+     {
+      "image": "C/C-Q1-2.jpg",
+      "shown": false,
+      "episode_t": 1076.1
+     },
+     {
+      "image": "C/C-Q1-3.jpg",
+      "shown": true,
+      "episode_t": 220.1,
+      "video_t": 220.1,
+      "before_stop_s": 11.9
+     },
+     {
+      "image": "C/C-Q1-4.jpg",
+      "shown": false,
+      "episode_t": 899.9
+     }
+    ]
+   },
+   "C-Q2": {
+    "stop_t": 406,
+    "items": [
+     {
+      "image": "C/C-Q2-1.jpg",
+      "shown": true,
+      "episode_t": 382.5,
+      "video_t": 382.5,
+      "before_stop_s": 23.5
+     },
+     {
+      "image": "C/C-Q2-2.jpg",
+      "shown": false,
+      "episode_t": 1100.3
+     },
+     {
+      "image": "C/C-Q2-3.jpg",
+      "shown": true,
+      "episode_t": 370.7,
+      "video_t": 370.7,
+      "before_stop_s": 35.3
+     },
+     {
+      "image": "C/C-Q2-4.jpg",
+      "shown": true,
+      "episode_t": 365.0,
+      "video_t": 365.0,
+      "before_stop_s": 41.0
+     }
+    ]
+   },
+   "C-Q3": {
+    "stop_t": 515,
+    "items": [
+     {
+      "image": "C/C-Q3-1.jpg",
+      "shown": false,
+      "episode_t": 1242.2
+     },
+     {
+      "image": "C/C-Q3-2.jpg",
+      "shown": true,
+      "episode_t": 496.1,
+      "video_t": 496.1,
+      "before_stop_s": 18.9
+     },
+     {
+      "image": "C/C-Q3-3.jpg",
+      "shown": false,
+      "episode_t": 945.1
+     },
+     {
+      "image": "C/C-Q3-4.jpg",
+      "shown": true,
+      "episode_t": 465.0,
+      "video_t": 465.0,
+      "before_stop_s": 50.0
+     }
+    ]
+   }
+  }
+ },
+ "P": {
+  "episode": "스위스러시아.mp4",
+  "clip": "러시아_P.mp4",
+  "clip_start_s": 1481.5,
+  "clip_s": 240,
+  "stops": {
+   "P-Q1": {
+    "stop_t": 134,
+    "items": [
+     {
+      "image": "P/P-Q1-1.jpg",
+      "shown": true,
+      "episode_t": 1576.4,
+      "video_t": 94.9,
+      "before_stop_s": 39.1
+     },
+     {
+      "image": "P/P-Q1-2.jpg",
+      "shown": false,
+      "episode_t": 1783.4
+     },
+     {
+      "image": "P/P-Q1-3.jpg",
+      "shown": false,
+      "episode_t": 1957.5
+     },
+     {
+      "image": "P/P-Q1-4.jpg",
+      "shown": true,
+      "episode_t": 1599.4,
+      "video_t": 117.9,
+      "before_stop_s": 16.1
+     }
+    ]
+   }
+  }
+ }
+}
