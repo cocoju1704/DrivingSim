@@ -32,7 +32,7 @@ SAGAT 태블릿/노트북입니다. SAGAT은 15초 동안 페이지를 직접 �
 | 저장 폴더 | 직접 지정 (비우면 위 규칙) |
 | Tobii Pro Nano | `gaze_bridge.py`를 별도 콘솔로 띄우고 `--gaze`로 실행 (frames.csv에 gaze_* 열, gaze_*.csv) |
 | Tobii Glasses 2 주소 | 사건마다 G2 녹화에 이벤트 마커 (`abc_*`). "녹화도 시작/종료"를 켜면 녹화도 직접 시작·종료: 글래스를 켠 뒤 한 캘리브레이션의 참가자로 녹화하고, 없으면 이전 캘리브레이션으로 대신함(경고). 유선 랜: `fe80::76fe:48ff:fe2f:3ff0%15` (`%15`는 이 PC 랜 포트 번호), 글래스 Wi-Fi: `192.168.71.50` |
-| NDRT 영상 서버 | mrbd-video 서버 주소. SAGAT 때 안경 영상이 함께 멈추고 가려짐 (`video_link.py`). 부하 때문에 다른 노트북에서 서버를 띄우면 그 주소(예: `http://192.168.0.69:8080`, 기본값은 `devices.json`의 `video`), 안경도 그 노트북 주소로 접속 |
+| NDRT 영상 서버 | mrbd-video 서버 주소. SAGAT 때 안경(휴대폰 조건은 휴대폰 앱) 영상이 함께 멈추고 가려짐 (`video_link.py`). 부하 때문에 다른 노트북에서 서버를 띄우면 그 주소(예: `http://192.168.0.69:8080`, 기본값은 `devices.json`의 `video`), 안경도 그 노트북 주소로 접속 |
 
 ## 글래스 착용과 캘리브레이션 (글래스 조건, 참가자마다)
 
@@ -45,6 +45,14 @@ SAGAT 태블릿/노트북입니다. SAGAT은 15초 동안 페이지를 직접 �
 5. 캘리브레이션: `python g2_calibrate.py` (1단계 고개 고정·고리 가운데, 2단계 눈으로만 빨간 점).
 6. 검증: `python g2_validate.py`, 끝에 "통과"(도로 중앙 1.5° 이하, 모니터·미러 평균 3° 이하·미러 셋 다 측정, 안경 화면 중앙값 3° 이하). 아니면 3번부터 다시.
 7. 휴식 뒤나 안경을 만진 뒤에는 5·6번을 다시.
+
+## 휴대폰 조건: NDRT 영상 앱
+
+휴대폰 조건의 영상은 Android 앱 "NDRT 영상"(`mrbd-video/phone_app`)으로 재생합니다. 안경 앱과 같은 서버에 붙어
+블록 시작에 영상을 열고, SAGAT·TOR 때 멈추고 검은 화면으로 가립니다(3-2-1 뒤 이어 재생). 명령에 블록의 조건이
+실려 가므로 앱은 휴대폰 조건 블록에서만 움직입니다. 설치: 폰을 USB로 연결하고 `python mrbd-video/phone_app/build.py --install --videos`.
+앱 목록 화면에서 영상을 ✓ 선택해 두고 화면을 켜 둔 채 블록을 시작합니다. `preflight.bat`은 휴대폰 조건 블록이면 폰 앱의 보고를 봅니다.
+영상 서버 노트북의 `mrbd-video/server.py`도 새 버전(기기별 보고)으로 바꿔야 합니다.
 
 ## 블록 배정 (`launcher.py`의 `assignment()`)
 
@@ -252,7 +260,8 @@ SAGAT 점수는 문항마다 (격자 8칸 정답률 + 접근 차량 정답 + 안
 | g2_validate.py | 캘리브레이션 뒤 시선 정확도(도): 모니터(주 모니터에 타깃 9개, 장면 영상에서 타깃을 찾아 프레임마다 시선과 비교, OpenCV 필요)와 안경 화면(보정에 안 쓴 점 8개, `g2_display.json` 윤곽으로 예측한 위치와 비교). 점마다 정확도(중앙값 각도)·정밀도(RMS-S2S, SD) → `g2_validation.json`(블록마다 데이터 폴더로 복사), 스트림은 `g2_validation/<시각>/`. `--monitor`, `--display` |
 | calibration_target/ | 캘리브레이션 타깃 (매뉴얼 부록 D 치수: 고리 43 mm): 인쇄용 SVG(100 %), 화면용 HTML (`?y=85`: 타깃 높이 %, 장면 카메라가 아래를 향할 때) |
 | mirror_gaze.py | 장면 영상에서 미러 응시 판정: 시선 주변에서 미러(유리·검은 하우징 윤곽, `mirror_ref/`)를 찾아 시선이 그 유리 안인지. 블록 폴더에 `mirror_gaze.csv`(프레임), `mirror_glances.csv`(응시 구간), `mirror_windows.csv`(사건 창·TOR별 AOI 미러 응시 여부, 첫 응시, 머문 시간). `--images`: 응시마다 그림(`mirror_gaze/`) |
-| video_link.py | mrbd-video 연동 (play: 영상 직접 열기, freeze / resume, TOR은 글래스에 문구 없이 정지·가림) |
+| gaze_video.py | 장면 영상에 시선(원과 0.3초 궤적)과 주행 상태(블록 시각, 자율/수동, TOR 단계, 속도), 응시 중인 미러, 열린 사건 창과 최근 사건을 그려 블록 폴더에 `gaze_video.mp4`. `--from 180 --to 200`: 일부만, `--speed 0.5`: 느리게. H.264는 `pip install imageio-ffmpeg`(venv_carla에 설치됨). 미러 표시는 `mirror_gaze.py`를 먼저 돌렸을 때 |
+| video_link.py | mrbd-video 연동 (play: 영상 직접 열기, freeze / resume, TOR은 글래스에 문구 없이 정지·가림). 명령마다 조건(`device`)을 실어 휴대폰 조건이면 폰 앱이 따름 |
 | carla_base.py | `_Experiment/takeover_experiment.py`의 복사본 (휠, 미러, 계기판, 자율주행) |
 | gaze_tracking.py, gaze_bridge.py, road_signs.py | `_Experiment`에서 복사 |
 
