@@ -58,7 +58,8 @@ KMH = 1.0 / 3.6
 ZONES = ('front', 'side', 'rear')
 CELLS = ['%d_%s' % (lane, zone) for lane in (1, 2, 3) for zone in ZONES if (lane, zone) != (2, 'side')]
 GRID_LANES = (1, 2, 3)   # lane 0 (scenery, two lanes left) is outside the SAGAT grid
-PROPOSALS = 50000        # random background cars tried per set
+PROPOSALS = 150000       # random background cars tried per set (50000 left the density low once the gaps came)
+DEFICIT_TRIES = 30       # failed proposals at one time step before it is given up
 ANCHOR_TRIES = 400
 QUESTION_TRIES = 250
 
@@ -286,8 +287,10 @@ def _held_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind, follows, hold):
 def lead_car(cid, hold_from, hold_to, x_hold, v_in, v_out, spawn_dx, t_end, brakes=(), kind='lead',
              brake_template=None):
     """Lane 2 ahead: comes back from spawn_dx[1] ahead at -v_in (a slower car), holds x_hold from hold_from,
-    brakes at each time in `brakes` (brake light, -8 km/h for 3 s), pulls away at +v_out from hold_to."""
-    a = 0.5
+    brakes at each time in `brakes` (brake light, -8 km/h for 3 s), pulls away at +v_out from hold_to.
+    Its speed changes relative to the ego car at 1 m/s^2 (0.5 made its approach so long that a lead car
+    next to a question could not stay beyond gap_far_m until the question)."""
+    a = 1.0
     d_decel = v_in * v_in / (2.0 * a)
     t_decel = hold_from - v_in / a
     # from far ahead (spawn_dx[1]): at FAR_DV until FAR_AHEAD_M (_far), then v_in
@@ -329,6 +332,33 @@ def cell_of(lane, dx, cell_dx):
         if inside:
             return None if (lane, zone) == (2, 'side') else '%d_%s' % (lane, zone)
     return None
+
+
+def gap_spans(lane, qt):
+    """[(low, high)] dx that must be empty at a question (SAGAT): between the cells and the far edge
+    (gap_far_m), and between the 'beside' and 'behind' cells. A car is either clearly in a cell or
+    far away (a dot), never on a border where the answer would be a matter of opinion."""
+    c = qt['cell_dx_m']
+    far = qt.get('gap_far_m', 50.0)
+    spans = [(c['front'][1], far), (-far, c['rear'][0])]
+    if lane == 2:
+        spans.append((c['rear'][1], c['front'][0]))
+    else:
+        spans += [(c['rear'][1], c['side'][0]), (c['side'][1], c['front'][0])]
+    return [(a, b) for a, b in spans if b > a]
+
+
+def zone_of(lane, dx, qt):
+    """The cell of a car, 'gap' (gap_spans), 'far' beyond gap_far_m, 'own' (lane 2 beside: the ego car)."""
+    far = qt.get('gap_far_m', 50.0)
+    if abs(dx) > far:
+        return 'far'
+    cell = cell_of(lane, dx, qt['cell_dx_m'])
+    if cell:
+        return cell
+    if any(a < dx < b for a, b in gap_spans(lane, qt)):
+        return 'gap'
+    return 'own'
 
 
 def layout(cars_now, history, qt):
@@ -391,17 +421,19 @@ def question_ok(cars, q, qt, partial=False):
     elif cells != target_cells(q) or (strict and (approach != sorted(q['approach']) or safe != q['safe'])):
         return False
     margin = qt['margin_m']
-    edges = [-50.0, -5.0, 5.0, 50.0] + list(qt['unsafe_dx_m'])
+    c = qt['cell_dx_m']
+    far = qt.get('gap_far_m', 50.0)
+    edges = sorted(set([c['rear'][0], c['rear'][1], c['side'][0], c['side'][1], c['front'][0], c['front'][1],
+                        -far, far]))
     window = qt['approach_window_s']
     for car in cars:
         x = car.at(q['t'])
-        if x is None or abs(x) > 50.0 + margin or car.lane not in GRID_LANES:
+        if x is None or abs(x) > far + margin or car.lane not in GRID_LANES:
             continue
-        lane_edges = edges if car.lane != 2 else [-50.0, -5.0, 5.0, 50.0]
-        if any(abs(x - e) < margin for e in lane_edges):
+        if any(abs(x - e) < margin for e in edges) or zone_of(car.lane, x, qt) == 'gap':
             return False
         before = car.at(q['t'] - window)
-        if before is not None and -50.0 <= x < -5.0:
+        if strict and before is not None and c['rear'][0] <= x < c['rear'][1]:
             dv = (x - before) / window / KMH
             if abs(dv - qt['approach_dv_kmh']) < 1.5:
                 return False
@@ -409,19 +441,22 @@ def question_ok(cars, q, qt, partial=False):
 
 
 def _holds(car, t, qt):
-    """From hold_s before the question to it, the car neither enters nor leaves the grid (+-50 m)
-    nor changes cell: the layout asked about has been there to be seen, not just appeared."""
+    """From hold_s before the question to it, the car stays in one zone (zone_of: its cell, or far
+    beyond gap_far_m) and never in a gap: the layout asked about has been there to be seen, not just
+    appeared, and no car crosses a border meanwhile."""
     hold = qt.get('hold_s', 0.0)
     if not hold:
         return True
-    cell_dx = qt['cell_dx_m']
 
     def where(time):
         x = car.at(time)
-        if x is None or abs(x) > 50.0:
+        if x is None:
             return None
-        return cell_of(car.lane, x, cell_dx) or 'own'
+        zone = zone_of(car.lane, x, qt)
+        return None if zone == 'far' else zone
     now = where(t)
+    if now == 'gap':
+        return False
     k = 1
     while k * 0.5 <= hold + 1e-9:
         if where(t - k * 0.5) != now:
@@ -480,8 +515,10 @@ class Rules(object):
         if new.lane not in GRID_LANES:
             return True   # scenery: the questions do not see it
         everything = cars + [new]
+        # every question whose look-back (approach window, hold_s) the new car's course overlaps
+        back = max(self.qt['approach_window_s'], self.qt.get('hold_s', 0.0)) + 0.5
         return all(question_ok(everything, q, self.qt, partial=q['id'] not in self.built) for q in self.questions
-                   if new.at(q['t']) is not None or new.at(q['t'] - self.qt['approach_window_s']) is not None)
+                   if new.t0 <= q['t'] + 1e-6 and new.i1 * DT >= q['t'] - back - 1e-6)
 
 
 # -- event times on the straights --------------------------------------------------------------
@@ -828,9 +865,23 @@ def make_schedule(config, name, plan=None):
                 for attempt in range(QUESTION_TRIES):
                     mark = count[0]
                     placed = []
-                    nearby_f = [f for f in events if f['type'] == 'F' and abs(f['t'] - event['t']) <= 45.0
-                                and not any(c.extra.get('f_event') == f['id'] for c in cars)
-                                and f_time_ok(f, f['t'])]
+                    # an F close by: its lead car is this question's lane 2 car ahead (one car, it brakes
+                    # at the F); the F at the nearest time it may have (shift_s), as its own placement would
+                    nearby_f = []
+                    if '2_front' in event['cells']:
+                        ft_ = templates['F']
+                        steps = [0.0] + [d * 0.5 * sign for d in range(1, int(2 * ft_['shift_s']) + 1) for sign in (1, -1)]
+                        for f in events:
+                            if f['type'] != 'F' or any(c.extra.get('f_event') == f['id'] for c in cars):
+                                continue
+                            base_t = f.get('t_doc', f['t'])
+                            ok_t = next((base_t + d for d in steps if abs(base_t + d - event['t']) <= 45.0
+                                         and f_time_ok(f, base_t + d)), None)
+                            if ok_t is not None:
+                                f.setdefault('t_doc', base_t)
+                                f['t'] = ok_t
+                                nearby_f.append(f)
+                                break
                     for car in anchor_cars(new_id, event, rng, targets, v_low, v_anchor, spawn, t_end,
                                            nearby_f[:1], templates['F'], qt.get('hold_s', 0.0),
                                            share=None if block.get('practice') else faster_share):
@@ -861,8 +912,10 @@ def make_schedule(config, name, plan=None):
                     continue
                 for _ in range(ANCHOR_TRIES):
                     x_hold = rng.uniform(*ft['lead_dx_m'])
-                    car = lead_car(new_id('F'), t_brake - rng.uniform(8, 25), t_brake + rng.uniform(8, 25), x_hold,
-                                   rng.uniform(5, 12) * KMH, rng.uniform(5, 12) * KMH, spawn, t_end,
+                    # comes at 15-25 km/h and holds from 4-25 s before it brakes: next to a question it
+                    # can stay beyond gap_far_m until the question is over
+                    car = lead_car(new_id('F'), t_brake - rng.uniform(4, 25), t_brake + rng.uniform(8, 25), x_hold,
+                                   rng.uniform(15, 25) * KMH, rng.uniform(10, 25) * KMH, spawn, t_end,
                                    brakes=[t_brake], brake_template=ft)
                     if car.t0 < t_first or min(car.xs) < ft['min_gap_m'] + 4.8 or not rules.ok(car, cars):
                         count[0] -= 1
@@ -895,8 +948,11 @@ def make_schedule(config, name, plan=None):
     counts = density(cars)
     # density all the way to the block end (with a TOR: to its clearing, the road is empty after it)
     fill_end = n_steps if tor is None else int(round(tor_clear / DT))
+    # a time step whose proposals keep failing (next to a question nothing but its layout may be near)
+    # is given up after DEFICIT_TRIES: the proposals go to where cars can be placed
+    fails = [0] * n_steps
     for _ in range(PROPOSALS):
-        deficit = [i for i in range(n_steps) if counts[i] < low and i < fill_end]
+        deficit = [i for i in range(n_steps) if counts[i] < low and i < fill_end and fails[i] < DEFICIT_TRIES]
         if not deficit:
             break
         i = rng.choice(deficit)
@@ -923,13 +979,16 @@ def make_schedule(config, name, plan=None):
             car = pass_car(new_id('B'), lane, speed * sign, t_at, x_at, spawn, t_end)
         if car.t0 < t_first:
             count[0] -= 1
+            fails[i] += 1
             continue
         extra = density([car])
         if any(counts[k] + extra[k] > high for k in range(n_steps) if extra[k]):
             count[0] -= 1
+            fails[i] += 1
             continue
         if not rules.ok(car, cars):
             count[0] -= 1
+            fails[i] += 1
             continue
         cars.append(car)
         counts = [a + b for a, b in zip(counts, extra)]
@@ -1084,7 +1143,7 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
                     # an F close by: this car stays, 31 .. 40 m ahead, and brakes at the F
                     f = f_events[0]
                     car = lead_car(new_id('Q'), min(t, f['t']) - rng.uniform(early, max(early, 20)), max(t, f['t']) + rng.uniform(8, 20),
-                                   rng.uniform(31, targets['front'][1]), rng.uniform(5, 12) * KMH,
+                                   rng.uniform(30, max(30.5, targets['front'][1])), rng.uniform(15, 25) * KMH,
                                    rng.uniform(10, 25) * KMH, spawn, t_end, brakes=[f['t']], brake_template=f_template)
                     car.extra['f_event'] = f['id']
                     cars.append(car)
@@ -1093,11 +1152,12 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
                     # 10 s hold a slow one runs into the TOR's clearing, or meets the previous question's car
                     # ahead still leaving: one lane, they would cross)
                     cars.append(lead_car(new_id('Q'), t - rng.uniform(early, 30), t + rng.uniform(3, 12),
-                                         rng.uniform(*targets['front']), rng.uniform(10, 25) * KMH,
+                                         rng.uniform(max(targets['front'][0], targets.get('lane2_front_min', 0.0)),
+                                                     targets['front'][1]), rng.uniform(10, 25) * KMH,
                                          rng.uniform(10, 25) * KMH, spawn, t_end, kind='bg'))
                 else:
                     cars.append(rear2_car(new_id('Q'), t - rng.uniform(early + 1, 30), t + rng.uniform(3, 12),
-                                          rng.uniform(*targets['rear_lane2']), rng.uniform(6, 15) * KMH,
+                                          rng.uniform(*targets['rear_lane2']), rng.uniform(15, 25) * KMH,
                                           spawn, t_end, kind='bg'))
             continue
         follow = None

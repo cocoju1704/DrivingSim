@@ -276,58 +276,74 @@ class MirrorVisibility(object):
 # ==============================================================================
 
 
-# the questions on the tablet (sagat_app): is there a car ... (yes / no, each with its confidence 1-5)
-SAGAT_ITEMS = ('mirror_left', 'mirror_rear', 'mirror_right',   # ... big enough to make out in that mirror
-               'beside_left', 'beside_right',                  # ... alongside, lane 1 / 3, dx -5 .. 5 m
-               'ahead_left', 'ahead', 'ahead_right')            # ... ahead, lane 1 / 2 / 3, dx 5 .. 50 m
-ITEM_CELLS = {'beside_left': '1_side', 'beside_right': '3_side',
+# the questions on the tablet (sagat_app): was there a car ... (yes / no, each with its confidence 1-5),
+# one per lane and zone: a car counts for one question only
+SAGAT_ITEMS = ('behind_left', 'behind', 'behind_right',   # behind (cell_dx_m rear): in the mirrors
+               'beside_left', 'beside_right',             # alongside (side)
+               'ahead_left', 'ahead', 'ahead_right')       # ahead (front)
+ITEM_CELLS = {'behind_left': '1_rear', 'behind': '2_rear', 'behind_right': '3_rear',
+              'beside_left': '1_side', 'beside_right': '3_side',
               'ahead_left': '1_front', 'ahead': '2_front', 'ahead_right': '3_front'}
-ITEM_MIRRORS = {'mirror_left': 'left', 'mirror_rear': 'rear', 'mirror_right': 'right'}
+LANE_ITEMS = {1: ('behind_left', 'beside_left', 'ahead_left'), 2: ('behind', None, 'ahead'),
+              3: ('behind_right', 'beside_right', 'ahead_right')}
 
 
 def sagat_truth(snapshot, qt, mirrors=None):
     """The answers from the cars as they are at the freeze: snapshot [(id, lane, dx, dx 5 s before)],
-    mirrors {id: {mirror: px}} (MirrorVisibility, the last frame). The grid cells (cell_dx_m: front
-    5 .. 50 m, side -5 .. 5 m) answer beside / ahead; a mirror question is yes when a car behind
-    (more than 5 m back) is at least RECOGNIZE_PX tall in that inset (any lane: the rear-view mirror
-    shows lanes 1 and 3 too).
-    The cells, approach and safe lane of the layout are kept for the schedule's check."""
+    mirrors {id: {mirror: px}} (MirrorVisibility, the last frame; kept for the record). A question is
+    yes when a car is in its cell (cell_dx_m: behind 15-45 m, beside -4..4 m, ahead 5-35 m; the
+    schedule keeps every car either in a cell or beyond gap_far_m at a question). A car that is in a
+    gap anyway (its course off by a few metres) makes the questions on both sides of that gap
+    ambiguous unless a car is clearly in their cell: they are not scored."""
     now = [(lane, dx) for _, lane, dx, _ in snapshot]
     history = {k: before for k, (_, _, _, before) in enumerate(snapshot) if before is not None}
     cells, approach, safe = abc_schedule.layout(now, history, qt)
-    mirrors = mirrors or {}
-    # only cars behind the 'beside' cells (dx < side's back edge, -5 m): a car alongside is projected
-    # big into the side mirror (MirrorVisibility ignores the ego car's body), but it is what the
-    # 'beside' questions ask about ('the car right beside, that the mirror does not show')
-    behind = {cid for cid, _, dx, _ in snapshot if dx < qt['cell_dx_m']['side'][0]}
-    in_mirror = {name: sorted(cid for cid, seen in mirrors.items()
-                              if cid in behind and seen.get(name, 0.0) >= MirrorVisibility.RECOGNIZE_PX)
-                 for name in ('left', 'rear', 'right')}
     items = {key: bool(cells.get(cell)) for key, cell in ITEM_CELLS.items()}
-    items.update({key: bool(in_mirror[name]) for key, name in ITEM_MIRRORS.items()})
-    return {'items': items, 'in_mirror': in_mirror, 'cells': cells, 'approach': approach, 'safe': safe,
+    c = qt['cell_dx_m']
+    ambiguous = set()
+    for _, lane, dx, _ in snapshot:
+        if lane not in LANE_ITEMS or abc_schedule.zone_of(lane, dx, qt) != 'gap':
+            continue
+        behind, beside, ahead = LANE_ITEMS[lane]
+        if dx >= c['front'][1]:
+            near = (ahead,)
+        elif dx <= c['rear'][0]:
+            near = (behind,)
+        elif lane == 2:
+            near = (behind, ahead)
+        elif dx < c['side'][0]:
+            near = (behind, beside)
+        else:
+            near = (beside, ahead)
+        ambiguous.update(k for k in near if k and not items[k])
+    mirrors = mirrors or {}
+    return {'items': items, 'ambiguous': sorted(ambiguous), 'cells': cells, 'approach': approach, 'safe': safe,
             'cars': [{'id': cid, 'lane': lane, 'dx': round(dx, 2), 'dx_5s_before': None if b is None else round(b, 2),
+                      'zone': abc_schedule.zone_of(lane, dx, qt) if lane in LANE_ITEMS else 'lane 0',
                       'mirrors': mirrors.get(cid, {})}
                      for cid, lane, dx, b in snapshot]}
 
 
 def sagat_score(truth, answer):
-    """Per question: correct or not, its confidence; score = the share correct (also by group)."""
+    """Per question: correct or not (None: not answered, or ambiguous), its confidence; score = the
+    share correct of the scored ones (also by group)."""
     if answer is None:
         return {'answered': False}
     given = answer.get('items') or {}
     correct, confidence = {}, {}
     for key in SAGAT_ITEMS:
         a = given.get(key) or {}
-        correct[key] = None if a.get('present') is None else bool(a['present']) == truth['items'][key]
+        unscored = a.get('present') is None or key in truth.get('ambiguous', ())
+        correct[key] = None if unscored else bool(a['present']) == truth['items'][key]
         confidence[key] = a.get('confidence')
 
     def share(keys):
         marks = [correct[k] for k in keys if correct[k] is not None]
         return round(sum(marks) / float(len(marks)), 3) if marks else None
     return {'answered': True, 'correct': correct, 'confidence': confidence,
-            'mirrors': share(ITEM_MIRRORS), 'beside': share(('beside_left', 'beside_right')),
-            'ahead': share(('ahead_left', 'ahead', 'ahead_right')), 'score': share(SAGAT_ITEMS)}
+            'behind': share(('behind_left', 'behind', 'behind_right')), 'beside': share(('beside_left', 'beside_right')),
+            'ahead': share(('ahead_left', 'ahead', 'ahead_right')), 'score': share(SAGAT_ITEMS),
+            'unscored': [k for k in SAGAT_ITEMS if correct[k] is None]}
 
 
 # ==============================================================================
@@ -1459,8 +1475,8 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
     block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if answer else 'skipped' if skipped else 'timeout'),
                q['id'])
     if score.get('answered'):
-        logging.info('   correct %.0f %% (mirrors %s, beside %s, ahead %s)', 100 * (score['score'] or 0),
-                     score['mirrors'], score['beside'], score['ahead'])
+        logging.info('   correct %.0f %% (behind %s, beside %s, ahead %s; not scored: %s)', 100 * (score['score'] or 0),
+                     score['behind'], score['beside'], score['ahead'], ', '.join(score['unscored']) or '-')
     for count in range(block.qt['countdown_s'], 0, -1):
         sagat.countdown(count)
         until = time.monotonic() + 1.0

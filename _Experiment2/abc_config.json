@@ -36,8 +36,8 @@
     "lane0_clear_before_q_s": 10,
     "colors": ["205,30,30", "25,75,210", "235,195,20", "30,150,60", "235,110,15", "245,245,245", "130,40,170", "15,160,170", "225,60,140"],
     "min_gap_m": 15,
-    "lane2_rear_max_dx_m": -40,
-    "lane2_front_min_dx_m": 28
+    "lane2_rear_max_dx_m": -30,
+    "lane2_front_min_dx_m": 20
   },
   "templates": {
     "S": {
@@ -85,14 +85,11 @@
       ]
     },
     "F": {
-      "lead_dx_m": [
-        36,
-        45
-      ],
+      "lead_dx_m": [30, 32.5],
       "brake_s": 3,
       "decel_dv_kmh": -8,
-      "min_gap_m": 25,
-      "shift_s": 15
+      "min_gap_m": 18,
+      "shift_s": 25
     },
     "Q": {
       "max_answer_s": 60,
@@ -100,33 +97,35 @@
       "cell_dx_m": {
         "front": [
           5,
-          50
+          35
         ],
         "side": [
-          -5,
-          5
+          -4,
+          4
         ],
         "rear": [
-          -50,
-          -5
+          -45,
+          -15
         ]
       },
+      "gap_far_m": 70,
       "target_dx_m": {
         "front": [
-          15,
-          40
+          12,
+          31
         ],
+        "lane2_front_min": 20,
         "side": [
-          -3,
-          3
+          -2,
+          2
         ],
         "rear_lane1_3": [
-          -30,
-          -15
+          -38,
+          -22
         ],
         "rear_lane2": [
-          -48,
-          -42
+          -40,
+          -32
         ]
       },
       "unsafe_dx_m": [
@@ -243,7 +242,7 @@
         "id": "A-Q1",
         "type": "Q",
         "cells": [
-          "1_front",
+          "2_front",
           "2_rear",
           "3_front",
           "3_side"

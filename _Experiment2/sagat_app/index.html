@@ -67,44 +67,50 @@
     <div class="map">
       <section>
         <!-- the areas the questions mean: three lanes, the ego car in the middle -->
-        <svg viewBox="0 0 220 330" aria-hidden="true">
-          <rect x="10" y="0" width="200" height="330" fill="#0d0f12"/>
-          <!-- ahead: 50 m, three lanes -->
-          <rect x="12" y="20" width="196" height="160" fill="var(--zone)" stroke="var(--zone-line)" stroke-dasharray="4 3"/>
-          <text x="110" y="14" fill="#9fb6d8" font-size="12" text-anchor="middle">앞 50 m까지</text>
-          <text x="43" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">왼쪽 앞</text>
-          <text x="110" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">바로 앞</text>
-          <text x="177" y="105" fill="#cfe0f7" font-size="13" text-anchor="middle">오른쪽 앞</text>
-          <!-- beside: from the rear bumper to the front bumper (+/- 5 m) -->
-          <rect x="12" y="188" width="62" height="62" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
-          <rect x="146" y="188" width="62" height="62" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
-          <text x="43" y="223" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
-          <text x="177" y="223" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
+        <svg viewBox="0 0 220 360" aria-hidden="true">
+          <rect x="10" y="0" width="200" height="360" fill="#0d0f12"/>
+          <!-- ahead: 5-35 m, three lanes -->
+          <rect x="12" y="22" width="196" height="118" fill="var(--zone)" stroke="var(--zone-line)" stroke-dasharray="4 3"/>
+          <text x="110" y="15" fill="#9fb6d8" font-size="12" text-anchor="middle">앞: 35 m 안 (차 약 7대 거리)</text>
+          <text x="43" y="86" fill="#cfe0f7" font-size="13" text-anchor="middle">왼쪽 앞</text>
+          <text x="110" y="86" fill="#cfe0f7" font-size="13" text-anchor="middle">바로 앞</text>
+          <text x="177" y="86" fill="#cfe0f7" font-size="13" text-anchor="middle">오른쪽 앞</text>
+          <!-- beside: alongside, overlapping the ego car -->
+          <rect x="12" y="150" width="62" height="56" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
+          <rect x="146" y="150" width="62" height="56" fill="#3a2a10" stroke="#c48a2a" stroke-dasharray="4 3"/>
+          <text x="43" y="182" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
+          <text x="177" y="182" fill="#f0cf94" font-size="13" text-anchor="middle">바로 옆</text>
+          <!-- behind: 15-45 m, three lanes, what the mirrors show -->
+          <rect x="12" y="236" width="196" height="100" fill="#173a2a" stroke="#3faa72" stroke-dasharray="4 3"/>
+          <text x="43" y="282" fill="#bfe8d0" font-size="13" text-anchor="middle">왼쪽 뒤</text>
+          <text x="110" y="282" fill="#bfe8d0" font-size="13" text-anchor="middle">바로 뒤</text>
+          <text x="177" y="282" fill="#bfe8d0" font-size="13" text-anchor="middle">오른쪽 뒤</text>
+          <text x="43" y="300" fill="#8fc7a8" font-size="10" text-anchor="middle">왼쪽 미러</text>
+          <text x="110" y="300" fill="#8fc7a8" font-size="10" text-anchor="middle">룸미러</text>
+          <text x="177" y="300" fill="#8fc7a8" font-size="10" text-anchor="middle">오른쪽 미러</text>
+          <text x="110" y="354" fill="#8fc7a8" font-size="12" text-anchor="middle">뒤: 15~45 m 뒤 (미러로 보이는 곳)</text>
           <!-- lane lines -->
-          <line x1="77" y1="0" x2="77" y2="262" stroke="#6b7480" stroke-dasharray="10 9"/>
-          <line x1="143" y1="0" x2="143" y2="262" stroke="#6b7480" stroke-dasharray="10 9"/>
+          <line x1="77" y1="0" x2="77" y2="340" stroke="#6b7480" stroke-dasharray="10 9"/>
+          <line x1="143" y1="0" x2="143" y2="340" stroke="#6b7480" stroke-dasharray="10 9"/>
           <!-- the ego car -->
-          <rect x="94" y="190" width="32" height="58" rx="8" fill="var(--car)" stroke="#9aa3ad" stroke-width="2"/>
-          <text x="110" y="223" fill="#fff" font-size="11" text-anchor="middle">내 차</text>
-          <!-- behind: what the mirrors show -->
-          <text x="110" y="290" fill="#8a929c" font-size="12" text-anchor="middle">뒤쪽은 미러에 보인 것으로</text>
-          <text x="110" y="306" fill="#8a929c" font-size="12" text-anchor="middle">(왼쪽·룸·오른쪽 미러)</text>
+          <rect x="94" y="150" width="32" height="56" rx="8" fill="var(--car)" stroke="#9aa3ad" stroke-width="2"/>
+          <text x="110" y="182" fill="#fff" font-size="11" text-anchor="middle">내 차</text>
         </svg>
-        <p>앞: 내 차 앞 50 m(차 약 10대 길이)까지.<br>바로 옆: 내 차와 나란히, 앞뒤 5 m 안 (미러에 잘 안 보이는 곳).</p>
+        <p>색칠한 곳에 차가 있었는지 답해 주세요.<br>그보다 멀리 작게 보인 차는 "없었다"입니다.</p>
       </section>
     </div>
     <div>
       <section>
         <div class="heads"><span></span><span></span><span></span><span></span><span>확신: 1 (전혀) … 5 (매우)</span></div>
-        <h2>미러에 차가 보였나요?</h2>
-        <div id="rows-mirror"></div>
+        <h2>뒤에 차가 있었나요? <small>(15~45 m 뒤, 미러로 보이는 곳)</small></h2>
+        <div id="rows-behind"></div>
       </section>
       <section>
-        <h2>내 차 바로 옆에 차가 있었나요? <small>(나란히, 앞뒤 5 m 안)</small></h2>
+        <h2>바로 옆에 차가 있었나요? <small>(내 차와 나란히)</small></h2>
         <div id="rows-beside"></div>
       </section>
       <section>
-        <h2>앞에 차가 있었나요? <small>(50 m 안)</small></h2>
+        <h2>앞에 차가 있었나요? <small>(35 m 안)</small></h2>
         <div id="rows-ahead"></div>
       </section>
       <button id="submit" disabled>제출</button>
@@ -118,13 +124,13 @@
 (function () {
   // the questions: key (as abc_experiment.py scores it), group, text
   var ITEMS = [
-    ['mirror_left', 'mirror', '왼쪽 사이드미러'],
-    ['mirror_rear', 'mirror', '룸미러'],
-    ['mirror_right', 'mirror', '오른쪽 사이드미러'],
+    ['behind_left', 'behind', '왼쪽 차로 뒤 <small>왼쪽 사이드미러</small>'],
+    ['behind', 'behind', '내 차로 바로 뒤 <small>룸미러</small>'],
+    ['behind_right', 'behind', '오른쪽 차로 뒤 <small>오른쪽 사이드미러</small>'],
     ['beside_left', 'beside', '왼쪽 바로 옆'],
     ['beside_right', 'beside', '오른쪽 바로 옆'],
     ['ahead_left', 'ahead', '왼쪽 차로 앞'],
-    ['ahead', 'ahead', '내 차로 바로 앞'],
+    ['ahead', 'ahead', '내 차로 앞'],
     ['ahead_right', 'ahead', '오른쪽 차로 앞']
   ];
   var current = null;       // qid on screen
