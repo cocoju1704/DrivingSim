@@ -5,7 +5,8 @@ rem experiment PC serves the page (sagat_server.py, port 5011) while a block run
 rem on the laptop's network by itself (the hotspot gives new addresses on every reconnect), waits
 rem until it answers, then opens the page full screen (Edge or Chrome kiosk, with its own profile).
 rem Leave it open between blocks: the page shows a small "disconnected" note while no block runs
-rem and comes back by itself. Close it with Alt+F4.
+rem and reloads itself when the next block starts; closed (Alt+F4), it is opened again at the next
+rem block as long as this console stays open.
 rem
 rem     sagat_laptop.bat                    find the experiment PC (the last one found is tried first)
 rem     sagat_laptop.bat 192.168.0.70       only this address (the launcher window shows it)
@@ -62,7 +63,15 @@ if not defined BROWSER (
     goto :eof
 )
 start "" "%BROWSER%" --kiosk "%URL%" --edge-kiosk-type=fullscreen --no-first-run --disable-pinch --overscroll-history-navigation=0 --user-data-dir="%TEMP%\sagat_browser"
-goto :eof
+echo.
+echo Keep this window open: when a block starts and the page is closed, it opens again by itself
+echo (an open page reloads itself for each new block). Ctrl+C here to stop.
+:watch
+timeout /t 3 /nobreak >nul
+curl -s -o nul -m 2 "http://%PC%:5011/state" || goto watch
+powershell -NoProfile -Command "if (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*sagat_browser*' }) { exit 0 }; exit 1" && goto watch
+echo %TIME% the page was closed and a block runs: opening it again.
+goto open
 
 :find
 if not defined BROWSER if exist "%~1" set "BROWSER=%~1"

@@ -1,0 +1,56 @@
+{
+  "dictionary": "DICT_4X4_50",
+  "marker_mm": 40.0,
+  "markers": {
+    "L1": {
+      "id": 0,
+      "monitor": "left",
+      "where": "bottom bezel, outer side"
+    },
+    "L2": {
+      "id": 1,
+      "monitor": "left",
+      "where": "bottom bezel, under the left mirror"
+    },
+    "L3": {
+      "id": 2,
+      "monitor": "left",
+      "where": "bottom bezel, inner end (by the middle monitor)"
+    },
+    "L4": {
+      "id": 3,
+      "monitor": "left",
+      "where": "top bezel, inner end"
+    },
+    "R1": {
+      "id": 10,
+      "monitor": "right",
+      "where": "top bezel, inner end (above the rear-view mirror)"
+    },
+    "R2": {
+      "id": 11,
+      "monitor": "right",
+      "where": "top bezel, above the rear-view mirror"
+    },
+    "R3": {
+      "id": 12,
+      "monitor": "right",
+      "where": "bottom bezel, inner end (by the middle monitor)"
+    },
+    "R4": {
+      "id": 13,
+      "monitor": "right",
+      "where": "top bezel, outer end"
+    },
+    "R5": {
+      "id": 14,
+      "monitor": "right",
+      "where": "outer side bezel, by the right mirror"
+    },
+    "R6": {
+      "id": 15,
+      "monitor": "right",
+      "where": "bottom bezel, under the right mirror"
+    }
+  }
+}

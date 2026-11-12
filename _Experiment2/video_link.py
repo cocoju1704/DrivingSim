@@ -13,8 +13,11 @@ PC: python mrbd-video/server.py).
     block end     pause
 
 The commands go to the server (POST /api/control), which passes them to the glasses app over its
-event stream. The app reports back (POST /api/state): its position in the video, paused, frozen;
-each command here logs what it reported last (state()). Nothing here waits on the glasses: a
+event stream, and to the phone app (mrbd-video/phone_app) in the phone condition: each command
+carries "device" (the block's condition); the phone app does only those of "phone", the glasses
+app all of them. The app reports back (POST /api/state): its position in the video, paused, frozen;
+each command here logs what it reported last (state(): that device's report, the server keeps one
+per device). Nothing here waits on the glasses: a
 missing server or glasses only costs a warning.
 """
 
@@ -30,12 +33,14 @@ import urllib.error
 import urllib.request
 
 TIMEOUT = 6.0   # s: through a phone hotspot the TLS handshake alone takes up to ~3 s
+CONFIRM_S = 3.0   # s: the phone app's report of a command (it reports at once and every 2 s)
+RETRY_S = 12.0    # s: a command sent again until an app got it (the phone: did it) for up to this long
 # Cloudflare (https://video.cocoju.dev) answers urllib's default "Python-urllib/x.y" with 403 (error 1010)
 HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
 
 class VideoLink(object):
-    def __init__(self, address, video_file=None, start_s=0.0):
+    def __init__(self, address, video_file=None, start_s=0.0, device='glasses'):
         address = address.strip().rstrip('/')
         if not address.startswith(('http://', 'https://')):
             address = 'http://' + address
@@ -44,6 +49,8 @@ class VideoLink(object):
         self.base = address
         self._file = video_file
         self._start = start_s
+        self.device = 'phone' if device == 'phone' else 'glasses'   # whose report state() reads
+        self._condition = device
         self._context = ssl._create_unverified_context()  # pylint: disable=protected-access  (own certificate)
         self.results = queue.Queue()  # (time.time(), command, delivered, glasses state): the experiment logs them
         self._jobs = queue.Queue()     # one worker: the commands arrive in order
@@ -83,7 +90,9 @@ class VideoLink(object):
         (tried again: through the hotspot a request now and then gets no answer)."""
         for attempt in range(tries):
             state = self.state()
-            if state.get('received_ts'):
+            # a server older than the phone app keeps one report for all: the phone's (its own
+            # version) is not the glasses'
+            if state.get('received_ts') and state.get('device', self.device) == self.device:
                 return int(state.get('v') or 0)
             time.sleep(0.5)
         return 0
@@ -91,14 +100,37 @@ class VideoLink(object):
     def state(self):
         """The glasses' last report (position t in s, paused, frozen, title), {} if none."""
         try:
-            request = urllib.request.Request(self.base + '/api/state', headers=HEADERS)
+            request = urllib.request.Request(self.base + '/api/state?device=' + self.device, headers=HEADERS)
             with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
                 return json.loads(response.read().decode('utf-8') or '{}')
         except (OSError, ValueError, urllib.error.URLError):
             return {}
 
     def _send(self, action, **fields):
+        fields['device'] = self._condition
         self._jobs.put((action, fields))
+
+    @staticmethod
+    def _applied(action, fields, state):
+        """Whether the phone app's report shows the command done (its 2 s status reports overwrite the
+        command's own, so the state is looked at, not the action)."""
+        if action == 'play':
+            return state.get('screen') == 'player' and (not fields.get('file') or state.get('title') == fields['file'])
+        if action == 'freeze':
+            return bool(state.get('frozen'))
+        if action == 'resume':
+            return not state.get('frozen')
+        if action == 'pause':
+            return state.get('screen') != 'player' or state.get('paused') is True
+        return True   # alert_off, seek, calib: nothing to see
+
+    def _send_once(self, action, fields):
+        """POST the command; delivered (the number of apps on the event stream), None if not sent."""
+        try:
+            return self._post('/api/control', dict(fields, action=action)).get('delivered', 0)
+        except (OSError, ValueError, urllib.error.URLError) as error:
+            logging.warning('Video: "%s" not sent to %s (%s)', action, self.base, error)
+            return None
 
     def _run(self):
         while True:
@@ -106,16 +138,45 @@ class VideoLink(object):
             if job is None:
                 return
             action, fields = job
-            try:
-                result = self._post('/api/control', dict(fields, action=action))
-                delivered = result.get('delivered', 0)
-                if not delivered:
-                    logging.warning('Video: "%s" reached the server, but no glasses are connected to it', action)
-            except (OSError, ValueError, urllib.error.URLError) as error:
-                logging.warning('Video: "%s" not sent to %s (%s)', action, self.base, error)
-                delivered = None
-            time.sleep(0.4)  # the glasses' report of what it did
-            self.results.put((time.time(), action, delivered, self.state() if delivered else {}))
+            # The server passes a command only to the apps on its event stream at that moment: the
+            # phone app's stream drops now and then (through the tunnel) and the command is lost.
+            # So it is sent again until it reaches an app and, in the phone condition, until the
+            # phone's report (every 2 s) shows it done; up to RETRY_S.
+            first = time.time()
+            tries = 0
+            while True:
+                tries += 1
+                sent = time.time()
+                delivered = self._send_once(action, fields)
+                state = {}
+                if delivered:
+                    if self.device != 'phone':
+                        time.sleep(0.4)  # the glasses' report of what it did
+                        state = self.state()
+                        break
+                    done = False
+                    while time.time() - sent < CONFIRM_S:
+                        time.sleep(0.3)
+                        state = self.state()
+                        # a report received after this command was sent (server clock only)
+                        age = (state.get('server_ts', 0) - state.get('received_ts', 0)) / 1000.0
+                        if state.get('received_ts') and age <= time.time() - sent and self._applied(action, fields, state):
+                            done = True
+                            break
+                    if done:
+                        break
+                if time.time() - first > RETRY_S:
+                    if delivered == 0:
+                        logging.warning('Video: "%s" reached the server, but no %s app is connected to it', action, self.device)
+                    elif delivered:
+                        logging.warning('Video: "%s" sent %d times, the %s app did not report it done', action, tries, self.device)
+                    break
+                if delivered is None:
+                    break   # the server itself not reached: warned already
+                time.sleep(0.5)
+            if tries > 1:
+                logging.info('Video: "%s" sent %d times', action, tries)
+            self.results.put((time.time(), action, delivered, state))
 
     def close(self, wait=3.0):
         self._jobs.put(None)

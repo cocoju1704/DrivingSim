@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
 """
-Before a block (preflight.bat): is everything on? Uses the launcher's last choices
+Before a block (menu.py: 사전 점검): is everything on? Uses the launcher's last choices
 (launcher_last.json: Glasses 2 address, video server, input), so run it with the same settings
 the block will start with. Changes nothing anywhere; only looks.
 
     CARLA       the server answers on port 2000 (if not: the launcher starts it), its map
     wheel       a wheel / joystick is connected (input wheel)
     video       the mrbd-video server answers; the glasses app reports to it (every 2 s), its
-                version (v13+) and screen; the videos on the server
+                version (v13+) and screen; the videos on the server. In the phone condition (the
+                block's, as the launcher plans it): the phone app (mrbd-video/phone_app) instead
     Glasses 2   the recording unit answers: battery, eye tracker, a calibration since power-on;
                 the display calibration (g2_display.json) and its age
     SAGAT       for a while this serves the SAGAT page on port 5011 itself (as the block does) and
@@ -87,6 +88,19 @@ def check_wheel(choices):
 
 
 def check_video(choices):
+    try:
+        from launcher import run_plan
+        condition = run_plan(choices)[1]
+    except Exception:  # pylint: disable=broad-except
+        condition = None
+    if condition == 'hud':   # played by the experiment itself (hud_video.py), no app
+        from hud_video import find_video
+        path = find_video(None)
+        if path:
+            report(OK, 'HUD 영상', '%s (실험 PC에서 재생; 다른 영상은 추가 인자 --video-file 이름)' % os.path.basename(path))
+        else:
+            report(FAIL, 'HUD 영상', 'mrbd-video 폴더에 영상(mp4)이 없습니다')
+        return
     base = (choices.get('video') or '').strip().rstrip('/')
     if not base:
         if choices.get('video_server'):
@@ -97,7 +111,12 @@ def check_video(choices):
     if not base.startswith(('http://', 'https://')):
         base = 'http://' + base
     try:
-        state = get_json(base + '/api/state')
+        from launcher import run_plan
+        phone = run_plan(choices)[1] == 'phone'
+    except Exception:  # pylint: disable=broad-except
+        phone = False
+    try:
+        state = get_json(base + '/api/state' + ('?device=phone' if phone else ''))
     except Exception as error:  # pylint: disable=broad-except
         report(FAIL, '영상 서버', '%s 응답 없음 (%s): 노트북의 서버를 켜세요' % (base, str(error)[:60]))
         return
@@ -108,6 +127,9 @@ def check_video(choices):
         names = None
     report(OK, '영상 서버', '%s 응답함%s' % (base, ', 영상 %d개' % len(names) if names is not None else ''))
 
+    if phone:
+        check_phone_app(state)
+        return
     received, now = state.get('received_ts'), state.get('server_ts')
     if not received:
         report(FAIL, '글래스 앱', '보고가 없습니다: 안경에서 영상 앱(웹앱)을 여세요')
@@ -126,6 +148,28 @@ def check_video(choices):
         report(WARN, '글래스 앱', text + ': 지난 블록의 정지 화면이 남아 있습니다 (시작하면 풀립니다)')
     else:
         report(OK, '글래스 앱', text)
+
+
+def check_phone_app(state):
+    """The phone condition: the NDRT video app on the phone (mrbd-video/phone_app) reports every 2 s."""
+    received, now = state.get('received_ts'), state.get('server_ts')
+    if not received:
+        report(FAIL, '폰 앱', '보고가 없습니다: 휴대폰에서 "NDRT 영상" 앱을 여세요 (서버 주소가 같은지)')
+        return
+    if state.get('device') != 'phone':
+        report(FAIL, '폰 앱', '서버가 기기별 보고를 모릅니다: 영상 서버 노트북의 mrbd-video/server.py를 새 버전으로 바꾸세요')
+        return
+    age = (now - received) / 1000.0
+    if age > 6:
+        report(FAIL, '폰 앱', '마지막 보고가 %.0f초 전: 앱이 닫혔거나 화면이 꺼졌습니다' % age)
+        return
+    title = state.get('title') or ''
+    text = 'v%s, 화면 %s%s, %.0f초 전 보고' % (state.get('v'), state.get('screen') or '?',
+                                         (' (%s)' % title) if title else '', age)
+    if state.get('frozen'):
+        report(WARN, '폰 앱', text + ': 지난 블록의 정지 화면이 남아 있습니다 (시작하면 풀립니다)')
+    else:
+        report(OK, '폰 앱', text)
 
 
 def check_g2(choices):

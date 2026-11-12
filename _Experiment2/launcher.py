@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Scenario ABC's start window (start_experiment.bat): the participant number gives each block its set
+Scenario ABC's start window (menu.py: 실험 시작): the participant number gives each block its set
 and condition (assignment()); pick the block and Start runs abc_experiment.py in this console. When
 the run is over the window comes back with the next block selected. The choices are kept in
 launcher_last.json next to this script (not in git).
@@ -12,8 +12,8 @@ Assignment, participant p (1, 2, ...):
                      so each set meets each condition, and every 18 participants it all comes round
     practice drive   set P, with the condition of the participant's block 1 (every block and the practice drive end with the TOR)
 
-Also started from here when ticked: the CARLA server (if not running), gaze_bridge.py for the
-Tobii Pro Nano (venv_gaze), the mrbd-video server for the glasses video.
+Also started from here when ticked: the CARLA server (if not running), the mrbd-video server for the
+glasses video.
 """
 
 from __future__ import print_function
@@ -34,8 +34,6 @@ EXPERIMENT = os.path.join(HERE, 'abc_experiment.py')
 SERVER_BAT = os.path.join(HERE, 'CarlaUE4_nosound.bat')
 LAST_FILE = os.path.join(HERE, 'launcher_last.json')
 DEVICES_FILE = os.path.join(HERE, 'devices.json')
-GAZE_PYTHON = os.path.join(ROOT, 'venv_gaze', 'Scripts', 'python.exe')
-GAZE_BRIDGE = os.path.join(HERE, 'gaze_bridge.py')
 MRBD_SERVER = os.path.join(ROOT, 'mrbd-video', 'server.py')
 SAGAT_PORT = 5011
 CONDITIONS = ('glasses', 'phone', 'hud')
@@ -43,7 +41,7 @@ CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유�
 ORDERS = list(itertools.permutations(CONDITIONS))
 BLOCKS = [('P', '연습 주행 (세트 P)'), ('1', '블록 1'), ('2', '블록 2'), ('3', '블록 3')]
 DEFAULTS = {'participant': 1, 'block': 'P', 'manual': False, 'set': 'A', 'condition': 'glasses', 'input': 'wheel',
-            'test': True, 'out': '', 'nano': False, 'g2': '', 'g2_record': False, 'video': '', 'video_server': False,
+            'test': True, 'out': '', 'g2': '', 'g2_record': False, 'video': '', 'video_server': False,
             'video_start': '0', 'extra': ''}
 
 
@@ -117,8 +115,6 @@ def command(choices):
         args.append('--test')
     if choices['out'].strip():
         args += ['--out', choices['out'].strip()]
-    if choices['nano']:
-        args.append('--gaze')
     if choices['g2'].strip():
         args += ['--g2', choices['g2'].strip()]
         if choices['g2_record']:
@@ -162,7 +158,7 @@ class Launcher(object):
             'manual': tk.BooleanVar(value=choices['manual']), 'set': tk.StringVar(value=choices['set']),
             'condition': tk.StringVar(value=choices['condition']), 'input': tk.StringVar(value=choices['input']),
             'test': tk.BooleanVar(value=choices['test']), 'out': tk.StringVar(value=choices['out']),
-            'nano': tk.BooleanVar(value=choices['nano']), 'g2': tk.StringVar(value=choices['g2']),
+            'g2': tk.StringVar(value=choices['g2']),
             'g2_record': tk.BooleanVar(value=choices['g2_record']), 'video': tk.StringVar(value=choices['video']),
             'video_server': tk.BooleanVar(value=choices['video_server']),
             'video_start': tk.StringVar(value=choices['video_start']), 'extra': tk.StringVar(value=choices['extra'])}
@@ -215,7 +211,6 @@ class Launcher(object):
         self._out_hint.pack(anchor='w')
 
         box = group('시선 / 영상')
-        ttk.Checkbutton(box, text='Tobii Pro Nano (gaze_bridge.py 를 함께 실행)', variable=v['nano']).pack(anchor='w')
         line = ttk.Frame(box)
         line.pack(anchor='w', pady=(4, 0))
         ttk.Label(line, text='Tobii Glasses 2 주소').pack(side='left')
@@ -234,8 +229,8 @@ class Launcher(object):
                             ' 그 주소, 예: http://192.168.0.69:8080 — 안경도 그 노트북 주소로 접속)',
                   foreground='#77767b', justify='left').pack(anchor='w')
 
-        box = group('SAGAT 태블릿')
-        ttk.Label(box, text='아이패드 Safari: http://%s:%d/' % (own_address(), SAGAT_PORT),
+        box = group('SAGAT 태블릿 / 노트북')
+        ttk.Label(box, text='아이패드 Safari 또는 노트북 sagat_laptop.bat: http://%s:%d/' % (own_address(), SAGAT_PORT),
                   style='Plan.TLabel').pack(anchor='w')
         line = ttk.Frame(box)
         line.pack(anchor='w', fill='x', pady=(6, 0))
@@ -277,7 +272,12 @@ class Launcher(object):
         self._order.configure(text='배정: ' + '  ·  '.join('블록 %s = 세트 %s %s' % (b, s, CONDITION_NAMES[c])
                                                          for b, s, c in plan))
         set_name, condition = run_plan(choices)
-        self._plan.configure(text='→ 세트 %s, %s' % (set_name, CONDITION_NAMES[condition]))
+        if choices['block'] == 'P':     # the practice drive, whatever 직접 지정's set: plain to see
+            self._plan.configure(text='→ 연습 주행 (세트 P, 약 4분), %s' % CONDITION_NAMES[condition],
+                                 foreground='#c62828')
+        else:
+            self._plan.configure(text='→ 블록 %s: 세트 %s, %s' % (choices['block'], set_name, CONDITION_NAMES[condition]),
+                                 foreground='#1a7f37')
         if choices['test']:
             self._out_hint.configure(text='→ Data/test/<월일시분초>/')
         else:
@@ -295,12 +295,8 @@ class Launcher(object):
 
 
 def start_helpers(choices, started):
-    """gaze_bridge.py and the mrbd-video server, each once, in a console of its own."""
+    """The mrbd-video server, once, in a console of its own."""
     new_console = getattr(subprocess, 'CREATE_NEW_CONSOLE', 0)
-    if choices['nano'] and 'nano' not in started:
-        python = GAZE_PYTHON if os.path.isfile(GAZE_PYTHON) else sys.executable
-        print('Starting gaze_bridge.py (Tobii Pro Nano) in its own console...')
-        started['nano'] = subprocess.Popen([python, GAZE_BRIDGE], cwd=HERE, creationflags=new_console)
     if choices['video_server'] and 'video' not in started:
         if port_free(8080):
             print('Starting the mrbd-video server (http://%s:8080/) in its own console...' % own_address())

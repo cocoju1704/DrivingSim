@@ -986,7 +986,11 @@ def _respawn_view(manager):
             blueprint.set_attribute('gamma', str(manager.sensors[0][-1].get_attribute('gamma').as_float()))
             camera = manager._parent.get_world().spawn_actor(
                 blueprint, transform, attach_to=manager._parent, attachment_type=carla.AttachmentType.Rigid)
-            view = {'image': None, 'surface': None, 'mask': outline and _glass_mask(rect.size, outline)}
+            view = {'image': None, 'surface': None, 'mask': outline and _glass_mask(rect.size, outline),
+                    # which mirror and its glass (window px), for the gaze analysis (abc_experiment's mirrors.json)
+                    'name': ('left', 'right', 'rear')[index] if index < 3 else 'mirror%d' % index,
+                    'glass': [(rect.x + x * (rect.width - 1), rect.y + y * (rect.height - 1)) for x, y in outline]
+                    if outline else [rect.topleft, rect.topright, rect.bottomright, rect.bottomleft]}
             camera.listen(lambda image, view=view: view.__setitem__('image', image))
             manager.mirror_views.append((rect, camera, view))
 
@@ -2428,6 +2432,13 @@ class WheelInput(object):
         if event.type == pygame.JOYBUTTONDOWN:
             return self._light_buttons.get(event.button)
         return keyboard_light_event(event)
+
+    def paddle_event(self, event):
+        """('left' / 'right', 'down' / 'up') for a turn signal paddle pressed or let go, else None (the
+        mirror check marks a glance with the paddle held: mirror_check.py)."""
+        if event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP) and event.button in self._light_buttons:
+            return self._light_buttons[event.button], 'down' if event.type == pygame.JOYBUTTONDOWN else 'up'
+        return None
 
     def driver_active(self, keys):
         throttle, brake = self._pedal_baseline

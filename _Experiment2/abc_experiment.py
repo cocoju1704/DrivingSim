@@ -2,7 +2,7 @@
 
 """
 Scenario ABC: one block of the glasses / phone / HUD experiment (Notion: 주행 시나리오 (HCIK 오럴용),
-시나리오 ABC). Started by launcher.py (start_experiment.bat), or by hand:
+시나리오 ABC). Started by launcher.py (menu.py: 실험 시작), or by hand:
 
     python _Experiment2\\abc_experiment.py --set A --block 1 --condition glasses --participant 3
     python _Experiment2\\abc_experiment.py --set P --test      practice drive, data to Data/test/
@@ -58,7 +58,6 @@ Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMD
     tor_events.csv  the TOR: alert, first input, takeover, lane change, chosen lane, TTC, gaps
     sagat.json      each question: the real layout at the freeze, the answer, the scores
     summary.json, feedback.txt
-    gaze_*.csv      with --gaze (Tobii Pro Nano, gaze_bridge.py)
 """
 
 from __future__ import print_function
@@ -357,13 +356,17 @@ class Overlay(object):
     screens of a question and of the end.
 
     Layout at the bottom of the middle monitor: the cluster in the middle, the HUD's video area at
-    the monitor's right edge (where the glasses' display appears in the view), a plain square
-    HUD_DEG wide (as the glasses' display, no windshield perspective), its bottom just above the
+    the monitor's right edge (where the glasses' display appears in the view), a plain rectangle
+    HUD_DEG wide in the video's shape (HUD_ASPECT, no windshield perspective), its bottom just above the
     dashboard (the cluster's top). hud_rect is where the HUD condition's video goes (--hud-preview
     draws its outline)."""
 
     _draw_cluster = base.TakeoverExperiment._draw_cluster
-    HUD_DEG = 8.0     # degrees across, as the glasses' display
+    HUD_DEG = 10.0    # degrees across: 25 % wider than the glasses' display (8 degrees), which looked bigger
+    HUD_ASPECT = 9.0 / 16.0   # height / width: the video's own shape (16:9), no empty band above or below
+    # The video as light added to the view (as a HUD's projection and the glasses' display: black is
+    # see-through, the dark parts let the road show), at this share of its brightness: lower, more see-through
+    HUD_VIDEO_GAIN = 0.6
     HUD_RIGHT_DEG = 9.5   # the HUD's centre, degrees right of straight ahead: clear of the badge and the TOR alert above the cluster
     HUD_ABOVE_PX = 12     # px between the HUD's bottom and the cluster's top (the dashboard)
     HUD_EDGE_PX = 8       # px between the HUD and the middle monitor's right edge
@@ -378,10 +381,11 @@ class Overlay(object):
         # the cluster centred on the monitor, in front of the driver: wide enough to hide the steering wheel
         left = (width - panel_w) // 2
         face['origin'] = (left, face['origin'][1])
-        # the HUD at the middle monitor's right edge (where the glasses' display is seen), a square as
-        # the glasses' display, its bottom just above the dashboard (the cluster's top)
+        # the HUD at the middle monitor's right edge (where the glasses' display is seen), as wide as
+        # HUD_DEG and as high as the video (HUD_ASPECT), its bottom just above the dashboard (the cluster's top)
         bottom = face['origin'][1] - self.HUD_ABOVE_PX
-        self.hud_rect = pygame.Rect(width - self.HUD_EDGE_PX - hud, bottom - hud, hud, hud)
+        tall = int(round(hud * self.HUD_ASPECT))
+        self.hud_rect = pygame.Rect(width - self.HUD_EDGE_PX - hud, bottom - tall, hud, tall)
         r = self.hud_rect
         self.hud_poly = [(r.left, r.bottom), (r.right, r.bottom), (r.right, r.top), (r.left, r.top)]
         return face
@@ -415,6 +419,7 @@ class Overlay(object):
         self.hud_rect = None
         self.hud_poly = None   # the HUD's trapezoid on the windshield (monitor pixels of the middle monitor)
         self._hud_preview = hud_preview
+        self.hud_video = None   # the HUD condition's video player (hud_video.HudVideo)
         self._phone_cluster = None
         self._cluster = None
         self._needles = [0.0, 0.0]
@@ -443,6 +448,8 @@ class Overlay(object):
         self._draw_cluster(display)
         if self._world.camera_manager.transform_index == 0 and self.hud_rect is not None:
             self._draw_hud_off(display)
+            if self.hud_video is not None:
+                self._draw_hud_video(display)
         if alert_since is not None and self._world.camera_manager.transform_index == 0 and self._cluster is not None:
             self._draw_alert(display, alert_since)
         if self._world.camera_manager.transform_index == 0 and self._cluster is not None:
@@ -471,6 +478,22 @@ class Overlay(object):
             pygame.draw.polygon(panel, HUD_OFF_RIM, corners, width=2)
             self._hud_off = panel
         display.blit(self._hud_off, rect)
+
+    def _draw_hud_video(self, display):
+        """The HUD condition's video (hud_video.HudVideo) filling the HUD (the HUD has the video's shape),
+        added to the view at HUD_VIDEO_GAIN of its brightness (see-through)."""
+        shown = self.hud_video.surface(self.hud_rect.width, self.hud_rect.height)
+        if shown is None:
+            return
+        frame, (dx, dy) = shown
+        if getattr(self, '_hud_frame', (None,))[0] is not frame:
+            light = frame.copy()
+            g = int(round(255 * self.HUD_VIDEO_GAIN))
+            light.fill((g, g, g), special_flags=pygame.BLEND_RGB_MULT)
+            self._hud_frame = (frame, light)
+        x0, _, _ = self.middle()
+        display.blit(self._hud_frame[1], (self.hud_rect.x + x0 + dx, self.hud_rect.y + dy),
+                     special_flags=pygame.BLEND_RGB_ADD)
 
     def _draw_alert(self, display, since):
         if int((time.monotonic() - since) * 2 * base.TOR_BLINK_HZ) % 2:
@@ -599,9 +622,11 @@ class Block(object):
             while not player.results.empty():
                 wall, action, delivered, state = player.results.get()
                 what = 'video %s: %s' % (action, 'not sent' if delivered is None else
-                                         'no glasses connected' if not delivered else
-                                         'glasses at %s s%s%s' % (state.get('t'), ', paused' if state.get('paused') else '',
-                                                                  ', covered' if state.get('frozen') else ''))
+                                         'no player connected' if not delivered else
+                                         '%s at %s s%s%s%s' % (player.device, state.get('t'), ', paused' if state.get('paused') else '',
+                                                                    ', covered' if state.get('frozen') else '',
+                                                                    # the video (gaze_video.py shows it on the display)
+                                                                    ' [%s]' % state['title'] if state.get('title') else ''))
                 self.log.event(t, what, state.get('id') or '-')
 
     # -- the end -------------------------------------------------------------------------------
@@ -705,9 +730,6 @@ def build_args():
                         help='checking: save the screen and each mirror inset (x3) at these block times, to <data>/snaps/')
     parser.add_argument('--hud-preview', action='store_true',
                         help="the outline of the HUD's video area right of the cluster (for setting up)")
-    parser.add_argument('--gaze', action='store_true', help='Tobii Pro Nano: gaze_bridge.py sends the gaze (UDP)')
-    parser.add_argument('--gaze-port', type=int, default=5010)
-    parser.add_argument('--gaze-tolerance', type=float, default=45.0)
     parser.add_argument('--g2', metavar='HOST', help='Tobii Pro Glasses 2 recording unit: event markers')
     parser.add_argument('--g2-record', action='store_true', help='with --g2: start and stop a recording too')
     parser.add_argument('--g2-no-stream', action='store_true',
@@ -763,7 +785,7 @@ def run(args):
                                 'real_lane': block.config['real_lane']})
     pygame.init()
     pygame.font.init()
-    world = client = sim_world = ticker = traffic = sagat = gaze = audio = driver_input = sound = None
+    world = client = sim_world = ticker = traffic = sagat = audio = driver_input = sound = None
     async_settings = None
     server_weather = None
     collision_sensor = None
@@ -778,14 +800,25 @@ def run(args):
             block.g2 = G2Link(args.g2, os.path.basename(block.log.dir or 'abc'), record=args.g2_record,
                               stream_dir=None if args.g2_no_stream else block.log.dir)
             # the glasses display in the Glasses 2 gaze (g2_calibrate.py) and the gaze's accuracy (g2_validate.py)
-            for name in ('g2_display.json', 'g2_validation.json'):
+            # and the bezel markers in the window's pixels (mirror_register.py), for mirror_aoi.py
+            for name in ('g2_display.json', 'g2_validation.json', os.path.join('mirror_markers', 'bezel_screen.json')):
                 path = os.path.join(HERE, name)
                 if block.log.dir and os.path.isfile(path):
                     import shutil
-                    shutil.copy(path, os.path.join(block.log.dir, name))
-        if args.video:
+                    shutil.copy(path, os.path.join(block.log.dir, os.path.basename(name)))
+        if args.condition == 'hud':
+            # the HUD's video: played here, in the HUD area (no glasses / phone app: the glasses app
+            # would do the commands of every condition)
+            from hud_video import HudVideo
+            block.media.append(HudVideo(args.video_file, args.video_start))
+        elif args.video:
             from video_link import VideoLink
-            block.media.append(VideoLink(args.video, args.video_file, args.video_start))
+            block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition))
+            if args.condition == 'glasses' and block.log.dir:
+                # the app's version: where on the display it shows the video (v14 on: at the top;
+                # postprocess.display_outline)
+                with open(os.path.join(block.log.dir, 'glasses_app.json'), 'w', encoding='utf-8') as handle:
+                    json.dump({'v': block.media[-1].app_version()}, handle)
         driver_input = base.WheelInput(args) if args.input == 'wheel' else base.KeyboardInput()
         client = base.connect_server(args.host, args.port)
         sim_world = client.get_world()
@@ -870,16 +903,14 @@ def run(args):
         sim_clock = [sim_world.get_snapshot().timestamp.elapsed_seconds]
         follower.clock = lambda: sim_clock[0]  # its speed changes with the simulation's time: the same every run
         overlay = Overlay(world, hud_preview=args.hud_preview, condition=args.condition)
+        overlay.hud_video = next((p for p in block.media if getattr(p, 'device', '') == 'hud'), None)
         tor_event = next((e for e in schedule['events'] if e['type'] == 'TOR'), None)
         if tor_event is not None:
             scene = abc_traffic.TorScene(traffic, tor_event, block.config['templates']['TOR'],
                                          block.config['event_vehicle'])
             block.tor = TorRun(block, tor_event, block.config['templates']['TOR'], scene, world.player)
         mirror_view = MirrorVisibility(world, args.height)
-        if args.gaze:
-            from gaze_tracking import GazeTracker
-            gaze = GazeTracker(sim_world, world, args.gaze_port, args.gaze_tolerance)
-            gaze.log_to(block.log.dir)
+        save_mirrors(world.camera_manager, block.log.dir)
         collision_sensor, collisions = collision_log(sim_world, world.player)
         logged_collisions = 0
         control = carla.VehicleControl()
@@ -922,6 +953,9 @@ def run(args):
                     world.hud.toggle_info()
                 # the turn signals: the paddles behind the wheel (wheel_buttons.json), Z / X on the keyboard;
                 # again on the same side switches it off
+                paddle = driver_input.paddle_event(event) if hasattr(driver_input, 'paddle_event') else None
+                if paddle:  # held / let go: the mirror check's marks (mirror_check.py)
+                    block.mark(t, 'paddle %s %s' % paddle)
                 side = driver_input.light_event(event) if hasattr(driver_input, 'light_event') else None
                 if side in ('left', 'right'):
                     blinker = None if blinker == side else side
@@ -1010,11 +1044,6 @@ def run(args):
                                                  if block.tor is not None else collisions[logged_collisions][0]))
                 logged_collisions += 1
 
-            now = time.monotonic()
-            gaze_fields = None
-            if gaze is not None:
-                gaze.tick(now, world.camera_manager.transform_index in base.DRIVER_VIEWS)
-                gaze_fields = gaze.log_fields()
             location = transform.location
             ttc = block.tor.ttc if block.tor is not None else None
             block.log.row('frames.csv', (round(t, 3), round(time.time(), 3), snapshot.frame, block.mode,
@@ -1027,7 +1056,7 @@ def run(args):
                                          round(control.steer, 3), round(control.throttle, 3), round(control.brake, 3),
                                          round(wheel[0], 4), round(wheel[0] * WHEEL_HALF_DEG, 2), round(wheel[1], 3),
                                          round(wheel[2], 3), '' if ttc is None else round(ttc, 2),
-                                         round(clock.get_fps(), 1)), gaze_fields)
+                                         round(clock.get_fps(), 1)))
             for cid, (lane, dx, dv) in state.items():
                 car = traffic.cars.get(cid)
                 course = car['course'] if car else None
@@ -1097,8 +1126,6 @@ def run(args):
                 pass
         if sagat is not None:
             sagat.close()
-        if gaze is not None:
-            gaze.close()
         if driver_input is not None:
             driver_input.close()
         if audio is not None:
@@ -1124,6 +1151,24 @@ def run(args):
                 logging.exception('Feedback screen')
         pygame.quit()
     return aborted
+
+
+def save_mirrors(manager, directory):
+    """mirrors.json in the block folder: each mirror's glass outline in window px (the window over the
+    three monitors, 5760 x 1080), for mirror_aoi.py (the gaze in the window's pixels through the bezel
+    markers: mirror_register.py)."""
+    if not directory:
+        return
+    views = getattr(manager, 'mirror_views', [])
+    mirrors = {view['name']: {'rect': [rect.x, rect.y, rect.width, rect.height],
+                              'glass': [[round(x, 1), round(y, 1)] for x, y in view['glass']]}
+               for rect, _, view in views if 'name' in view}
+    if not mirrors:
+        logging.warning('No mirrors to save (mirrors.json)')
+        return
+    with open(os.path.join(directory, 'mirrors.json'), 'w', encoding='utf-8') as handle:
+        json.dump({'window_px': [manager.screen_width * manager.screens, manager.screen_size[1]],
+                   'mirrors': mirrors}, handle, indent=1)
 
 
 def save_snapshot(display, manager, t, state, mirrors, directory):

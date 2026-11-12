@@ -199,13 +199,18 @@
     document.getElementById('submit').disabled = true;
   });
 
+  var run = null;
   function poll() {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '/state?t=' + Date.now());
     xhr.timeout = 2000;
     xhr.onload = function () {
+      var state;
+      try { state = JSON.parse(xhr.responseText); } catch (e) { state = null; }
+      if (!state || !state.phase) { xhr.onerror(); return; }   // not the server's answer: keep polling
+      if (run && state.run && state.run !== run) { location.reload(); return; }   // a new block
+      run = state.run || run;
       document.getElementById('status').textContent = '';
-      var state = JSON.parse(xhr.responseText);
       if (state.phase === 'question') {
         if (state.qid !== current) { current = state.qid; reset(); }
         if (sentFor === state.qid) { show('sent'); }

@@ -43,6 +43,7 @@ import json
 import math
 import os
 import queue
+import re
 import statistics
 import subprocess
 import sys
@@ -67,10 +68,11 @@ PASS_DISPLAY_MEDIAN_DEG = 3.0    # the glasses display ("looking at it": the dis
 # the monitors: (name, monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). The
 # middle monitor's centre and corners, then where the experiment's mirrors are (abc_experiment's driver
 # view over 3 x 1920 x 1080, measured on its screen snapshot): for those the head may turn, as it does
-# while driving
+# while driving. The rear-view mirror: at the right monitor's top left (its glass centre projected
+# from the driver's eyes, carla_base REAR_MIRROR at 43 degrees per monitor: 0.28, 0.14)
 MONITOR_POINTS = [('road', 0, 0.5, 0.45), ('middle top left', 0, 0.08, 0.15), ('middle top right', 0, 0.92, 0.15),
                   ('middle bottom right', 0, 0.92, 0.85), ('middle bottom left', 0, 0.08, 0.85),
-                  ('left mirror', -1, 0.60, 0.80), ('rear-view mirror', 1, 0.50, 0.14),
+                  ('left mirror', -1, 0.60, 0.80), ('rear-view mirror', 1, 0.28, 0.14),
                   ('right mirror', 1, 0.935, 0.76)]
 TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
@@ -202,11 +204,17 @@ def first_video_pts(path):
 
 def find_target(gray, cv2):
     """The calibration-like target (dark ring around a light disc) in a scene frame: centre px or None."""
+    found = find_targets(gray, cv2)
+    return found[0][1:] if found else None
+
+
+def find_targets(gray, cv2):
+    """Every calibration-like target in a scene frame, best first: [(score, x px, y px)]."""
     binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 41, 15)
     contours, hierarchy = cv2.findContours(binary, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None:
-        return None
-    best = None
+        return []
+    found = []
     for i, (nxt, prev, child, parent) in enumerate(hierarchy[0]):
         if parent != -1 or child == -1:
             continue
@@ -225,10 +233,8 @@ def find_target(gray, cv2):
         m = cv2.moments(hole)
         if not m['m00']:
             continue
-        score = roundness - abs(hole_area / area - 0.29)
-        if best is None or score > best[0]:
-            best = (score, m['m10'] / m['m00'], m['m01'] / m['m00'])
-    return best[1:] if best else None
+        found.append((roundness - abs(hole_area / area - 0.29), m['m10'] / m['m00'], m['m01'] / m['m00']))
+    return sorted(found, reverse=True)
 
 
 def _children(h, first):
@@ -279,14 +285,31 @@ class Screen(object):
                                highlightthickness=0)
             canvas.pack()
             window.bind('<Escape>', lambda e: self._abort())
+            window.bind('<Return>', lambda e: self.enter.set())
             self.canvases.append(canvas)
         self.canvases[len(self.canvases) // 2].winfo_toplevel().focus_force()
         self.aborted = False
+        self.enter = threading.Event()      # Enter on the window (wait_enter)
         self._todo = queue.Queue()
         self.root.after(30, self._poll)
 
     def _abort(self):
         self.aborted = True
+        self.enter.set()
+
+    def wait(self, seconds):
+        """Waits seconds (Enter cuts it short); False on Esc."""
+        self.enter.clear()
+        self.enter.wait(seconds)
+        self.enter.clear()
+        return not self.aborted
+
+    def wait_enter(self):
+        """Waits for Enter on the window; False on Esc."""
+        self.enter.clear()
+        self.enter.wait()
+        self.enter.clear()
+        return not self.aborted
 
     def _poll(self):
         try:
@@ -319,18 +342,20 @@ class Screen(object):
                 x, y = (right - left) / 2.0, (bottom - top) / 2.0
                 canvas.create_text(x, y - 20, text=text, fill='black', font=('Malgun Gothic', 44, 'bold'))
                 if sub:
-                    canvas.create_text(x, y + 50, text=sub, fill='#444', font=('Malgun Gothic', 22))
+                    canvas.create_text(x, y + 30, text=sub, fill='#444', font=('Malgun Gothic', 22),
+                                       anchor='n', justify='center')
         self._call(draw)
 
-    def target(self, point):
-        """Draws the target at (monitor, x, y) of a MONITOR_POINTS entry; False when that monitor is not there."""
+    def target(self, point, caption='', diameter=TARGET_DIAMETER):
+        """Draws the target at (monitor, x, y) of a MONITOR_POINTS entry (caption: a line under it;
+        diameter: the ring's, of the monitor's width); False when that monitor is not there."""
         index, fx, fy = point
         k = len(self.monitors) // 2 + index
         if not 0 <= k < len(self.monitors):
             return False
         left, top, right, bottom = self.monitors[k]
         x, y = fx * (right - left), fy * (bottom - top)
-        r = TARGET_DIAMETER * (right - left) / 2.0
+        r = diameter * (right - left) / 2.0
 
         def draw():
             for canvas in self.canvases:
@@ -338,8 +363,55 @@ class Screen(object):
             for radius, colour in ((r, 'black'), (r * 23 / 43.0, 'white'), (r * 3 / 43.0, 'black')):
                 self.canvases[k].create_oval(x - radius, y - radius, x + radius, y + radius, fill=colour,
                                              outline=colour)
+            if caption:
+                self.canvases[k].create_text(x, y + r + 50, text=caption, fill='#333',
+                                             font=('Malgun Gothic', 22))
         self._call(draw)
         return True
+
+    def report(self, title, ok, sections, footer=''):
+        """A g2_report report on every monitor: the title, the first section across the top, the others
+        side by side under it."""
+        import tkinter.font as tkfont
+        import g2_report
+
+        def draw():
+            font = tkfont.Font(family='Malgun Gothic', size=17)
+            bold = tkfont.Font(family='Malgun Gothic', size=19, weight='bold')
+            line = font.metrics('linespace') + 8
+            gap = 36
+            for canvas, (left, top, right, bottom) in zip(self.canvases, self.monitors):
+                canvas.delete('all')
+                w, h = right - left, bottom - top
+
+                def table(centre, y, heading, rows):
+                    n = max([len(r) for r in rows] or [0])
+                    widths = [max(font.measure(g2_report.cell(r[i])[0]) for r in rows if i < len(r))
+                              for i in range(n)]
+                    x = centre - max(sum(widths) + gap * (n - 1), bold.measure(heading)) / 2.0
+                    canvas.create_text(x, y, text=heading, anchor='nw', font=bold, fill='black')
+                    y += line + 6
+                    for r in rows:
+                        cx = x
+                        for i, c in enumerate(r):
+                            text, mark = g2_report.cell(c)
+                            canvas.create_text(cx, y, text=text, anchor='nw', font=font,
+                                               fill=g2_report.colour(mark))
+                            cx += widths[i] + gap
+                        y += line
+                    return y
+
+                canvas.create_text(w / 2.0, h * 0.08, text=title, fill=g2_report.colour(ok),
+                                   font=('Malgun Gothic', 48, 'bold'))
+                y = h * 0.15
+                if sections:
+                    y = table(w / 2.0, y, *sections[0]) + line
+                rest = sections[1:]
+                for k, section in enumerate(rest):
+                    table(w * (k + 0.5) / len(rest), y, *section)
+                if footer:
+                    canvas.create_text(w / 2.0, h * 0.94, text=footer, fill='#555555', font=('Malgun Gothic', 20))
+        self._call(draw)
 
     def clear(self):
         self._call(lambda: [canvas.delete('all') for canvas in self.canvases])
@@ -499,28 +571,86 @@ def summary(results, valid):
             'sd_mean_deg': round(sum(r['sd_deg'] for r in ok) / len(ok), 3), 'gaze_valid_share': valid}
 
 
-def judge(result):
-    """(passed, reasons) for the parts measured this run, None if none was."""
-    reasons, measured = [], False
+POINT_NAMES = {'road': '도로 중앙', 'middle top left': '모니터 왼쪽 위', 'middle top right': '모니터 오른쪽 위',
+               'middle bottom right': '모니터 오른쪽 아래', 'middle bottom left': '모니터 왼쪽 아래',
+               'left mirror': '왼쪽 미러', 'rear-view mirror': '룸미러', 'right mirror': '오른쪽 미러'}
+DISPLAY_NAMES = {(300, 30): '위', (570, 300): '오른쪽', (300, 570): '아래', (30, 300): '왼쪽',
+                 (165, 165): '왼쪽 위', (435, 165): '오른쪽 위', (435, 435): '오른쪽 아래', (165, 435): '왼쪽 아래'}
+ERROR_NAMES = {'too few gaze samples': '시선 샘플 부족', 'target not seen by the scene camera': '카메라에 안 보임'}
+
+
+def point_name(name):
+    match = re.match(r'display (\d+),(\d+) px', name)
+    if match:
+        return DISPLAY_NAMES.get((int(match.group(1)), int(match.group(2))), name)
+    return POINT_NAMES.get(name, name)
+
+
+def _deg(value):
+    return '-' if value is None else '%.2f°' % value
+
+
+def criteria(result):
+    """[(criterion, value, limit, passed)] for the parts measured this run."""
+    rows = []
     if 'monitor' in result:
-        measured = True
         points = {p['point']: p for p in result['monitor'] or []}
         road = points.get('road', {}).get('accuracy_deg')
-        if road is None or road > PASS_ROAD_DEG:
-            reasons.append('도로 중앙 %s (%.1f° 이하)' % ('측정 실패' if road is None else '%.1f°' % road, PASS_ROAD_DEG))
-        lost = [name for name, p in points.items() if 'mirror' in name and 'accuracy_deg' not in p]
-        if lost:
-            reasons.append('측정 안 된 미러: ' + ', '.join(lost))
+        rows.append(('도로 중앙', _deg(road), '≤ %.1f°' % PASS_ROAD_DEG, road is not None and road <= PASS_ROAD_DEG))
+        mirrors = [name for name, _, _, _ in MONITOR_POINTS if 'mirror' in name]
+        measured = [name for name in mirrors if 'accuracy_deg' in points.get(name, {})]
+        rows.append(('미러 측정', '%d / %d' % (len(measured), len(mirrors)), '모두', len(measured) == len(mirrors)))
         mean = (result.get('monitor_summary') or {}).get('accuracy_mean_deg')
-        if mean is None or mean > PASS_MONITOR_MEAN_DEG:
-            reasons.append('모니터 평균 %s (%.1f° 이하)' % ('-' if mean is None else '%.1f°' % mean, PASS_MONITOR_MEAN_DEG))
+        rows.append(('모니터·미러 평균', _deg(mean), '≤ %.1f°' % PASS_MONITOR_MEAN_DEG,
+                     mean is not None and mean <= PASS_MONITOR_MEAN_DEG))
     if 'display' in result:
-        measured = True
         median = (result.get('display_summary') or {}).get('accuracy_median_deg')
-        if median is None or median > PASS_DISPLAY_MEDIAN_DEG:
-            reasons.append('안경 화면 중앙값 %s (%.1f° 이하)' % ('-' if median is None else '%.1f°' % median,
-                                                         PASS_DISPLAY_MEDIAN_DEG))
-    return (not reasons, reasons) if measured else None
+        rows.append(('안경 화면 중앙값', _deg(median), '≤ %.1f°' % PASS_DISPLAY_MEDIAN_DEG,
+                     median is not None and median <= PASS_DISPLAY_MEDIAN_DEG))
+    return rows
+
+
+def judge(result):
+    """(passed, reasons) for the parts measured this run, None if none was."""
+    rows = criteria(result)
+    if not rows:
+        return None
+    reasons = ['%s %s (%s)' % (name, value, limit) for name, value, limit, ok in rows if not ok]
+    return not reasons, reasons
+
+
+def _points_section(heading, points, s):
+    if s:
+        heading += '   평균 %.2f° · 중앙값 %.2f° · 최대 %.2f° · 시선 유효 %.0f%%' % (
+            s['accuracy_mean_deg'], s['accuracy_median_deg'], s['accuracy_max_deg'],
+            100 * (s['gaze_valid_share'] or 0))
+    rows = []
+    for p in points or []:
+        if 'accuracy_deg' in p:
+            rows.append([point_name(p['point']), '%.2f°' % p['accuracy_deg'], '정밀도 %.2f°' % p['s2s_rms_deg']])
+        else:
+            rows.append([point_name(p['point']), ('×', False), ERROR_NAMES.get(p.get('error'), p.get('error', ''))])
+    return heading, rows or [['측정 안 됨']]
+
+
+def report(result):
+    """The run's result as a g2_report report (title, ok, sections)."""
+    verdict = judge(result)
+    title = '검증 끝' if verdict is None else ('통과' if verdict[0] else '다시 착용')
+    sections = [('판정 기준', [[name, value, '기준 ' + limit, ('통과' if ok else '미달', ok)]
+                               for name, value, limit, ok in criteria(result)])]
+    if 'monitor' in result:
+        sections.append(_points_section('모니터·미러', result['monitor'], result.get('monitor_summary')))
+    if 'display' in result:
+        sections.append(_points_section('안경 화면', result['display'], result.get('display_summary')))
+    return title, None if verdict is None else verdict[0], sections
+
+
+def show_result(screen, result):
+    """The result on the monitors until Enter (or Esc)."""
+    title, ok, sections = report(result)
+    screen.report(title, ok, sections, 'Enter: 닫기')
+    screen.wait_enter()
 
 
 def run(host, devices, out_dir, screen, result):
@@ -537,8 +667,8 @@ def run(host, devices, out_dir, screen, result):
             else:
                 result['display'], valid = validate_display(host, out_dir, screen, link)
                 result['display_summary'] = summary(result['display'], valid)
-        screen.message('끝났습니다')
-        time.sleep(1.0)
+        if not screen.aborted:
+            show_result(screen, result)
     finally:
         if link is not None:
             try:
@@ -569,22 +699,12 @@ def main():
     worker.start()
     screen.root.mainloop()          # Tk in the main thread; the worker closes the window at the end
     worker.join(30)
-    print()
-    for key, name in (('monitor_summary', 'Monitors'), ('display_summary', 'Glasses display')):
-        s = result.get(key)
-        if s:
-            print('%-16s accuracy %.2f deg mean, %.2f median (max %.2f), precision RMS-S2S %.2f / SD %.2f deg, '
-                  '%d of %d points, gaze valid %.0f %%'
-                  % (name, s['accuracy_mean_deg'], s['accuracy_median_deg'], s['accuracy_max_deg'],
-                     s['s2s_rms_mean_deg'], s['sd_mean_deg'], s['measured'], s['points'],
-                     100 * (s['gaze_valid_share'] or 0)))
-        elif key.split('_')[0] in result:
-            print('%-16s not measured' % name)
     verdict = judge(result)
     if verdict is not None:
         result['pass'], result['pass_reasons'] = verdict
-        print()
-        print('%s' % ('통과' if verdict[0] else '다시 착용: ' + ', '.join(verdict[1])))
+    if 'monitor' in result or 'display' in result:
+        import g2_report
+        g2_report.print_report(*report(result))
     if screen.aborted:
         print('Stopped (Esc)')
     with open(os.path.join(out_dir, 'g2_validation.json'), 'w', encoding='utf-8') as handle:

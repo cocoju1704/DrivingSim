@@ -7,7 +7,8 @@ On a laptop on the same Wi-Fi, sagat_laptop.bat (copied there) waits for this se
 full screen. The page fits 1280x720 and up without scrolling.
 
 The page asks GET /state every 0.3 s:
-    {"phase": "idle"}                                          black, waiting
+    {"phase": "idle", "run": "18c2..."}                        black, waiting (run: this block's id;
+                                                               a new one: the page reloads itself)
     {"phase": "question", "qid": "A-Q1", "number": 1, "left": 54.2}
     {"phase": "countdown", "count": 3}                         3, 2, 1 before the drive goes on
 and sends the answer with POST /answer:
@@ -47,6 +48,9 @@ class SagatServer(object):
     def __init__(self, port=DEFAULT_PORT):
         self._lock = threading.Lock()
         self._state = {'phase': 'idle'}
+        # this run's id in every /state: an open page reloads itself when it changes (a new block: the
+        # same qids again, e.g. the practice drive run twice, would find it on "sent")
+        self.run = '%x' % int(time.time() * 1000)
         self._deadline = None
         self._answer = None
         self.last_seen = None          # time.monotonic() of the tablet's last request
@@ -99,7 +103,7 @@ class SagatServer(object):
 
     def state(self):
         with self._lock:
-            state = dict(self._state)
+            state = dict(self._state, run=self.run)
             if state['phase'] == 'question' and self._deadline is not None:
                 state['left'] = round(max(0.0, self._deadline - time.monotonic()), 1)
             return state
