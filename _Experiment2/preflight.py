@@ -198,7 +198,7 @@ def check_sagat(wait):
         if server.connected(within=2.0):
             report(OK, 'SAGAT', '태블릿(노트북) 연결됨 (%s)' % url)
         else:
-            report(FAIL, 'SAGAT', '%d초 동안 요청이 없습니다: 노트북에서 sagat_laptop.bat, 또는 iPad에서 %s' % (wait, url))
+            report(FAIL, 'SAGAT', '%d초 동안 요청이 없습니다: 노트북에서 sagat_laptop.bat을 실행하세요 (이 PC를 스스로 찾습니다), iPad라면 %s' % (wait, url))
     finally:
         server.close()
 
