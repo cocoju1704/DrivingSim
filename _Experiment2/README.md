@@ -11,6 +11,11 @@ Notion "주행 시나리오 (HCIK 오럴용)"와 "시나리오 ABC"를 CARLA로 
 2. 블록을 고릅니다: 연습 → 1 → 2 → 3. 한 블록을 끝까지 마치면 다음 블록이 자동으로 선택됩니다.
 3. **실험 시작**을 누릅니다. CARLA 서버가 꺼져 있으면 먼저 켜집니다.
 
+블록을 시작하기 전에 `preflight.bat`으로 점검합니다. 시작 창의 마지막 설정(Glasses 2 주소, 영상 서버, 입력)을 그대로 씁니다.
+점검하는 항목은 CARLA 서버, 핸들, 영상 서버와 글래스 앱(보고가 오는지, v13인지), Glasses 2(배터리, 시선 추적, 보정, 디스플레이 보정 시각),
+SAGAT 태블릿/노트북입니다. SAGAT은 15초 동안 페이지를 직접 띄우고 요청이 오는지 기다립니다(`preflight.bat --wait 30`이면 30초).
+아무것도 바꾸지 않고 확인만 합니다. 블록이 실행 중일 때는 SAGAT을 확인하지 못합니다.
+
 아이패드(SAGAT)는 Safari에서 시작 창에 표시된 `http://<PC IP>:5011/`을 열어 둡니다. 실행 사이에도
 그대로 열어 두면 되고, 홈 화면에 추가하면 전체 화면으로 쓸 수 있습니다.
 
@@ -239,6 +244,7 @@ SAGAT 점수는 문항마다 (격자 8칸 정답률 + 접근 차량 정답 + 안
 | abc_ego.py | 자기 차 속도·곡률 프로파일, 출발 위치별 커브 시간표 |
 | sagat_server.py, sagat_app/ | 태블릿 서버·페이지 (`python sagat_server.py` 단독 실행 시 20초마다 시험 문항) |
 | sagat_laptop.bat | 노트북용: 실험 PC의 SAGAT 페이지를 기다렸다가 전체 화면으로 열기 |
+| preflight.bat, preflight.py | 블록 전 점검: CARLA, 핸들, 영상 서버·글래스 앱, Glasses 2, SAGAT 연결 |
 | g2_link.py | Tobii Pro Glasses 2 REST API (마커, 녹화) |
 | g2_stream.py | 글래스의 실시간 시선·장면 영상을 블록 데이터 폴더에 저장 (`--g2`이면 자동, 별도 프로세스): `g2_scene.ts`, `g2_data.jsonl`, `g2_sync.json` (영상 PTS → 글래스 시계 → PC 시각). 끄기: `--g2-no-stream` |
 | g2_calibrate.py | 글래스 캘리브레이션 (Controller 없이): 참가자가 타깃 중앙을 보면 Enter. 이어서 안경 화면 보정: Ray-Ban Display에 가운데·네 꼭짓점 점을 띄워(mrbd-video `calib`) 그 시선으로 안경 화면의 윤곽(장면 카메라 좌표) → `g2_display.json`(블록마다 데이터 폴더로 복사). `--display-only`, `--no-display` |
