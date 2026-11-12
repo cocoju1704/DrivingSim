@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 13;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 14;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};

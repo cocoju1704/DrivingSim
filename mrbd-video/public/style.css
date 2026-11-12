@@ -41,8 +41,10 @@ input.item::placeholder { color: #778; }
 /* 플레이어 */
 #player { padding: 0; }
 #video, #yt-host { position: absolute; inset: 0; width: 600px; height: 600px; background: #000; }
-#video { object-fit: contain; }
-#yt-host iframe { width: 600px; height: 600px; border: 0; pointer-events: none; }
+/* v14: the picture at the top of the display (600 x 338 for 16:9), not in the middle: the Glasses 2 track
+   the eyes poorly when they look down at the display's lower half (_Experiment2 postprocess: NDRT_BAND) */
+#video { object-fit: contain; object-position: center top; }
+#yt-host iframe { width: 600px; height: 338px; border: 0; pointer-events: none; }
 #player.mode-yt #video, #player.mode-local #yt-host { visibility: hidden; }
 
 #osd {

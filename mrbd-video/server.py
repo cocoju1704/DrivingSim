@@ -15,7 +15,8 @@
                  "alert" | "alert_off", "t": 초(seek), "id": 사건 ID, "text": 문구(alert)}).
                  freeze = 일시정지 + 화면 가림(SAGAT), resume = 가림 해제 + 이어 재생,
                  alert = 일시정지 + 가림 + 빨간 경고 문구(TOR), alert_off = 문구만 지움(가림·정지 유지)
-  /api/state     안경 -> 서버: 플레이어 상태 보고 (POST), 실험이 읽음 (GET: 마지막 보고)
+  /api/state     안경/폰 -> 서버: 플레이어 상태 보고 (POST, "device": "phone"이면 폰 앱), 실험이 읽음
+                 (GET: 마지막 보고, ?device=phone이면 폰 앱의 것; 기본은 안경)
 """
 import argparse
 import json
@@ -44,7 +45,7 @@ mimetypes.add_type("text/javascript", ".js")
 
 _clients: set[queue.Queue] = set()
 _clients_lock = threading.Lock()
-_state: dict = {}  # 안경이 마지막으로 보고한 플레이어 상태 (/api/state)
+_states: dict = {}  # 기기별(glasses, phone) 마지막으로 보고한 플레이어 상태 (/api/state)
 CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_off", "calib"}
 
 
@@ -170,7 +171,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.sse()
 
         if path == "/api/state":
-            return self.send_json(dict(_state, server_ts=int(time.time() * 1000)))
+            device = (urllib.parse.parse_qs(url.query).get("device") or ["glasses"])[0]
+            return self.send_json(dict(_states.get(device, {}), server_ts=int(time.time() * 1000)))
 
         if path.startswith("/media/"):
             p = media_file(path[len("/media/"):])
@@ -239,8 +241,7 @@ class Handler(BaseHTTPRequestHandler):
             n = broadcast("control", data)
             return self.send_json({"ok": True, "delivered": n})
         if path == "/api/state":
-            _state.clear()
-            _state.update(data, received_ts=int(time.time() * 1000))
+            _states[str(data.get("device") or "glasses")] = dict(data, received_ts=int(time.time() * 1000))
             return self.send_json({"ok": True})
         link = str(data.get("url", "")).strip()
         if not link:
