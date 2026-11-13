@@ -224,14 +224,14 @@
     ]
    },
    "C-Q2": {
-    "stop_t": 406,
+    "stop_t": 401,
     "items": [
      {
       "image": "C/C-Q2-1.jpg",
       "shown": true,
       "episode_t": 382.5,
       "video_t": 382.5,
-      "before_stop_s": 23.5
+      "before_stop_s": 18.5
      },
      {
       "image": "C/C-Q2-2.jpg",
@@ -243,19 +243,19 @@
       "shown": true,
       "episode_t": 370.7,
       "video_t": 370.7,
-      "before_stop_s": 35.3
+      "before_stop_s": 30.3
      },
      {
       "image": "C/C-Q2-4.jpg",
       "shown": true,
       "episode_t": 365.0,
       "video_t": 365.0,
-      "before_stop_s": 41.0
+      "before_stop_s": 36.0
      }
     ]
    },
    "C-Q3": {
-    "stop_t": 515,
+    "stop_t": 519,
     "items": [
      {
       "image": "C/C-Q3-1.jpg",
@@ -267,7 +267,7 @@
       "shown": true,
       "episode_t": 496.1,
       "video_t": 496.1,
-      "before_stop_s": 18.9
+      "before_stop_s": 22.9
      },
      {
       "image": "C/C-Q3-3.jpg",
@@ -279,16 +279,16 @@
       "shown": true,
       "episode_t": 465.0,
       "video_t": 465.0,
-      "before_stop_s": 50.0
+      "before_stop_s": 54.0
      }
     ]
    }
   }
  },
  "P": {
-  "episode": "스위스러시아.mp4",
-  "clip": "러시아_P.mp4",
-  "clip_start_s": 1481.5,
+  "episode": "연습주행.mp4",
+  "clip": "연습주행_P.mp4",
+  "clip_start_s": 0.0,
   "clip_s": 240,
   "stops": {
    "P-Q1": {
@@ -297,26 +297,26 @@
      {
       "image": "P/P-Q1-1.jpg",
       "shown": true,
-      "episode_t": 1576.4,
+      "episode_t": 94.9,
       "video_t": 94.9,
       "before_stop_s": 39.1
      },
      {
       "image": "P/P-Q1-2.jpg",
       "shown": false,
-      "episode_t": 1783.4
+      "episode_t": 1033.0
      },
      {
       "image": "P/P-Q1-3.jpg",
       "shown": false,
-      "episode_t": 1957.5
+      "episode_t": 387.9
      },
      {
       "image": "P/P-Q1-4.jpg",
       "shown": true,
-      "episode_t": 1599.4,
-      "video_t": 117.9,
-      "before_stop_s": 16.1
+      "episode_t": 111.2,
+      "video_t": 111.2,
+      "before_stop_s": 22.8
      }
     ]
    }

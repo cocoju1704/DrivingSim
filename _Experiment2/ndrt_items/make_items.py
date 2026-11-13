@@ -43,9 +43,9 @@ BLOCKS = {
         'C-Q1': ([220.1], [862.4, 899.9, 1076.1]),
         'C-Q2': ([365.0, 370.7, 382.5], [1100.3]),
         'C-Q3': ([465.0, 496.1], [945.1, 1242.2])}),
-    # practice: the Russia part of the episode (the B clip is its Swiss part)
-    'P': ('스위스러시아', '러시아_P.mp4', 1481.5, 240, {
-        'P-Q1': ([94.9, 117.9], [1783.4, 1957.5])}),
+    # practice: a Galapagos nature documentary (its first minute is the preview)
+    'P': ('연습주행', '연습주행_P.mp4', 0.0, 240, {
+        'P-Q1': ([94.9, 111.2], [1033.0, 387.9])}),
 }
 
 
