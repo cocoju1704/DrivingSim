@@ -40,7 +40,7 @@ HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
 
 class VideoLink(object):
-    def __init__(self, address, video_file=None, start_s=0.0, device='glasses'):
+    def __init__(self, address, video_file=None, start_s=0.0, device='glasses', resume=True):
         address = address.strip().rstrip('/')
         if not address.startswith(('http://', 'https://')):
             address = 'http://' + address
@@ -49,6 +49,7 @@ class VideoLink(object):
         self.base = address
         self._file = video_file
         self._start = start_s
+        self._resume = resume   # start_s 0: from where it was left (False: from the start, the set's clip)
         self.device = 'phone' if device == 'phone' else 'glasses'   # whose report state() reads
         self._condition = device
         self._context = ssl._create_unverified_context()  # pylint: disable=protected-access  (own certificate)
@@ -191,6 +192,8 @@ class VideoLink(object):
             fields['file'] = self._file
         if self._start > 0:
             fields['t'] = self._start
+        elif not self._resume:
+            fields['restart'] = True   # from the start: the phone app v2+, the glasses app v15+
         self._send('play', **fields)
 
     def pause(self, qid=''):

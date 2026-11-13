@@ -81,9 +81,10 @@ def main():
     aoi = read(os.path.join(folder, 'mirror_aoi.csv'))
     if not aoi:
         raise SystemExit('No mirror_aoi.csv in %s: run mirror_aoi.py first' % folder)
-    # (t, glance, unsure, |eye yaw| or None)
-    rows = [(float(r['t_sim']), r['glance'], r['unsure'], abs(float(r['eye_yaw'])) if r['eye_yaw'] else None)
-            for r in aoi]
+    # (t, glance, unsure, |eye yaw| or None); an unsure frame joined to a glance counts as the glance's
+    # (mirror_aoi.join), unsure only when not
+    rows = [(float(r['t_sim']), r['glance'], '' if r['glance'] else r['unsure'],
+             abs(float(r['eye_yaw'])) if r['eye_yaw'] else None) for r in aoi]
     print('%d marked looks: %s' % (len(looks), ', '.join('%s %d' % (m, sum(1 for l in looks if l[0] == m))
                                                          for m in MIRRORS)))
     print('%-6s %-11s %7s %6s %7s %7s %7s %7s  %s' % ('mirror', 'when', 'eye yaw', 'frames', 'on it', 'other',

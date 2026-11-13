@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 14;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 15;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -595,10 +595,10 @@ video.addEventListener('loadedmetadata', () => {
 /* 실험 play: 영상이 안 열려 있으면 (홈 화면 등) 직접 연다.
  * file 이름이 있으면 그 영상 (안경에 저장된 것 먼저, 없으면 서버 스트림), 없으면 안경에 마지막으로 저장한 영상,
  * 그것도 없으면 서버 목록의 첫 영상. 열었으면 true. */
-async function openForExperiment(file, t) {
+async function openForExperiment(file, t, restart) {
   const local = await DB.list().catch(() => []);
   let meta = file ? local.find((m) => m.name === file) : local.sort((a, b) => b.addedAt - a.addedAt)[0];
-  pendingSeek = t > 0 ? t : null;
+  pendingSeek = t > 0 ? t : restart ? 0 : null;   // restart: from the start, not where it was left
   if (meta) { await playStored(meta); return true; }
   const server = (await fetchServerList()) || [];
   const v = file ? server.find((s) => s.name === file) : server[0];
@@ -782,13 +782,14 @@ function control(d) {
     const title = $('#osd-title').textContent || '';
     if (!mode || (d.file && title !== d.file)) {
       if (typeof calibDot === 'function') calibDot('off');  // 보정 화면이 남아 있으면 치움
-      openForExperiment(d.file, +d.t || 0).then((ok) => {
+      openForExperiment(d.file, +d.t || 0, !!d.restart).then((ok) => {
         if (!ok) setStatus('⚠ 실험: 재생할 영상이 없어요 (' + (d.file || '저장된 영상 없음') + ')');
         report(ok ? 'play' : 'play_failed', d.id);
       });
       return;
     }
     if (+d.t > 0) P.seekTo(+d.t);
+    else if (d.restart) P.seekTo(0);   // v15: the set's clip (video questions) from its start
     P.play();
   } else if (a === 'seek') {
     P.seekTo(+d.t || 0);

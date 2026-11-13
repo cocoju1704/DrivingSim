@@ -66,6 +66,11 @@ reaches it, once per pass, so the pre-alert starts --pre-alert seconds earlier s
                       TOR 5 s before the cones reach lane 3, as in scenario 2
     2-b, 3-b          mirrored: the car drives in lane 2 and lanes 1 and 2 close (the arrow
                       board points right), the escort car keeps lane 4, the van stands in lane 3
+    3-c               3-a shortened (for filming): the pre-alert SHORT_PRE_ALERT s before the TOR
+                      (--pre-alert), the scene appears SHORT_SPAWN_AHEAD m ahead and the car
+                      starts SHORT_START_AHEAD m before the accident, so it comes on the first
+                      pass, the intervention lines last SHORT_LINE_SECONDS each, and no
+                      traffic drives in the closed lanes
 
 After the takeover (scenario 1: nothing, the driver leaves at the exit). Scenarios 2 and 3
 (EscortCars, merge plan): from the takeover on, cars in lanes 1 and 3 a little ahead; the lane 3 car
@@ -550,7 +555,13 @@ SCENARIOS = {
 }
 # Variants (--scenario 2-b): a as described; b mirrored (1: the opposite carriageway; 2 and 3: the
 # lanes next to the median close). The practice drive has none.
-VARIANTS = ('a', 'b')
+VARIANTS = ('a', 'b', 'c')
+SHORT_VARIANT = 'c'  # 3-c: 3-a shortened, for filming (only scenario 3 has it)
+SHORT_PRE_ALERT = 30.0    # 3-c: s from the pre-alert to the TOR (default of --pre-alert)
+SHORT_SPAWN_AHEAD = 1200.0  # 3-c: the scene appears this many m ahead: still beyond view, and farther
+                            # than the pre-alert comes (35 s, ~780 m at 80 km/h) by more than its 400 m window
+SHORT_START_AHEAD = SHORT_SPAWN_AHEAD + 100.0  # 3-c: m from the start to the accident, just beyond where it appears
+SHORT_LINE_SECONDS = 5.0  # 3-c: each intervention line this long (question_seconds)
 CLOSED_LANES = {2: WORKZONE_LANES, 3: ACCIDENT_LANES}  # scenario -> lanes its obstacle closes (no traffic there)
 INTERVENTION_CONFIG = os.path.join(EXPERIMENT_DIR, 'intervention_config.json')
 DEVICES_FILE = os.path.join(EXPERIMENT_DIR, 'devices.json')  # Wi-Fi addresses: --wireless, --glasses phone, --ndrt laptop
@@ -682,8 +693,8 @@ def parse_scenario(text):
     """--scenario: '2-b', '2b' or '2' (variant a) -> (2, 'b')."""
     text = text.strip().lower().replace('-', '')
     number, variant = (text[:-1], text[-1]) if text[-1:] in VARIANTS else (text, 'a')
-    if not number.isdigit() or int(number) not in SCENARIOS:
-        raise argparse.ArgumentTypeError('%s: 0, 1-a, 1-b, 2-a, 2-b, 3-a or 3-b' % text)
+    if not number.isdigit() or int(number) not in SCENARIOS or (variant == SHORT_VARIANT and number != '3'):
+        raise argparse.ArgumentTypeError('%s: 0, 1-a, 1-b, 2-a, 2-b, 3-a, 3-b or 3-c' % text)
     return int(number), variant
 
 
@@ -3218,9 +3229,14 @@ class AccidentScenario(SceneScenario):
         last = self._index + int((ACCIDENT_END + 20.0) / ROUTE_RESOLUTION)
         self._zone_points = [scene[i % len(scene)].transform.location for i in range(first, last + 1)]
         self._due = None
+        self._spawn_ahead = SHORT_SPAWN_AHEAD if args.variant == SHORT_VARIANT else ACCIDENT_SPAWN_AHEAD
         logging.info('Scenario %s, accident: lanes %d and %d closed %.0f m from the start; the scene appears '
                      '%.0f m ahead of the car', scenario_id(3, args.variant), self.closed[0], self.closed[1],
-                     self._index * ROUTE_RESOLUTION, ACCIDENT_SPAWN_AHEAD)
+                     self._index * ROUTE_RESOLUTION, self._spawn_ahead)
+
+    def index_before(self, distance):
+        """Route index `distance` m before the crashed cars (3-c: where the car starts)."""
+        return self._index - int(distance / ROUTE_RESOLUTION)
 
     def tick(self, now, laps):
         self._spawn_obstacle()
@@ -3228,10 +3244,10 @@ class AccidentScenario(SceneScenario):
         if self.event_index is not None or self.ego_index is None or self._done:
             return
         ahead = ((self._index - self.ego_index) % len(self._scene)) * ROUTE_RESOLUTION
-        if not self._test and ACCIDENT_SPAWN_AHEAD - 400.0 < ahead <= ACCIDENT_SPAWN_AHEAD + SCENE_TRAFFIC_LEAD:
+        if not self._test and self._spawn_ahead - 400.0 < ahead <= self._spawn_ahead + SCENE_TRAFFIC_LEAD:
             self._clear_lanes(now)  # the closed lanes' traffic leaves before the scene appears
         # a window that the car crosses once per lap (the scene is closer than this at the start)
-        if not self._test and not ACCIDENT_SPAWN_AHEAD - 400.0 < ahead <= ACCIDENT_SPAWN_AHEAD:
+        if not self._test and not self._spawn_ahead - 400.0 < ahead <= self._spawn_ahead:
             self._due = None
             return
         if self._due is None:
@@ -3331,6 +3347,8 @@ class Intervention(object):
         self.modality = config.get('modality', 'visual')
         self.delay = float(config.get('delay_seconds', 5.0))
         self.question_seconds = float(config.get('question_seconds', 10.0))
+        if variant == SHORT_VARIANT:
+            self.question_seconds = SHORT_LINE_SECONDS
         # NDRT: first a line on what the participant was doing (NDRT_INTRO), this long, then the lines
         self.intro_seconds = float(config.get('intro_seconds', 5.0)) if self.kind == 'NDRT' and scenario_number else 0.0
         self.room = None  # the NDRT chat room's name, for the intro
@@ -4596,6 +4614,10 @@ def game_loop(args):
         green_lights = hold_lights_green(sim_world)
         scenario = make_scenario(args, client, sim_world, routes, route)
         start_index = test_start_index(scenario, route, args, intervention.test[0]) if args.test else 0
+        if args.variant == SHORT_VARIANT and not args.test:  # 3-c: the accident on the first pass
+            start_index = scenario.index_before(SHORT_START_AHEAD) % len(route)
+            logging.info('3-c: the car starts %.0f m before the accident (%.0f m from the route start)',
+                         SHORT_START_AHEAD, start_index * ROUTE_RESOLUTION)
         start = route[start_index].transform
         if args.scenario == 0:  # practice: in the town, driven to the highway by hand
             start = carla_map.get_spawn_points()[PRACTICE_SPAWN_INDEX]
@@ -4612,9 +4634,10 @@ def game_loop(args):
                      LoopFollower(world.player, routes[lane], args.speed, carla_map, route_planner, quiet=True)
                      for lane in LANES}
         # scenarios 2 and 3: the cars in the lanes that get closed leave before the scene appears
-        # (Scene._clear_lanes); a test run has it from the start, so none there
+        # (Scene._clear_lanes); a test run has it from the start, and 3-c too soon after it, so none there
         closed = closed_lanes(args.scenario, args.variant)
-        traffic_lanes = tuple(lane for lane in LANES if not args.test or lane not in closed)
+        short = args.test or args.variant == SHORT_VARIANT
+        traffic_lanes = tuple(lane for lane in LANES if not short or lane not in closed)
         traffic = spawn_traffic(sim_world, routes, args, traffic_manager, traffic_lanes, start_index)
         last_refresh = time.monotonic()
         latency = LatencyMeter()
@@ -4636,7 +4659,7 @@ def game_loop(args):
         if args.lane in closed:
             logging.info('The car drives in lane %d, which the %s closes: the takeover includes '
                          'a lane change to the %s', args.lane, SCENARIOS[args.scenario][0],
-                         'left' if args.variant == 'a' else 'right')
+                         'right' if args.variant == 'b' else 'left')
         road_signs = RoadSigns(sim_world)
         clearance = TrafficClearance(client, traffic, args.npc_speed)
         scenario.clearance = clearance
@@ -4835,7 +4858,8 @@ def main():
     argparser.add_argument('--scenario', metavar='N-V', type=parse_scenario, default='1-a',
                            help='0 practice (manual driving only), 1 highway exit, 2 work zone after the '
                                 'first lap, 3 accident; variant a, or b mirrored (1-b: the opposite '
-                                'carriageway, 2-b and 3-b: lanes 1 and 2 close), e.g. 2-b; 2 = 2-a (default: 1-a)')
+                                'carriageway, 2-b and 3-b: lanes 1 and 2 close), e.g. 2-b; 2 = 2-a; 3-c: 3-a '
+                                'shortened for filming (the accident on the first pass, 5 s lines) (default: 1-a)')
     argparser.add_argument('--tor-lead', metavar='SEC', type=float, default=None,
                            help='seconds before the event point at which the TOR comes; the pre-alert starts '
                                 '--pre-alert seconds earlier (default: 5; scenarios 2 and 3: before the cones reach '
@@ -4856,8 +4880,9 @@ def main():
                            help='show the trees and bushes (hidden by default: about 26 -> 29 FPS, fewer slow frames)')
     argparser.add_argument('--accident-at', metavar='METERS', type=float, default=None,
                            help='scenario 3: where the crashed cars are, m from the start (default: %d)' % ACCIDENT_AT)
-    argparser.add_argument('--pre-alert', metavar='SEC', type=float, default=PRE_ALERT_SECONDS,
-                           help='seconds from the pre-alert to the TOR (default: %g)' % PRE_ALERT_SECONDS)
+    argparser.add_argument('--pre-alert', metavar='SEC', type=float, default=None,
+                           help='seconds from the pre-alert to the TOR (default: %g; 3-c: %g)'
+                                % (PRE_ALERT_SECONDS, SHORT_PRE_ALERT))
     argparser.add_argument('--no-sound', action='store_true', help='no alert sounds')
     argparser.add_argument('--no-audio-engine', action='store_true',
                            help='do not start the vehicle sounds of carla-audio-engine')
@@ -4975,6 +5000,8 @@ def main():
     args.scenario_id = scenario_id(args.scenario, args.variant)
     if args.lane is None:  # the lane that closes, in the mirrored scenes too
         args.lane = MIRRORED_LANE if args.variant == 'b' and args.scenario in CLOSED_LANES else DEFAULT_LANE
+    if args.pre_alert is None:
+        args.pre_alert = SHORT_PRE_ALERT if args.variant == SHORT_VARIANT else PRE_ALERT_SECONDS
     if args.pre_alert <= 0:
         argparser.error('--pre-alert must be greater than 0')
     if args.wireless:

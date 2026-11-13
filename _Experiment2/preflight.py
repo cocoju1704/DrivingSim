@@ -142,8 +142,8 @@ def check_video(choices):
     screen = state.get('screen') or '?'
     title = state.get('title') or ''
     text = 'v%d, 화면 %s%s, %.0f초 전 보고' % (version, screen, (' (%s)' % title) if title else '', age)
-    if version < 13:
-        report(FAIL, '글래스 앱', text + ': v13이 아닙니다. Meta AI 앱에서 웹앱 연결을 끊었다가 다시 연결하세요')
+    if version < 15:
+        report(FAIL, '글래스 앱', text + ': v15가 아닙니다 (v15부터 세트 클립을 처음부터 재생). Meta AI 앱에서 웹앱 연결을 끊었다가 다시 연결하세요')
     elif state.get('frozen'):
         report(WARN, '글래스 앱', text + ': 지난 블록의 정지 화면이 남아 있습니다 (시작하면 풀립니다)')
     else:

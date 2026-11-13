@@ -32,3 +32,4 @@ __pycache__/
 !/mrbd-video/
 /mrbd-video/media/
 /mrbd-video/videos/
+/mrbd-video/*.mp4

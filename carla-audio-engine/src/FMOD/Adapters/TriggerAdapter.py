@@ -29,8 +29,8 @@ class TriggerAdapter:
     """
     Adapter for managing discrete sound triggers based on simulation events.
 
-    This class handles one-shot audio events such as gear shifts, crashes, 
-    speed warnings, and the vehicle horn. It implements internal debouncing 
+    This class handles one-shot audio events such as gear shifts, crashes,
+    and the vehicle horn. It implements internal debouncing
     logic and state tracking (e.g., counters and flags) to ensure sounds are 
     triggered correctly and only once per event, preventing double-triggering 
     from the EventBus.
@@ -44,8 +44,6 @@ class TriggerAdapter:
     """
     GEAR_REVERSE = -1
     """GEAR_REVERSE (int) = -1 : Value CARLA Simulator returnes when reverse gear is selected"""
-    SPEED_LIMIT = 100
-    """SPEED_LIMIT (int) = 100 : Sets Value for speed warning if vehicle exceeds this limit"""
     HANDBRAKE_SPEED = 40
     """HANDBRAKE_SPEED (int) = 40 : Minimum speed for the handbrake sound to play"""
     def __init__(self, event_bus: EventBus, rev_beep: ReverseBeep, bank: TriggerBank):
@@ -58,7 +56,6 @@ class TriggerAdapter:
             bank (TriggerBank): The bank containing one-shot audio instances.
         """
         self.past_gear = None
-        self.speed_trigger = False
         self.crash_trigger = False
         self.honk_trigger = False
         self.handBrake_trigger = False
@@ -102,9 +99,7 @@ class TriggerAdapter:
 
     def on_speed(self, speed=0):
         """
-        Triggers an overspeed warning sound if the speed limit is exceeded.
-
-        The trigger is reset only once the warning sound has finished playing.
+        Keeps the current speed for the handbrake sound.
 
         Args:
             speed (float): Current vehicle speed.
@@ -112,11 +107,6 @@ class TriggerAdapter:
         self.speed = speed
         if self.reverse_beep is not None:
             self.reverse_beep.update()
-        if speed > self.SPEED_LIMIT and self.speed_trigger is False:
-            self.bank.play_warning()
-            self.speed_trigger = True
-        if self.bank.warning_sound.playback_state == PLAYBACK_STATE.STOPPED:
-            self.speed_trigger = False
 
     def on_crash(self, crash):
         """

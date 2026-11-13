@@ -87,6 +87,7 @@ For all options: `--help`. For wheel buttons: `--wheel-setup` (once). For axis n
 | 2-b | Work zone mirrored: lanes 1 and 2 close, the car drives in lane 2, the arrow board points right | Where the cones reach lane 2 |
 | 3-a | Accident (crashed cars, police car, ambulance, cones close lanes 3 and 4 on the second pass; one caution sign 200 m before, an arrow board) | Where the cones reach lane 3 (`--accident-at`) |
 | 3-b | Accident mirrored: lanes 1 and 2 close, the car drives in lane 2 | Where the cones reach lane 2 |
+| 3-c | 3-a shortened, for filming: the pre-alert 30 s before the TOR (`SHORT_PRE_ALERT`, `--pre-alert` overrides it); the scene appears 1.2 km ahead (`SHORT_SPAWN_AHEAD`) and the car starts 1.3 km before the accident (`SHORT_START_AHEAD`), so it comes on the first pass; each intervention line lasts 5 s (`SHORT_LINE_SECONDS`) instead of `question_seconds`; no traffic in lanes 3 and 4 | As 3-a |
 
 Scenarios 2 and 3: after the takeover a car drives in lane 1 level with the car, and past the closure a broken-down van (hazard lights, warning triangle) stands in lane 2 (250 m past the work zone, 350 m past the accident): with lane 1 taken, the driver has to move over to lane 3. Variant b mirrored: the car in lane 4, the van in lane 3, the driver moves over to lane 2. The signs stay on the right shoulder in both. Autonomous driving comes back by itself 10 s after the takeover (scenarios 2 and 3: 10 s after passing the van; `--no-reengage`: off). The NDRT chat (`kakao_sets/scenario<N>.json`) is the same for both variants.
 

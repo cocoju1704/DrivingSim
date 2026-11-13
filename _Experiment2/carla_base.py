@@ -245,6 +245,19 @@ from agents.navigation.local_planner import RoadOption  # pylint: disable=import
 # Reuse the world, HUD and camera of the stock manual_control example.
 from manual_control import HUD, CameraManager, World  # pylint: disable=import-error
 
+_hud_notification = HUD.notification
+
+
+def _notification(self, text, seconds=2.0):
+    """manual_control's on-screen notes, but not its lane invasion sensor's "Crossed line Broken"
+    (2026-11-13: a participant saw it at the takeover)."""
+    if str(text).startswith('Crossed line'):
+        return None
+    return _hud_notification(self, text, seconds=seconds)
+
+
+HUD.notification = _notification
+
 from road_signs import GREEN, ORANGE, ImageSign, RoadSigns, Sign, preload  # next to this script
 
 # ==============================================================================
@@ -262,9 +275,15 @@ MIRRORED_LANE = 2       # variant b of scenarios 2 and 3: lanes 1 and 2 close, t
 # its lanes 1-4 are ids 3-6 (ids 1 and 2 are the median's).
 REVERSE_LANE_OFFSET = 2
 DEFAULT_VEHICLE = 'vehicle.lincoln.mkz_2020'  # detailed interior with an instrument cluster
-DRIVER_VIEW_PITCH = 0.5    # degrees up, driver seat and windshield views. At 43 degrees per monitor the
+DRIVER_VIEW_PITCH = -1.5   # degrees up, driver seat and windshield views. At 43 degrees per monitor the
                            # view is 24.6 degrees high: higher cuts off the left mirror, lower the rear-view one
+                           # (_Experiment2: 0.5 before; 2 degrees down lifts the side mirrors on the monitors,
+                           # where the Glasses 2 track the eyes better, as far as the rear-view mirror's top allows)
 WINDSHIELD_FORWARD = 0.55  # m in front of the driver's eyes: past the steering wheel (every car model has one)
+# _Experiment2: the driver's eyes this far further back than the fitted seat (as a seat moved back), so the
+# side mirrors come nearer the middle: the left one from 36 to about 32 degrees on the monitors (eyes 35
+# degrees or more to a side are unsure for the gaze analysis), the right one from 57 to about 51
+DRIVER_SEAT_BACK = 0.15    # m: further back puts the eyes into the headrest (0.18 shows its corners)
 MIRROR_FOV = 60.0          # degrees, side mirror views
 DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all monitors (--screens)
 # Mirror glass, measured on the Lincoln MKZ 2020 from where its mirrors appear in the driver views.
@@ -273,19 +292,21 @@ DRIVER_VIEWS = (0, 1)      # driver seat, windshield: the views that use all mon
 # from that view (the glass is seen at an angle). Outline: (x, y) shares of the glass's bounding box;
 # in the windshield view the window pillar hides the left part of the right glass.
 LEFT_MIRROR = {
-    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, from the bare glass
-    0: ((0.2776, 0.0512, 1.3947), (0.2173, 0.1219),
-        [(0.0, 0.48), (0.1, 0.2), (0.22, 0.05), (0.35, 0.0), (0.8, 0.0), (0.9, 0.06), (0.95, 0.16),
-         (1.0, 0.55), (0.97, 0.9), (0.9, 1.0), (0.06, 0.82), (0.0, 0.6)]),
+    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, DRIVER_SEAT_BACK 0.15, from the
+    # bare glass (the windshield view's below: at the seat before DRIVER_SEAT_BACK)
+    0: ((0.2776, 0.0516, 1.4001), (0.2304, 0.1170),
+        [(0.0, 0.5), (0.14, 0.17), (0.29, 0.03), (0.79, 0.0), (0.93, 0.16), (1.0, 0.47), (1.0, 0.73),
+         (0.97, 0.92), (0.9, 0.98), (0.79, 1.0), (0.06, 0.82), (0.03, 0.75)]),
     1: ((0.2802, 0.0506, 1.3889), (0.1359, 0.1279),
         [(0.0, 0.39), (0.0, 0.33), (0.12, 0.09), (0.2, 0.02), (0.25, 0.0), (0.51, 0.0), (0.77, 0.04),
          (0.85, 0.09), (0.91, 0.18), (1.0, 0.53), (1.0, 0.78), (0.94, 1.0), (0.07, 0.63), (0.03, 0.56)]),
 }
 RIGHT_MIRROR = {
-    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, from the bare glass
-    0: ((0.2782, 0.0535, 1.3995), (0.1772, 0.1199),
-        [(0.0, 0.5), (0.1, 0.06), (0.2, 0.03), (0.7, 0.05), (0.8, 0.1), (0.96, 0.38), (0.99, 0.7),
-         (0.94, 0.87), (0.5, 0.93), (0.3, 0.98), (0.06, 0.98), (0.0, 0.62)]),
+    # driver seat: measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor, DRIVER_SEAT_BACK 0.15, from the bare glass
+    # (its outline clicked by hand: the housing's inside is about the glass's colour)
+    0: ((0.2782, 0.0567, 1.4018), (0.1886, 0.1172),
+        [(0.05, 0.97), (0.28, 1.0), (0.93, 0.87), (0.96, 0.79), (1.0, 0.55), (0.85, 0.19), (0.78, 0.12),
+         (0.71, 0.05), (0.21, 0.0), (0.12, 0.08), (0.08, 0.15), (0.01, 0.48), (0.0, 0.72)]),
     1: ((0.2782, 0.0540, 1.3990), (0.1024, 0.1105),
         [(0.11, 0.05), (0.18, 0.0), (0.76, 0.0), (0.87, 0.07), (0.97, 0.22), (1.0, 0.36), (0.99, 0.57),
          (0.97, 0.77), (0.93, 0.83), (0.59, 0.92), (0.21, 0.99), (0.0, 1.0)]),
@@ -295,21 +316,29 @@ MIRROR_INSET_FOV = 40.0            # degrees, side mirror images on the glass
 # so their inner edge looks 2 degrees outside straight back: they show the lane beside (from ~70 m
 # behind, so a car appearing 80 m back is not seen), not the car's own lane (_Experiment: 10)
 SIDE_MIRROR_OUT = MIRROR_INSET_FOV / 2.0 + 2.0
-# Rear-view mirror glass, m from the driver's eyes (forward, right, up). The windshield view is in
-# front of it, so there its image stays where the driver's seat view shows the glass.
-REAR_MIRROR = (0.571, 0.0123, 0.1138)
-REAR_MIRROR_SIZE = (0.2311, 0.0820)  # m
-# Measured at DRIVER_VIEW_PITCH 0.5 and 43 degrees per monitor (3 x 2560 x 1440) from the bare glass in
-# the window: all of it on the right monitor now, slanted by its turned camera.
-REAR_MIRROR_OUTLINE = [(0.0, 0.57), (0.03, 0.14), (0.05, 0.02), (0.13, 0.01), (0.93, 0.38), (0.97, 0.44), (0.98, 0.53),
-                       (1.0, 0.9), (0.99, 0.97), (0.94, 0.99), (0.09, 0.76), (0.01, 0.69), (0.0, 0.58)]
+# _Experiment2: the side mirror images this much larger than the glass (left, right), grown from the glass's
+# outer lower corner inwards and up: the same view, magnified. 1.0: drawn on the glass (larger, they no longer
+# fit the mirror housing)
+SIDE_MIRROR_SCALE = (1.0, 1.0)
+# Rear-view mirror glass, m from the driver's eyes at the fitted seat (forward, right, up; DRIVER_SEAT_BACK
+# does not move it: it stays where it is in the car). The windshield view is in front of it, so there its
+# image stays where the driver's seat view shows the glass.
+REAR_MIRROR = (0.571, 0.0086, 0.1108)
+REAR_MIRROR_SIZE = (0.2479, 0.0755)  # m
+# Measured at DRIVER_VIEW_PITCH 0.5, 43 degrees per monitor (3 x 1920 x 1080) and DRIVER_SEAT_BACK 0.15 from
+# the bare glass in the window: across the edge of the middle and the right monitor, slanted.
+REAR_MIRROR_OUTLINE = [(0.0, 0.64), (0.02, 0.18), (0.05, 0.05), (0.18, 0.01), (0.91, 0.32), (0.97, 0.39), (0.98, 0.51),
+                       (1.0, 0.89), (0.99, 0.97), (0.94, 1.0), (0.08, 0.8), (0.01, 0.75)]
 REAR_MIRROR_FOV = 45.0             # degrees
 REAR_CAMERA_X = -0.55              # _Experiment2: the rear-view mirror camera, x share of the half length (behind the rear seats)
 REAR_CAMERA_Z = 2.1                # ... and height share of the half height (just above the roof)
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
 # The gauges (throttle pedal, speed) on a tablet standing at the bottom middle of the middle monitor,
 # where a car's instrument cluster sits (the car's own cluster is below the view, DRIVER_VIEW_PITCH).
-CLUSTER_PANEL = (0.52, 0.21)   # tablet width, height: shares of the monitor; on the bottom edge (wide: it hides the wheel)
+CLUSTER_PANEL = (0.62, 0.32)   # tablet width, height: shares of the monitor; on the bottom edge (wide and tall: it hides the
+                               # wheel, whose rim reaches 0.31 up and 0.20 from the left edge at DRIVER_VIEW_PITCH -1.5)
+CLUSTER_TOP_CORNER = 1.00      # radius of the tablet's two upper corners, share of its height: rounded off, they hide
+                               # less of the road ahead (the lower corners: CLUSTER_PANEL height x 0.09)
 CLUSTER_BEZEL = (22, 23, 26)   # the tablet's frame
 CLUSTER_EDGE = (78, 80, 86)    # its rim catching the light
 CLUSTER_SCREEN = ((24, 29, 38), (9, 11, 15))  # screen, top and bottom of its gradient
@@ -659,7 +688,8 @@ def remove_stale_actors(client, sim_world):
     sensors = [a for a in actors.filter('sensor.*') if a.parent is None or a.parent.id in ids]
     if not stale and not sensors:
         return
-    logging.warning('Removing %d actor(s) left over from an earlier run', len(stale) + len(sensors))
+    logging.warning('Removing %d actor(s) left over from an earlier run: %s', len(stale) + len(sensors),
+                    ', '.join('%s (%s)' % (a.type_id, a.attributes.get('role_name', '')) for a in sensors + stale))
     destroy_actors(client, sensors + stale)
 
 
@@ -728,7 +758,7 @@ def experiment_views(extent):
     (no wheel, no instrument cluster). The mirror views look back from the side mirrors with a
     narrower field of view, flipped left-right like a real mirror.
     """
-    eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z
+    eye_x, eye_z = -0.04 * extent.x - DRIVER_SEAT_BACK, 1.6 * extent.z
     mirror_x, mirror_y, mirror_z = 0.25 * extent.x, extent.y + 0.1, 1.35 * extent.z
     return [
         ('Driver seat', carla.Transform(carla.Location(x=eye_x, y=-0.36, z=eye_z),
@@ -753,7 +783,7 @@ def car_mirrors(extent, view):
     a camera looking back, and its image is drawn over the glass where the glass appears in the
     driver views (see _mirror_rect), cut to the glass outline. Fitted to the Lincoln MKZ 2020.
     """
-    eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z
+    eye_x, eye_z = -0.04 * extent.x, 1.6 * extent.z  # the fitted seat: the rear-view glass stays where it is in the car
     side_x, side_y, side_z = 0.25 * extent.x, extent.y + 0.1, 1.35 * extent.z
 
     def side_glass(fits, side):
@@ -976,6 +1006,9 @@ def _respawn_view(manager):
                 rect = _side_inset_rect(manager, center, size)
             else:
                 rect = _mirror_rect(manager, manager._camera_transforms[seen_from][0], center, size)
+                if rect is not None and index < 2 and SIDE_MIRROR_SCALE[index] != 1.0:
+                    width, height = int(rect.width * SIDE_MIRROR_SCALE[index]), int(rect.height * SIDE_MIRROR_SCALE[index])
+                    rect = pygame.Rect(rect.x if index == 0 else rect.right - width, rect.bottom - height, width, height)
             if rect is None:
                 continue
             blueprint = library.find('sensor.camera.rgb')
@@ -3603,6 +3636,9 @@ class AlertSound(object):
         except Exception as error:  # no audio device: run silently
             logging.warning('No sound: %s', error)
             return
+        self._kakao = None  # loaded on the first nudge: only the NDRT chat (Experiment 1) plays it
+
+    def _load_kakao(self):
         try:
             self._kakao = pygame.mixer.Sound(KAKAO_SOUND)
         except Exception as error:  # pylint: disable=broad-except
@@ -3647,6 +3683,8 @@ class AlertSound(object):
     def kakao(self):
         """A KakaoTalk message (NDRT nudge): always on the PC, even with the glasses."""
         if self._ok:
+            if self._kakao is None:
+                self._load_kakao()
             self._kakao.play()
 
     def query_answer(self, kind):
@@ -4410,8 +4448,6 @@ class TakeoverExperiment(object):
             pygame.draw.circle(surface, CLUSTER_DIM, center, max(3, int(radius * 0.09)))
         digits = cluster['digits'].render('%d' % round(self._speed_kmh), True, CLUSTER_TEXT)
         surface.blit(digits, digits.get_rect(center=cluster['readout']))
-        clock = cluster['status'].render(time.strftime('%H:%M'), True, CLUSTER_DIM)
-        surface.blit(clock, clock.get_rect(topright=cluster['clock']))
         lit = int(time.monotonic() * 2.0 * BLINKER_HZ) % 2 == 0  # on half of each period
         for flag, points in ((LEFT_BLINKER, cluster['arrows'][0]), (RIGHT_BLINKER, cluster['arrows'][1])):
             if self._lights & flag:
@@ -4428,21 +4464,25 @@ class TakeoverExperiment(object):
     def _cluster_face(size):
         """The tablet with the gauges but no needles, for one monitor size: face, mask (its rounded
         corners), glare (light on the glass, over the needles), shadow, origin on the monitor, dials
-        [(center, radius, full scale)], fonts, readout and clock positions."""
+        [(center, radius, full scale)], the speed font, readout and turn signal arrows."""
         width, height = size
         panel_w, panel_h = int(CLUSTER_PANEL[0] * width), int(CLUSTER_PANEL[1] * height)
         x0, y0 = (width - panel_w) // 2, height - panel_h  # on the bottom edge
         corner = max(6, int(panel_h * 0.09))
         bezel = max(6, int(panel_h * 0.055))
+
+        def rounded(top):  # pygame.draw.rect radii: the upper corners rounded off more (CLUSTER_TOP_CORNER)
+            return {'border_radius': corner, 'border_top_left_radius': top, 'border_top_right_radius': top}
+        top_corner = max(corner, int(panel_h * CLUSTER_TOP_CORNER))
         mask = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         mask.fill((0, 0, 0, 0))
-        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=corner)
+        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), **rounded(top_corner))
 
         # body: dark frame with a lighter rim, a front camera in the top bezel
         face = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         face.fill((0, 0, 0, 0))
-        pygame.draw.rect(face, CLUSTER_BEZEL + (255,), face.get_rect(), border_radius=corner)
-        pygame.draw.rect(face, CLUSTER_EDGE + (255,), face.get_rect(), width=2, border_radius=corner)
+        pygame.draw.rect(face, CLUSTER_BEZEL + (255,), face.get_rect(), **rounded(top_corner))
+        pygame.draw.rect(face, CLUSTER_EDGE + (255,), face.get_rect(), width=2, **rounded(top_corner))
         pygame.draw.circle(face, (44, 46, 54), (panel_w // 2, bezel // 2), max(2, bezel // 5))
         # screen: a dark gradient, top to bottom
         screen = pygame.Rect(bezel, bezel, panel_w - 2 * bezel, panel_h - 2 * bezel)
@@ -4454,14 +4494,13 @@ class TakeoverExperiment(object):
                           pygame.Rect(0, row, screen.width, 1))
         screen_mask = pygame.Surface(screen.size, pygame.SRCALPHA)
         screen_mask.fill((0, 0, 0, 0))
-        pygame.draw.rect(screen_mask, (255, 255, 255, 255), screen_mask.get_rect(), border_radius=max(3, corner - bezel // 2))
+        inner = dict(rounded(max(3, top_corner - bezel)), border_radius=max(3, corner - bezel // 2))
+        pygame.draw.rect(screen_mask, (255, 255, 255, 255), screen_mask.get_rect(), **inner)
         gradient.blit(screen_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         face.blit(gradient, screen.topleft)
 
         default = pygame.font.get_default_font()
-        status = pygame.font.Font(default, max(9, int(screen.height * 0.075)))
-        status_h = int(screen.height * 0.11)  # the status bar: a clock at its right
-        clock = (screen.right - int(screen.height * 0.06), screen.top + int(status_h * 0.25))
+        status_h = int(screen.height * 0.11)  # a band at the top, kept clear (no clock: the rounded upper corners)
 
         # the gauges, laid out below the status bar (the dials reach a little below the area)
         rw, rh = screen.width * 0.94, (screen.height - status_h) / 1.3
@@ -4517,11 +4556,11 @@ class TakeoverExperiment(object):
         shadow.fill((0, 0, 0, 0))
         for k in range(pad):
             pygame.draw.rect(shadow, (0, 0, 0, int(70 * (k + 1) / pad / pad) + 2),
-                             shadow.get_rect().inflate(-2 * k, -2 * k), border_radius=corner + pad - k)
+                             shadow.get_rect().inflate(-2 * k, -2 * k), **dict(rounded(top_corner + pad - k),
+                                                                                border_radius=corner + pad - k))
         return {'size': size, 'face': face, 'mask': mask, 'glare': glare, 'shadow': shadow, 'shadow_pad': pad,
-                'origin': (x0, y0), 'dials': dials, 'digits': digits, 'readout': readout, 'status': status,
-                'arrows': arrows,
-                'clock': clock}
+                'origin': (x0, y0), 'dials': dials, 'digits': digits, 'readout': readout,
+                'arrows': arrows}
 
     @staticmethod
     def _draw_box(display, font, text, rect, background, foreground, alpha=220):
