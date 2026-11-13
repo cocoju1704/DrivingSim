@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 14;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 15;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -390,12 +390,11 @@ async function renderLib() {
   list.append(el('p', { class: 'sub' }, '안경에 저장됨 · 즉시 재생'));
   if (!local.length) list.append(el('p', { class: 'empty' }, '아직 없음 — 아래 목록에서 받아 오세요.'));
   for (const m of local) {
-    const pos = store.get(posKey(m.id), 0);
     list.append(el('div', { class: 'row' },
       el('button', { class: 'item grow', dataset: { key: m.id }, onclick: () => playStored(m) },
         el('span', { class: 'ico' }, '▶'),
         el('span', { class: 'name' }, m.name),
-        el('span', { class: 'meta' }, pos > 5 ? fmtTime(pos) + '부터' : fmtSize(m.size))),
+        el('span', { class: 'meta' }, fmtSize(m.size))),
       el('button', { class: 'item small danger', dataset: { key: 'del:' + m.id },
         onclick: async () => { await DB.del(m.id); store.set(posKey(m.id), 0); renderLib(); } }, '🗑')));
   }
@@ -587,9 +586,8 @@ function playVideoSrc(src, title, key) {
 
 let pendingSeek = null; // 실험 play {t}: 영상을 연 뒤 이 위치로 (이어보기 위치 대신)
 video.addEventListener('loadedmetadata', () => {
-  if (pendingSeek != null) { video.currentTime = Math.min(pendingSeek, video.duration || pendingSeek); pendingSeek = null; return; }
-  const saved = store.get(posKey(localKey), 0);
-  if (saved > 5 && saved < video.duration - 10) video.currentTime = saved;
+  // 이어보기 없음: 영상은 항상 처음부터 (실험 play {t}이면 그 위치)
+  if (pendingSeek != null) { video.currentTime = Math.min(pendingSeek, video.duration || pendingSeek); pendingSeek = null; }
 });
 
 /* 실험 play: 영상이 안 열려 있으면 (홈 화면 등) 직접 연다.
@@ -658,13 +656,7 @@ const P = {
   },
 };
 
-function savePos() {
-  const key = mode === 'yt' ? ytCurrent && 'yt:' + ytCurrent.id : localKey;
-  if (!key) return;
-  const t = P.time(), d = P.dur();
-  if (d && t > 5 && t < d - 10) store.set(posKey(key), Math.floor(t));
-}
-setInterval(() => { if (current === 'player' && !P.paused()) savePos(); }, 3000);
+function savePos() {}  // 이어보기 없음 (v15): 영상은 항상 처음부터
 
 function stopPlayback() {
   if (!mode) return;
@@ -788,7 +780,7 @@ function control(d) {
       });
       return;
     }
-    if (+d.t > 0) P.seekTo(+d.t);
+    P.seekTo(+d.t || 0);  // 이미 열려 있어도 처음부터 (또는 t부터)
     P.play();
   } else if (a === 'seek') {
     P.seekTo(+d.t || 0);
