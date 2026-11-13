@@ -174,23 +174,58 @@ class Car(object):
 
 
 def side_event_car(event, template, spawn_dx, t_end):
-    """S / SD: from behind at +approach km/h, holds hold_dx from T (blinker T .. T+hold_s), falls back."""
-    v_app = template['approach_dv_kmh'] * KMH
-    a = template['decel_mps2']
-    hold = template['hold_dx_m']
-    t_decel = v_app / a
-    x_decel = hold - v_app * t_decel / 2.0
-    t_start = event['t'] - t_decel - (x_decel - spawn_dx) / v_app
-    t_start = math.floor(t_start / DT) * DT
-    x_start = x_decel - v_app * (event['t'] - t_decel - t_start)
-    release = event['t'] + template['hold_s']
-    commands = [(t_start, v_app, None), (event['t'] - t_decel, 0.0, a),
-                (release, template['retreat_dv_kmh'] * KMH, a)]
-    xs = simulate(t_start, x_start, v_app, commands, t_end, exit_dx=abs(template['despawn_dx_m']), min_t=release)
-    lights = []
-    if event['type'] == 'S':  # towards lane 2: the lane 1 car signals right, the lane 3 car left
-        lights.append([event['t'], release, 'right' if event['lane'] == 1 else 'left'])
-    return Car(event['id'], 'event', event['lane'], t_start, xs, lights, event=event['type'])
+    """S (2026-11-13; with "change": false no lane change, part None): from spawn_dx_m behind in lane 1 or 3 at +approach_dv_kmh, alongside the ego
+    car (dx 0) at T, at change_dx_m ahead it moves over to to_lane (lane 1 -> 0, lane 3 -> 2) with
+    its turn signal, from change_s after that it speeds up to +away_dv_kmh and leaves ahead at
+    spawn_dx[1] (the background cars' 250 m). Returns (its car in its own lane until the change is
+    over, its car in to_lane from the change on): the rules see both lanes while it moves over;
+    merge_parts() makes one course with a lane change of them. Its extra 'gone_t': the time it is
+    gone_dx_m ahead (the next event car may come)."""
+    v = template['approach_dv_kmh'] * KMH
+    t_start = math.floor((event['t'] + template['spawn_dx_m'] / v) / DT) * DT
+    x_start = -v * (event['t'] - t_start)
+    if not event.get('change', True):
+        # 2026-11-13: per side 2 of the 4 S stay in their lane: on past the ego car, faster from
+        # T + straight_away_rel_s (as the others after their change), gone ahead
+        t_away = event['t'] + template['straight_away_rel_s']
+        commands = [(t_start, v, None), (t_away, template['away_dv_kmh'] * KMH, template['away_mps2'])]
+        xs = simulate(t_start, x_start, v, commands, t_end, exit_dx=spawn_dx, min_t=t_away)
+        i0 = int(round(t_start / DT))
+        gone = next(((i0 + i) * DT for i, x in enumerate(xs) if x > template['gone_dx_m']), (i0 + len(xs)) * DT)
+        return Car(event['id'], 'event', event['lane'], i0 * DT, xs, [], event=event['type'], gone_t=round(gone, 2),
+                   full_xs=xs), None
+    t_change = event['t'] + template['change_dx_m'] / v
+    t_away = t_change + template['change_s']
+    commands = [(t_start, v, None), (t_away, template['away_dv_kmh'] * KMH, template['away_mps2'])]
+    xs = simulate(t_start, x_start, v, commands, t_end, exit_dx=spawn_dx, min_t=t_away)
+    to_lane = template['to_lane'][str(event['lane'])]
+    i0 = int(round(t_start / DT))
+    i_change = int(round(t_change / DT)) - i0
+    i_over = int(round(t_away / DT)) - i0
+    gone = next(((i0 + i) * DT for i, x in enumerate(xs) if x > template['gone_dx_m']), (i0 + len(xs)) * DT)
+    on, off = template.get('change_blinker_rel_s', [-1.5, 2.5])
+    side = 'left' if to_lane < event['lane'] else 'right'
+    lights = [[round(t_change + on, 2), round(t_change + off, 2), side]]
+    main = Car(event['id'], 'event', event['lane'], i0 * DT, xs[:i_over + 1], lights, event=event['type'],
+               lane_change=[round(t_change, 2), to_lane], gone_t=round(gone, 2), full_xs=xs)
+    part = Car(event['id'] + '/to', 'event', to_lane, (i0 + i_change) * DT, xs[i_change:], [],
+               event=event['type'], part_of=event['id'])
+    return main, part
+
+
+def merge_parts(cars):
+    """The cars as saved: an S's two parts (side_event_car) as one course that changes lanes at
+    lane_change [time, to lane] (abc_traffic)."""
+    out = []
+    for car in cars:
+        if car.extra.get('part_of'):
+            continue
+        if 'full_xs' in car.extra:
+            extra = dict(car.extra)
+            xs = extra.pop('full_xs')
+            car = Car(car.id, car.kind, car.lane, car.t0, xs, car.lights, **extra)
+        out.append(car)
+    return out
 
 
 def rear_event_car(event, template, spawn_dx, t_end):
@@ -284,10 +319,64 @@ def _held_car(cid, lane, dv, t_at, x_at, spawn_dx, t_end, kind, follows, hold):
     return Car(cid, kind, lane, t_start, xs, [], dv_kmh=round(dv / KMH, 1))
 
 
+F_BACK_S = 18.0     # s from an F's brake until its lead car is gone_dx_m ahead (f_brake; set from the config)
+F_EFFECT_S = 18.0   # s until the ego car is back at its place too (abc_follow; set_f_rules)
+F_MARGIN_S = 2.0    # s more before the next question's hold or the next event car
+F_BEFORE_Q_S = 15.0     # s at least from an F to the next question (set_f_rules: its hold starts after the F)
+F_BEFORE_CAR_S = 15.0   # s at least from an F to the next event car's appearance (back at its place by then)
+
+
+def set_f_rules(config):
+    """F_BACK_S, F_EFFECT_S, F_BEFORE_Q_S, F_BEFORE_CAR_S from the F template: the planned lead car is
+    gone_dx_m ahead after F_BACK_S, the ego car (abc_follow, its law on that lead car) back at its
+    place after F_EFFECT_S."""
+    global F_BACK_S, F_EFFECT_S, F_BEFORE_Q_S, F_BEFORE_CAR_S  # pylint: disable=global-statement
+    import abc_follow  # next to this script
+    ft = config['templates']['F']
+    commands, _ = f_brake(100.0, ft)
+    x_hold = sum(ft['lead_dx_m']) / 2.0
+    xs = simulate(80.0, x_hold, 0.0, commands, 200.0)
+    back = f_gone(xs, 80.0, 100.0, ft)
+    F_BACK_S = back - 100.0
+
+    def xs_of(t):
+        u = (t - 80.0) / DT
+        i = min(int(u), len(xs) - 2)
+        return xs[i] + (xs[i + 1] - xs[i]) * (u - i)
+
+    F_EFFECT_S = max(F_BACK_S, abc_follow.effect_s(ft, xs_of, config['ego']['speed_kmh'] / 3.6,
+                                                   t_brake=100.0, t_back=back)[0])
+    F_BEFORE_Q_S = max(15.0, F_EFFECT_S + config['templates']['Q'].get('hold_s', 0.0) + F_MARGIN_S)
+    F_BEFORE_CAR_S = max(15.0, F_EFFECT_S + F_MARGIN_S)
+
+
+def f_brake(t_brake, template):
+    """An F's brake (2026-11-13: closer, harder, and the lead car leaves after it): its speed relative
+    to where the ego car would be without it (the schedule's frame; the ego car brakes after it and
+    falls back, the other cars keep their speeds, abc_traffic offset) down to decel_dv_kmh at
+    decel_mps2, after brake_s up to +away_dv_kmh at away_mps2 and on until it is gone ahead:
+    [(time, target m/s, accel)], the brake light [(on, off, 'brake')]."""
+    d = -template['decel_dv_kmh'] * KMH
+    a1 = template.get('decel_mps2', 2.0)
+    t_up = t_brake + template['brake_s']
+    commands = [(t_brake, -d, a1), (t_up, template['away_dv_kmh'] * KMH, template['away_mps2'])]
+    return commands, [[t_brake, t_up, 'brake']]
+
+
+def f_gone(xs, t0, t_brake, template):
+    """The time a lead car (dx samples xs from t0) is gone_dx_m ahead after its brake."""
+    for i, x in enumerate(xs):
+        t = t0 + i * DT
+        if t > t_brake and x > template['gone_dx_m']:
+            return round(t, 2)
+    return round(t0 + len(xs) * DT, 2)
+
+
 def lead_car(cid, hold_from, hold_to, x_hold, v_in, v_out, spawn_dx, t_end, brakes=(), kind='lead',
              brake_template=None):
     """Lane 2 ahead: comes back from spawn_dx[1] ahead at -v_in (a slower car), holds x_hold from hold_from,
-    brakes at each time in `brakes` (brake light, -8 km/h for 3 s), pulls away at +v_out from hold_to.
+    pulls away at +v_out from hold_to; an F's lead car (brakes: [its brake time]) brakes then and
+    leaves ahead after it instead (f_brake).
     Its speed changes relative to the ego car at 1 m/s^2 (0.5 made its approach so long that a lead car
     next to a question could not stay beyond gap_far_m until the question)."""
     a = 1.0
@@ -296,15 +385,21 @@ def lead_car(cid, hold_from, hold_to, x_hold, v_in, v_out, spawn_dx, t_end, brak
     # from far ahead (spawn_dx[1]): at FAR_DV until FAR_AHEAD_M (_far), then v_in
     x_start, v_first = spawn_dx[1], _far(spawn_dx[1], -v_in)
     t_start = math.floor((t_decel - _steps_to(x_start, v_first, -v_in, a, x_hold + d_decel) * DT) / DT) * DT
-    commands = [(t_start, -v_in, a), (t_decel, 0.0, a), (hold_to, v_out, a)]
+    commands = [(t_start, -v_in, a), (t_decel, 0.0, a)]
     lights = []
-    if brake_template:
-        for t_brake in brakes:
-            seconds = brake_template['brake_s']
-            commands += [(t_brake, brake_template['decel_dv_kmh'] * KMH, 2.0), (t_brake + seconds, 0.0, 2.0)]
-            lights.append([t_brake, t_brake + seconds, 'brake'])
-    xs = simulate(t_start, x_start, v_first, commands, t_end, exit_dx=spawn_dx, min_t=hold_to)
-    return Car(cid, kind, 2, t_start, xs, lights)
+    if brake_template and brakes:   # an F's lead car: brakes, then leaves ahead (f_brake)
+        more, lights = f_brake(brakes[0], brake_template)
+        commands += more
+        min_t = brakes[0]
+    else:
+        commands.append((hold_to, v_out, a))
+        min_t = hold_to
+    xs = simulate(t_start, x_start, v_first, commands, t_end, exit_dx=spawn_dx, min_t=min_t)
+    car = Car(cid, kind, 2, t_start, xs, lights)
+    if brake_template and brakes:
+        # [brake, gone ahead]: abc_experiment's Follow brakes the ego car from the brake on
+        car.extra['f_spans'] = [[round(brakes[0], 2), f_gone(xs, t_start, brakes[0], brake_template)]]
+    return car
 
 
 def rear2_car(cid, hold_from, hold_to, x_hold, v_in, spawn_dx, t_end, kind='rear2'):
@@ -486,20 +581,28 @@ class Rules(object):
         self.tor_clear = (int(round((tors[0]['t'] + config['templates']['TOR']['clear_rel_s']) / DT))
                           if tors else None)
         self.clear = []  # (lane, i0, i1, low, high): no background car there
-        for car, event in event_cars:  # as in the document: e.g. S lane 1, -75 .. +10 m, T-10 .. T+14
+        for car, event in event_cars:  # as in the document: e.g. S lane 1, -75 .. +50 m, T-14 .. T+8
             template = config['templates']['S' if event['type'] in ('S', 'SD') else 'R']
             low, high = template['clear_dx_m']
             before, after = template['clear_rel_s']
             self.clear.append((car.lane, int(round((event['t'] + before) / DT)), int(round((event['t'] + after) / DT)),
                                low, high))
+            if 'lane_change' in car.extra:   # S: the lane it moves over to, around its change and after
+                t_change, to_lane = car.extra['lane_change']
+                low, high = template['clear_to_dx_m']
+                before, after = template['clear_to_rel_s']
+                self.clear.append((to_lane, int(round((t_change + before) / DT)), int(round((t_change + after) / DT)),
+                                   low, high))
 
     def ok(self, new, cars):
         if self.tor_clear is not None and new.kind != 'event' and new.i1 >= self.tor_clear:
             return False
+        spans = new.extra.get('f_spans', [])
         for i, x in enumerate(new.xs):
             t = (new.i0 + i) * DT
             index = new.i0 + i
-            if new.lane == 2 and new.kind != 'event':
+            braking = any(a <= t <= b for a, b in spans)   # an F: the ego car brakes too, the real gap is kept
+            if new.lane == 2 and new.kind != 'event' and not braking:
                 if (x < 0 and x > self.lane2_rear + 1e-6) or (x > 0 and x < self.lane2_front - 1e-6):
                     return False
             for lane, i0, i1, low, high in self.clear:
@@ -528,7 +631,7 @@ class Rules(object):
 # side for the error of the prediction (abc_ego.py: 1-2 s). Town04's loop does not have straights
 # for all of them (two places for a car event per 137 s lap, ten car events 30 s apart): the
 # seconds in a curve are kept as few as can be (CURVE_WEIGHT), then the moving.
-CRITICAL = {'S': (-2.0, 7.0), 'SD': (-2.0, 7.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-2.0, 1.0),
+CRITICAL = {'S': (-6.0, 8.0), 'SD': (-6.0, 8.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-2.0, 1.0),
             'TOR': (-10.0, 15.0)}   # TOR: config TOR straight_rel_s, all of it on a straight (not just few s)
 CURVE_MARGIN = 1.0
 CURVE_WEIGHT = 20.0           # cost of a second in a curve, in seconds moved
@@ -538,13 +641,40 @@ START_BELOW_KMH = 5.0         # only start points where the profile is at most t
                               # leaves the autonomous driving out of step with the profile for a minute (its
                               # controller starts from rest there), 6.5 s behind the predicted curves after
 PLAN_TRIES = 20               # start points tried, best first, until the questions' cars can be placed
-CAR_LEAD = {'S': 14.1, 'SD': 14.1, 'R': 15.9}   # s from a car's appearance to its T
-CAR_TAIL = {'S': 15.4, 'SD': 15.4, 'R': 15.3}   # s from its T to its removal
-WINDOW_END = {'S': 7.0, 'SD': 7.0, 'R': 8.5}
-# s from an event to the TOR at least: S, SD its car gone (CAR_TAIL) before the TOR's clearing (15 s
+# set from the templates (set_event_rules); the values of 2026-11-13
+CAR_LEAD = {'S': 12.8, 'SD': 12.8, 'R': 11.6}   # s from a car's appearance to its T
+CAR_TAIL = {'S': 11.6, 'SD': 11.6, 'R': 14.6}   # s from its T until it is gone (S: gone_dx_m ahead, R: removed)
+WINDOW_END = {'S': 0.0, 'SD': 0.0, 'R': 8.5}
+# s from an event to the TOR at least: S its car gone ahead (250 m) before the TOR's clearing (15 s
 # before it); R its window over 15 s before (its car is in lane 2 behind, gone by the TOR); a question's
 # cars gone before the clearing; F its lead car gone (lane 2 ahead) before the clearing
-TOR_AFTER = {'S': 31.0, 'SD': 31.0, 'R': 24.0, 'Q': 45.0, 'F': 45.0}
+TOR_AFTER = {'S': 34.0, 'SD': 34.0, 'R': 24.0, 'Q': 45.0, 'F': 45.0}
+TOR_OBSTACLE_REL_S = -3.0   # s: the TOR's stopped car appears (abc_traffic TorScene.obstacle, lead_s)
+S_TOR_FAR_M = 150.0   # m an S car (on ahead after its lane change) is ahead at least from the TOR's clearing on
+
+
+def set_event_rules(config):
+    """CAR_LEAD, CAR_TAIL, WINDOW_END and TOR_AFTER of S and R from their templates."""
+    templates = config['templates']
+    bg = config['background']
+    spawn = (bg['spawn_dx_m'], bg.get('spawn_ahead_dx_m', bg['spawn_dx_m']))
+    event = {'id': 'x', 'type': 'S', 't': 200.0, 'lane': 3}
+    car, _ = side_event_car(event, templates['S'], spawn, 400.0)
+    end = (car.i0 + len(car.extra['full_xs']) - 1) * DT
+    for k in ('S', 'SD'):
+        CAR_LEAD[k] = round(200.0 - car.t0, 1)
+        CAR_TAIL[k] = round(car.extra['gone_t'] - 200.0, 1)
+        WINDOW_END[k] = templates['S']['window_rel_s'][1]
+        far = next((i0 for i0, x in enumerate(car.extra['full_xs']) if x > S_TOR_FAR_M), 0) * DT + car.t0
+        TOR_AFTER[k] = math.ceil(max(end - 200.0 - TOR_OBSTACLE_REL_S,
+                                     far - 200.0 - templates['TOR']['clear_rel_s']) + 1.0)
+    event = {'id': 'x', 'type': 'R', 't': 200.0}
+    car = rear_event_car(event, templates['R'], templates['R']['spawn_dx_m'], 400.0)
+    window, _ = rear_window(car, event, templates['R'])
+    CAR_LEAD['R'] = round(200.0 - car.t0, 1)
+    CAR_TAIL['R'] = round(car.i1 * DT - 200.0, 1)
+    WINDOW_END['R'] = round(window[1] - 200.0, 1)
+    TOR_AFTER['R'] = math.ceil(WINDOW_END['R'] + 15.5)
 
 
 def in_curve(curves, kind, t):
@@ -601,8 +731,8 @@ def plan_times(events, block, curves, tor=None, avoid=()):
         if cur is None:
             return last
         if cur['type'] == 'TOR':
-            return min(last, t_cur - TOR_AFTER['F'])
-        return t_cur - (15.0 if cur['type'] == 'Q' else CAR_LEAD[cur['type']] + 15.0)
+            return min(last, t_cur - max(TOR_AFTER['F'], F_BEFORE_CAR_S))
+        return t_cur - (F_BEFORE_Q_S if cur['type'] == 'Q' else CAR_LEAD[cur['type']] + F_BEFORE_CAR_S)
 
     def place_fs(i, prev, t_prev, cur, t_cur):
         """(cost, {id: time}) of the Fs between main[i-1] and main[i] (15 s apart if two), or None."""
@@ -612,7 +742,8 @@ def plan_times(events, block, curves, tor=None, avoid=()):
         low, high = after(prev, t_prev), before(cur, t_cur)
         total, placed, last = 0.0, {}, None
         for e in group:
-            options = [(c, t) for t, c in f_costs[e['id']] if low <= t <= high and (last is None or t >= last + 15.0)]
+            options = [(c, t) for t, c in f_costs[e['id']]
+                       if low <= t <= high and (last is None or t >= last + max(15.0, F_BEFORE_CAR_S))]
             if not options:
                 return None
             c, t = min(options)
@@ -640,6 +771,11 @@ def plan_times(events, block, curves, tor=None, avoid=()):
         if cur['type'] == 'TOR':
             return gap >= TOR_AFTER[prev['type']]
         need = 32.0 if cur['type'] == 'R' and prev['type'] in CAR_LEAD else 30.0
+        if cur['type'] == 'Q' and prev['type'] == 'R' and '2_rear' in cur.get('cells', ()):
+            # its lane 2 car behind comes up from up to 30 s before it, the R keeps lane 2 behind
+            # clear until T+14 (found with the harder F, 2026-11-12: the F no longer fits before the
+            # question there and the question had come too close to the R)
+            need = 42.0
         return need <= gap <= 75.0
 
     best = [{} for _ in main]   # index -> {time: (cost, previous time, Fs placed before it)}
@@ -733,16 +869,19 @@ def make_schedule(config, name, plan=None):
         events.sort(key=lambda e: e['t'])
     tor = next((e for e in events if e['type'] == 'TOR'), None)
     if tor is not None:
-        t_end = tor['t'] + tor_template['end_rel_s']  # the block ends 30 s after the TOR
+        t_end = tor['t'] + tor_template['end_rel_s']  # the block ends 50 s after the TOR (end_rel_s)
         tor_clear = tor['t'] + tor_template['clear_rel_s']
     # 1. event cars
     event_cars = []
+    parts = []      # the S cars in the lane they move over to (side_event_car)
     windows = {}
     for event in events:
         if event['type'] in ('S', 'SD'):
-            car = side_event_car(event, templates['S'], templates['S']['spawn_dx_m'], t_end)
+            car, part = side_event_car(event, templates['S'], spawn, t_end)
             windows[event['id']] = [event['t'] + w for w in templates['S']['window_rel_s']]
             event_cars.append((car, event))
+            if part is not None:
+                parts.append(part)
         elif event['type'] == 'R':
             car = rear_event_car(event, templates['R'], templates['R']['spawn_dx_m'], t_end)
             windows[event['id']], exit_t = rear_window(car, event, templates['R'])
@@ -755,16 +894,26 @@ def make_schedule(config, name, plan=None):
             car.xs, car.i0 = car.xs[cut:], car.i0 + cut
             if abs(car.xs[0]) < 65.0:
                 raise RuntimeError('%s: its car would appear %.0f m behind, in view' % (event['id'], -car.xs[0]))
-    cars = [car for car, _ in event_cars]
+    cars = [car for car, _ in event_cars] + parts
     for car, event in event_cars:
-        # the TOR: the event cars are gone (S, SD: before its clearing; R, lane 2 behind: by the TOR)
-        if tor is not None and car.i1 * DT >= (tor['t'] if car.lane == 2 else tor_clear) - 1e-6:
-            raise RuntimeError('%s: its car is still there at %.1f s, the TOR at %.0f s' % (event['id'], car.i1 * DT,
-                                                                                            tor['t']))
+        # the TOR: the event cars are gone (S: before its clearing, ahead; R, lane 2 behind: by the TOR)
+        xs_all = car.extra.get('full_xs', car.xs)
+        end = (car.i0 + len(xs_all) - 1) * DT
+        if tor is None:
+            continue
+        if 'full_xs' in car.extra:
+            # S: on ahead after its lane change, gone before the TOR's stopped car appears (T-3) and
+            # far ahead (S_TOR_FAR_M) from the clearing on
+            k = int(round(tor_clear / DT)) - car.i0
+            if end >= tor['t'] + TOR_OBSTACLE_REL_S - 1e-6 or (0 <= k < len(xs_all) and xs_all[k] < S_TOR_FAR_M):
+                raise RuntimeError('%s: its car is still near at %.1f s, the TOR at %.0f s' % (event['id'], end, tor['t']))
+        elif end >= (tor['t'] if car.lane == 2 else tor_clear) - 1e-6:
+            raise RuntimeError('%s: its car is still there at %.1f s, the TOR at %.0f s' % (event['id'], end, tor['t']))
     for k, (car, _) in enumerate(event_cars):
         same = [c for c, _ in event_cars[:k]]
         for other in same:
-            if other.i1 >= car.i0:
+            # one event car at a time: an S is done once it is gone_dx_m ahead (it drives on, out of the way)
+            if other.extra.get('gone_t', other.i1 * DT) >= car.t0 - 1e-6:
                 raise RuntimeError('%s starts before %s is gone' % (car.id, other.id))
     rules = Rules(config, block, events, event_cars)
     count = [0]
@@ -832,18 +981,20 @@ def make_schedule(config, name, plan=None):
         return True
 
     def f_time_ok(event, t):
-        """An F time: 15 s from the questions, after a window ends and before the next car appears,
-        TOR_AFTER before the TOR."""
-        if tor is not None and t > tor['t'] - TOR_AFTER['F']:
+        """An F time: 15 s after a question and F_BEFORE_Q_S before one, after a window ends and
+        F_BEFORE_CAR_S before the next car appears, TOR_AFTER before the TOR."""
+        if tor is not None and t > tor['t'] - max(TOR_AFTER['F'], F_BEFORE_CAR_S):
             return False
         for other in events:
-            if other is event or other['type'] == 'F':
+            if other is event:
                 continue
-            if other['type'] == 'Q' and abs(t - other['t']) < 15.0:
+            if other['type'] == 'F':
+                continue   # plan_times keeps them apart
+            if other['type'] == 'Q' and other['t'] - F_BEFORE_Q_S < t < other['t'] + 15.0:
                 return False
-            if other['id'] in windows and windows[other['id']][0] - 15.0 < t < windows[other['id']][1] + 15.0:
+            if other['id'] in windows and windows[other['id']][0] - F_BEFORE_CAR_S < t < windows[other['id']][1] + 15.0:
                 return False
-            if other['id'] in spawns and spawns[other['id']] - 15.0 < t < other['t']:
+            if other['id'] in spawns and spawns[other['id']] - F_BEFORE_CAR_S < t < other['t']:
                 return False
         return block['adaptation_end_s'] <= t <= rules.events_end
 
@@ -868,6 +1019,8 @@ def make_schedule(config, name, plan=None):
                     # an F close by: its lead car is this question's lane 2 car ahead (one car, it brakes
                     # at the F); the F at the nearest time it may have (shift_s), as its own placement would
                     nearby_f = []
+                    # since 2026-11-13 the F's lead car leaves after its brake: only an F after the
+                    # question (the F keeps F_BEFORE_Q_S from the next one)
                     if '2_front' in event['cells']:
                         ft_ = templates['F']
                         steps = [0.0] + [d * 0.5 * sign for d in range(1, int(2 * ft_['shift_s']) + 1) for sign in (1, -1)]
@@ -875,7 +1028,7 @@ def make_schedule(config, name, plan=None):
                             if f['type'] != 'F' or any(c.extra.get('f_event') == f['id'] for c in cars):
                                 continue
                             base_t = f.get('t_doc', f['t'])
-                            ok_t = next((base_t + d for d in steps if abs(base_t + d - event['t']) <= 45.0
+                            ok_t = next((base_t + d for d in steps if 0.0 < base_t + d - event['t'] <= 45.0
                                          and f_time_ok(f, base_t + d)), None)
                             if ok_t is not None:
                                 f.setdefault('t_doc', base_t)
@@ -912,12 +1065,18 @@ def make_schedule(config, name, plan=None):
                     continue
                 for _ in range(ANCHOR_TRIES):
                     x_hold = rng.uniform(*ft['lead_dx_m'])
-                    # comes at 15-25 km/h and holds from 4-25 s before it brakes: next to a question it
-                    # can stay beyond gap_far_m until the question is over
-                    car = lead_car(new_id('F'), t_brake - rng.uniform(4, 25), t_brake + rng.uniform(8, 25), x_hold,
-                                   rng.uniform(15, 25) * KMH, rng.uniform(10, 25) * KMH, spawn, t_end,
+                    # comes at 30-40 km/h (2026-11-13: an S that moved into lane 2 has it busy until shortly
+                    # before) and holds from 4-25 s before it brakes: next to a question it can stay beyond
+                    # gap_far_m until the question is over
+                    car = lead_car(new_id('F'), t_brake - rng.uniform(4, 25),
+                                   t_brake + F_EFFECT_S + rng.uniform(2, 15), x_hold,
+                                   rng.uniform(30, 40) * KMH, rng.uniform(10, 25) * KMH, spawn, t_end,
                                    brakes=[t_brake], brake_template=ft)
-                    if car.t0 < t_first or min(car.xs) < ft['min_gap_m'] + 4.8 or not rules.ok(car, cars):
+                    # the gap outside the brake (in it the ego car brakes too: FollowF keeps the real gap)
+                    i_brake = int(round(t_brake / DT)) - car.i0
+                    i_back = i_brake + int(math.ceil(F_EFFECT_S / DT))
+                    outside = [x for i, x in enumerate(car.xs) if not i_brake <= i <= i_back]
+                    if car.t0 < t_first or min(outside) < ft['min_gap_m'] + 4.8 or not rules.ok(car, cars):
                         count[0] -= 1
                         continue
                     car.extra['f_event'] = event['id']
@@ -1082,6 +1241,10 @@ def make_schedule(config, name, plan=None):
         for car in cars:
             if car.id == event['id'] and 't_exit' in car.extra:
                 item['t_exit'] = car.extra['t_exit']
+            if car.id == event['id'] and 'lane_change' in car.extra:
+                item['lane_change'] = car.extra['lane_change']
+            if car.id == event['id'] and 'gone_t' in car.extra:
+                item['gone_t'] = car.extra['gone_t']
         if event['type'] == 'F':
             item['t'] = event.get('t_planned', event['t'])
             item['t_doc'] = event['t']
@@ -1090,6 +1253,7 @@ def make_schedule(config, name, plan=None):
     # colors of the event cars: the same spread over S, SD and R
     colors = config['event_colors']
     by_type = {}
+    cars = merge_parts(cars)
     for car in cars:
         if car.kind == 'event':
             k = by_type.get(car.extra['event'], 0)
@@ -1140,20 +1304,23 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
         if lane == 2:
             for zone in zones:
                 if zone == 'front' and f_events:
-                    # an F close by: this car stays, 31 .. 40 m ahead, and brakes at the F
+                    # an F after it: this car stays (the F's lead_dx_m ahead), brakes at the F and leaves
                     f = f_events[0]
-                    car = lead_car(new_id('Q'), min(t, f['t']) - rng.uniform(early, max(early, 20)), max(t, f['t']) + rng.uniform(8, 20),
-                                   rng.uniform(30, max(30.5, targets['front'][1])), rng.uniform(15, 25) * KMH,
+                    car = lead_car(new_id('Q'), min(t, f['t']) - rng.uniform(early, max(early, 20)),
+                                   max(t, f['t'] + F_EFFECT_S) + rng.uniform(8, 20),
+                                   rng.uniform(*f_template['lead_dx_m']), rng.uniform(30, 40) * KMH,
                                    rng.uniform(10, 25) * KMH, spawn, t_end, brakes=[f['t']], brake_template=f_template)
                     car.extra['f_event'] = f['id']
                     cars.append(car)
                 elif zone == 'front':
-                    # comes and pulls away at 10-25 km/h, soon after the question: its course is short (with a
+                    # comes at 15-35 km/h (2026-11-13: an S that moved into lane 2 has it busy until shortly
+                    # before; the F's lead car above 30-40) and pulls away at 10-25 km/h, soon after the
+                    # question: its course is short (with a
                     # 10 s hold a slow one runs into the TOR's clearing, or meets the previous question's car
                     # ahead still leaving: one lane, they would cross)
                     cars.append(lead_car(new_id('Q'), t - rng.uniform(early, 30), t + rng.uniform(3, 12),
                                          rng.uniform(max(targets['front'][0], targets.get('lane2_front_min', 0.0)),
-                                                     targets['front'][1]), rng.uniform(10, 25) * KMH,
+                                                     targets['front'][1]), rng.uniform(15, 35) * KMH,
                                          rng.uniform(10, 25) * KMH, spawn, t_end, kind='bg'))
                 else:
                     cars.append(rear2_car(new_id('Q'), t - rng.uniform(early + 1, 30), t + rng.uniform(3, 12),
@@ -1177,8 +1344,10 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
             follow = [(t + 0.5, hold[2], 2.0), (hold[1], dv, HOLD_ACCEL)]
         elif lane in q['approach']:
             dv = rng.uniform(max(v_low, 6.0), v_high) * KMH
-        elif 'rear' in zones:
+        elif 'rear' in zones and not hold:
             dv = -rng.uniform(max(v_low, 6.0), v_high) * KMH
+        # with the hold it does not approach at the question either way: faster or slower by the lane's
+        # share (2026-11-13: a slower one came back through an S that stays in its lane and passes)
         else:
             dv = rng.uniform(v_low, v_high) * KMH * side(lane)
         for zone in zones:
@@ -1252,6 +1421,12 @@ def main():
                         help="the document's times, from the loop start (no ego profile)")
     args = parser.parse_args()
     config = load_config(args.config)
+    set_f_rules(config)
+    set_event_rules(config)
+    print('S: appears %.1f s before T, gone %.1f s after, %.0f s before the TOR at least; R: %.1f / %.1f s'
+          % (CAR_LEAD['S'], CAR_TAIL['S'], TOR_AFTER['S'], CAR_LEAD['R'], CAR_TAIL['R']))
+    print('F: back at its place %.1f s after the brake; at least %.0f s before a question, %.0f s before an event car'
+          % (F_EFFECT_S, F_BEFORE_Q_S, F_BEFORE_CAR_S))
     if args.fast_lane is not None:
         config['background']['fast_lane'] = args.fast_lane or None
     names = args.set or list(config['blocks'])

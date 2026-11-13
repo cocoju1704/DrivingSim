@@ -8,7 +8,7 @@ with what happened in the drive.
     python _Experiment2/gaze_video.py <block folder>                 the whole recording
     python _Experiment2/gaze_video.py <block folder> --from 180 --to 200    only block time 180-200 s
     python _Experiment2/gaze_video.py <block folder> --speed 0.5     slow motion (half speed)
-    python _Experiment2/gaze_video.py <block folder> --ndrt-video mrbd-video/나미비아.mp4
+    python _Experiment2/gaze_video.py <block folder> --ndrt          the NDRT video drawn in the display outline
 
 On each frame:
     the gaze point (circle; its last 0.3 s as a trail), grey when the glasses report no gaze
@@ -17,10 +17,11 @@ On each frame:
     LEFT? / RIGHT? while the eyes are far to that side without a gaze point (mirror or not unknown)
     the glasses display (glasses condition, g2_display.json): its outline (solid) and the outline
     postprocess.py counts as on it (+15 %, dotted); "ON DISPLAY" while the gaze is inside that;
-    inside the outline the NDRT video at the place it was playing (events.csv's "video ...: glasses
-    at T s" reports; between two reports it runs on at 1x unless paused), dark while covered (SAGAT,
-    TOR). The file: --ndrt-video, else the title the reports name ([...], logged since 2026-11-12),
-    looked up in mrbd-video/ and mrbd-video/media/; none: the outline only
+    (the NDRT video's band, its range only: since 2026-11-13 the video is not drawn in it by default);
+    with --ndrt (or --ndrt-video FILE) inside the outline the NDRT video at the place it was playing
+    (events.csv's "video ...: glasses at T s" reports; between two reports it runs on at 1x unless
+    paused), dark while covered (SAGAT, TOR). The file: --ndrt-video, else the title the reports name
+    ([...], logged since 2026-11-12), looked up in mrbd-video/ and mrbd-video/media/
     a band at the bottom: the event windows open now (S, SD, R, F: its mirror or the car ahead;
     the TOR), and the events of the last 3 s (onsets, the SAGAT freeze and answer, the TOR alert,
     the first input, the lane change)
@@ -188,7 +189,9 @@ def main():
     parser.add_argument('--out', default=None, help='default: <folder>/gaze_video.mp4')
     parser.add_argument('--ndrt-video', default=None,
                         help='the NDRT video file (default: the title in the video reports, in mrbd-video/)')
-    parser.add_argument('--no-ndrt', action='store_true', help='the display outline only, no NDRT video in it')
+    parser.add_argument('--ndrt', action='store_true',
+                        help='the NDRT video in the display outline (since 2026-11-13 not by default: the outline only)')
+    parser.add_argument('--no-ndrt', action='store_true', help=argparse.SUPPRESS)   # the default since 2026-11-13
     args = parser.parse_args()
     import cv2  # pylint: disable=import-outside-toplevel
 
@@ -224,7 +227,7 @@ def main():
         display_px = np.array([[int(x * sx), int(y * sy)] for x, y in outline], np.int32)
         margin_px = [(int(x * sx), int(y * sy)) for x, y in display_outline(folder, DISPLAY_MARGIN)]
     ndrt = None
-    if outline and not args.no_ndrt:
+    if outline and (args.ndrt or args.ndrt_video) and not args.no_ndrt:
         path = args.ndrt_video or find_ndrt_video(ndrt_timeline.title)
         if path and os.path.isfile(path):
             ndrt = NdrtVideo(cv2, np, path, ndrt_band(folder)[0])

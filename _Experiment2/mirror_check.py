@@ -29,7 +29,7 @@ import os
 import statistics
 
 PEDAL_ON = 0.3
-TRIM_S = 0.3
+TRIM_S = 0.1     # was 0.3 (2026-11-14): marks of 0.5-0.7 s had no frames left
 MARGIN_S = 1.0
 YAW_BINS = ((0, 15), (15, 25), (25, 35), (35, 42), (42, 90))
 MIRRORS = ('left', 'rear', 'right')
@@ -56,9 +56,13 @@ def marks(folder):
                 out.append((side, held.pop(side), t))
     start = None
     last = None
+    released = False   # a pedal already down at the block start (its rest reads as pressed) is no mark
     for r in read(os.path.join(folder, 'frames.csv')):
         t = float(r['t_sim'])
         on = float(r.get('pedal_throttle') or 0) > PEDAL_ON
+        released = released or not on
+        if not released:
+            continue
         if on and start is None:
             start = t
         elif not on and start is not None:
@@ -81,9 +85,10 @@ def main():
     aoi = read(os.path.join(folder, 'mirror_aoi.csv'))
     if not aoi:
         raise SystemExit('No mirror_aoi.csv in %s: run mirror_aoi.py first' % folder)
-    # (t, glance, unsure, |eye yaw| or None)
-    rows = [(float(r['t_sim']), r['glance'], r['unsure'], abs(float(r['eye_yaw'])) if r['eye_yaw'] else None)
-            for r in aoi]
+    # (t, glance, unsure, |eye yaw| or None); an unsure frame joined to a glance counts as the glance's
+    # (mirror_aoi.join), unsure only when not
+    rows = [(float(r['t_sim']), r['glance'], '' if r['glance'] else r['unsure'],
+             abs(float(r['eye_yaw'])) if r['eye_yaw'] else None) for r in aoi]
     print('%d marked looks: %s' % (len(looks), ', '.join('%s %d' % (m, sum(1 for l in looks if l[0] == m))
                                                          for m in MIRRORS)))
     print('%-6s %-11s %7s %6s %7s %7s %7s %7s  %s' % ('mirror', 'when', 'eye yaw', 'frames', 'on it', 'other',

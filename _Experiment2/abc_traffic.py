@@ -13,6 +13,10 @@ is removed when it ends, both 65 m or more from the ego car.
 Real lane 4 is lane 3's route shifted one lane width to the right: lane 4 itself leaves the loop at
 the exits, the shifted line goes straight on.
 
+A course may change lanes once (lane_change [time, to lane]: an S car, since 2026-11-13, overtakes and
+moves over, lane 1 to lane 0 or lane 3 to lane 2): from that time it is driven along the other lane's
+route, steer_along takes it across (SIDEWAYS at most) with its turn signal (the course's lights).
+
 The TOR's two cars are not courses (the driver drives after it): TorScene puts them in the world and
 drives the approaching one at its own speed (see there).
 
@@ -128,7 +132,8 @@ class Course(object):
     def __init__(self, data, dt):
         self.id = data['id']
         self.kind = data['kind']          # bg, lead, event
-        self.lane = data['lane']
+        self.lane = data['lane']          # the lane it is in now (a lane change moves it: ScriptedTraffic)
+        self.first_lane = data['lane']
         self.t0 = data['t0']
         self.dx = data['dx']
         self.dt = dt
@@ -137,6 +142,13 @@ class Course(object):
         self.event = data.get('event')    # S, SD, R for event cars
         self.color = data.get('color')
         self.f_event = data.get('f_event')
+        self.f_spans = data.get('f_spans')         # an F's lead car: [[brake, gone]]
+        self.lane_change = data.get('lane_change')   # [time, to lane] or None
+
+    def lane_at(self, t):
+        if self.lane_change and t >= self.lane_change[0] - 1e-6:
+            return self.lane_change[1]
+        return self.first_lane
 
     def at(self, t):
         """(dx, relative speed m/s) at t; None outside the course."""
@@ -220,12 +232,25 @@ class ScriptedTraffic(object):
 
     # -- per frame ------------------------------------------------------------------------------
 
-    def tick(self, t, ego, dt_real):
-        """Spawn, drive and remove the cars for simulation time t. Returns {id: (lane, dx, dv km/h)}."""
+    def _frame(self, car, planned, refs, ego_speed, lag, ref_speed):
+        """(refs, speed) a car is driven relative to: the ego car, or while it has fallen behind for an
+        F (lag m, abc_follow) the place the schedule has it at, at ref_speed - the other cars keep their
+        speeds - but the lane 2 cars behind it (they brake with it)."""
+        # an F's lead car is never one of those, though its planned dx dips below 0 after its brake
+        # (2026-11-13: -25 km/h for 3 s; the ego car brakes too, the real gap stays ~8 m and more)
+        if lag and not (car['course'].lane == 2 and planned[0] < 0 and not car['course'].f_spans):
+            return {lane: s + lag for lane, s in refs.items()}, ref_speed
+        return refs, ego_speed
+
+    def tick(self, t, ego, dt_real, lag=0.0, ref_speed=None):
+        """Spawn, drive and remove the cars for simulation time t. Returns {id: (lane, dx, dv km/h)}:
+        dx measured from the ego car itself. lag, ref_speed: see _frame."""
         transform = ego.get_transform()
         velocity = ego.get_velocity()
         forward = transform.get_forward_vector()
         ego_speed = velocity.x * forward.x + velocity.y * forward.y  # m/s along its heading
+        if ref_speed is None:
+            ref_speed = ego_speed
         refs = {lane: self.ref_s(lane, transform) for lane in self._routes}
         while self._next < len(self._courses) and self._courses[self._next].t0 <= t + 1e-6:
             course = self._courses[self._next]
@@ -234,8 +259,17 @@ class ScriptedTraffic(object):
                 self._pending(course)
         for cid in list(self.cars):
             car = self.cars[cid]
+            lane = car['course'].lane_at(t)
+            if lane != car['course'].lane:   # an S car moves over: from now on along that lane's route
+                car['course'].lane = lane
+                planned = car['course'].at(t)
+                if car['actor'] is not None and planned is not None:
+                    car['hint'] = self._routes[lane].index_at(refs[lane] + planned[0])
+                    self.log.append((t, cid, 'lane change to lane %d' % lane))
             if car['actor'] is None:
-                self._spawn(car, t, refs, ego_speed)
+                planned = car['course'].at(t)
+                if planned is not None:
+                    self._spawn(car, t, *self._frame(car, planned, refs, ego_speed, lag, ref_speed))
             elif t > car['course'].t1:
                 self._remove(cid, t, 'course end')
         state = {}
@@ -256,7 +290,7 @@ class ScriptedTraffic(object):
             planned = car['course'].at(t)
             if planned is None:
                 continue
-            self._drive(car, planned, s, refs, ego_speed, dt_real)
+            self._drive(car, planned, s, *self._frame(car, planned, refs, ego_speed, lag, ref_speed), dt_real=dt_real)
             lights = car['course'].light_flags(t)
             if lights != car['lights']:
                 car['actor'].set_light_state(carla.VehicleLightState(lights))
@@ -373,9 +407,9 @@ class TorScene(object):
                     the ego car's speed: after the curve before the loop's long straight it is still
                     speeding up), so it is 30 m behind at T; release() at T: from then on it keeps its
                     speed (next to the ego car ~5.4 s later if that keeps its own)
-        obstacle()  T-3: in lane 2, standing (hand brake), hazard lights on: 270 m ahead at 95 km/h;
+        obstacle()  T-3: in lane 2, standing (hand brake), hazard lights on: 297 m ahead at 95 km/h;
                     at another speed (still speeding up after the curve) where it makes the same TTC at
-                    T, ~7.2 s (190 m at 95 km/h)
+                    T, ~8.25 s centre to centre, 8.0 s as logged (bumper to bumper; 270 m, 7.2 / 7.0 s before 2026-11-13)
         tick()      drives the approaching car; yield(): once the ego car has come into its lane less
                     than 10 m ahead of it, it brakes (6 m/s^2) and stays HAZARD_FOLLOW_GAP behind
     """
@@ -440,7 +474,7 @@ class TorScene(object):
         ahead it went."""
         settings = self.template['obstacle']
         v_alert = max(ego_speed + max(ego_accel, 0.0) * lead_s, 1.0)
-        # its TTC at the alert as designed (7.2 s: 270 m - 3 s at 95 km/h), also at a slower cruise speed
+        # its TTC at the alert as designed (8.25 s: 297 m - 3 s at 95 km/h, 8.0 s bumper to bumper as logged; 7.2 s before 2026-11-13), also at a slower cruise speed
         nominal_speed = settings.get('spawn_nominal_kmh', nominal_speed * 3.6) / 3.6
         ttc = settings['spawn_dx_m'] / nominal_speed - lead_s
         self.obstacle_spawn_dx = ttc * v_alert + lead_s * (ego_speed + v_alert) / 2.0

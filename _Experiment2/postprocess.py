@@ -28,7 +28,8 @@ sagat_gaze.csv, one row per question, over the PRE_S seconds of driving before t
 share of the gaze on the display, the missing shares, the time since the gaze last left the
 display and the longest stretch off it; the mirror glances in those seconds (mirror_aoi.csv).
 What a driver could know at the freeze depends on whether they looked up just before it, so the
-SAGAT scores are read with these.
+SAGAT scores are read with these; left_ok / rear_ok / right_ok / ahead_ok: each question right (1),
+wrong (0) or unscored, next to that mirror's glances.
 
 display_gaze.csv, one row per window: the whole drive (block), each mirror event's gaze window
 (gaze_windows.csv), and for each TOR the PRE_S before the alert (TOR_pre) and TOR_POST_S after it
@@ -281,6 +282,11 @@ def sagat_gaze(folder, gaze):
         score = q.get('score') or {}
         row = {'id': q['id'], 't': t, 'pre_s': PRE_S, 'score': score.get('score'),
                'behind': score.get('behind'), 'beside': score.get('beside'), 'ahead': score.get('ahead')}
+        # per question since 2026-11-13 (four zones; 'beside' only in older runs): correct or not, '' unscored
+        for key, col in (('behind_left', 'left_ok'), ('behind', 'rear_ok'), ('behind_right', 'right_ok'),
+                         ('ahead', 'ahead_ok')):
+            ok = (score.get('correct') or {}).get(key)
+            row[col] = '' if ok is None else int(ok)
         row.update(gaze.stats(w0, w1))
         idx = [i for i in gaze.indices(w0, w1) if gaze.on[i] is not None]
         row['valid_samples'] = len(idx)
@@ -301,7 +307,8 @@ def sagat_gaze(folder, gaze):
         rows.append(row)
     keys = ['id', 't', 'pre_s', 'valid_samples', 'gaze_samples', 'missing_share', 'on_display_share',
             'missing_after_on_share', 'since_last_off_display_s', 'longest_off_display_s', 'left_mirror_frames',
-            'rear_mirror_frames', 'right_mirror_frames', 'score', 'behind', 'beside', 'ahead']
+            'rear_mirror_frames', 'right_mirror_frames', 'score', 'behind', 'beside', 'ahead', 'left_ok', 'rear_ok',
+            'right_ok', 'ahead_ok']
     with open(os.path.join(folder, 'sagat_gaze.csv'), 'w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction='ignore')
         writer.writeheader()

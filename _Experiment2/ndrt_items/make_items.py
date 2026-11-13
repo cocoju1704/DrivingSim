@@ -1,7 +1,9 @@
 """NDRT scene questions after each SAGAT stop: 4 frames, "이 장면이 영상에 나왔나요?".
 
-Shown frames come from the shots that start 8-55 s before the stop (the frame ~1.5 s into the shot,
-no subtitles); not-shown frames come from the same episode, outside the clip and outside the
+Shown frames come from shots 5-55 s before the stop that stay on screen for 5 s or more (not ones that
+flash by; no subtitles), people first (2026-11-13: on screen longer, as in the talks, and big), else
+big things; the not-shown frames of the same kind (people, often the same host elsewhere) and with the
+same channel logo; not-shown frames come from the same episode, outside the clip and outside the
 episode's opening preview, in the same look (same country part, same channel logo). The number
 shown per stop differs (1-3 of 4) so one answer does not give away the next.
 
@@ -32,20 +34,20 @@ BEFORE_STOP = (5.0, 55.0)   # s: a shown frame this long before its stop
 # the clip), not-shown frames (s into the episode)
 BLOCKS = {
     'A': ('중국', '중국_A.mp4', 0.0, 690, {
-        'A-Q1': ([137.8, 157.5, 172.0], [2265.0]),
-        'A-Q2': ([315.8], [2341.1, 2310.2, 1624.6]),
-        'A-Q3': ([464.7, 487.5], [1689.3, 2458.8])}),
+        'A-Q1': ([141.2], [1627.7, 2265.0, 2290.5]),
+        'A-Q2': ([341.5, 362.0], [2829.3, 2789.8]),
+        'A-Q3': ([452.5, 489.7, 497.3], [1775.5])}),
     'B': ('스위스러시아', '스위스러시아_B.mp4', 0.0, 690, {
-        'B-Q1': ([96.1, 113.6], [779.1, 794.9]),
-        'B-Q2': ([271.3], [903.6, 756.7, 1188.9]),
-        'B-Q3': ([464.4, 468.8, 497.7], [1067.6])}),
+        'B-Q1': ([113.6], [737.7, 756.7, 794.9]),
+        'B-Q2': ([259.5, 267.1], [859.7, 1114.2]),
+        'B-Q3': ([475.5, 486.4, 501.6], [1100.5])}),
     'C': ('스페인 남부', '스페인남부_C.mp4', 0.0, 690, {
-        'C-Q1': ([220.1], [862.4, 899.9, 1076.1]),
-        'C-Q2': ([365.0, 370.7, 382.5], [1100.3]),
-        'C-Q3': ([465.0, 496.1], [945.1, 1242.2])}),
+        'C-Q1': ([187.0, 196.0], [763.8, 1238.2]),
+        'C-Q2': ([350.5, 358.4, 394.0], [770.0]),
+        'C-Q3': ([455.4], [1145.6, 757.0, 1122.4])}),
     # practice: a Galapagos nature documentary (its first minute is the preview)
     'P': ('연습주행', '연습주행_P.mp4', 0.0, 240, {
-        'P-Q1': ([94.9, 111.2], [1033.0, 387.9])}),
+        'P-Q1': ([105.0, 125.3], [1033.0, 387.9])}),
 }
 
 

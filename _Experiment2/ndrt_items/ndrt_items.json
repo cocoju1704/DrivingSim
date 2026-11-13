@@ -12,84 +12,84 @@
      {
       "image": "A/A-Q1-1.jpg",
       "shown": false,
-      "episode_t": 2265.0
+      "episode_t": 2290.5
      },
      {
       "image": "A/A-Q1-2.jpg",
       "shown": true,
-      "episode_t": 137.8,
-      "video_t": 137.8,
-      "before_stop_s": 49.2
+      "episode_t": 141.2,
+      "video_t": 141.2,
+      "before_stop_s": 45.8
      },
      {
       "image": "A/A-Q1-3.jpg",
-      "shown": true,
-      "episode_t": 172.0,
-      "video_t": 172.0,
-      "before_stop_s": 15.0
+      "shown": false,
+      "episode_t": 2265.0
      },
      {
       "image": "A/A-Q1-4.jpg",
-      "shown": true,
-      "episode_t": 157.5,
-      "video_t": 157.5,
-      "before_stop_s": 29.5
+      "shown": false,
+      "episode_t": 1627.7
      }
     ]
    },
    "A-Q2": {
-    "stop_t": 367,
+    "stop_t": 368,
     "items": [
      {
       "image": "A/A-Q2-1.jpg",
-      "shown": false,
-      "episode_t": 2341.1
+      "shown": true,
+      "episode_t": 362.0,
+      "video_t": 362.0,
+      "before_stop_s": 6.0
      },
      {
       "image": "A/A-Q2-2.jpg",
       "shown": true,
-      "episode_t": 315.8,
-      "video_t": 315.8,
-      "before_stop_s": 51.2
+      "episode_t": 341.5,
+      "video_t": 341.5,
+      "before_stop_s": 26.5
      },
      {
       "image": "A/A-Q2-3.jpg",
       "shown": false,
-      "episode_t": 2310.2
+      "episode_t": 2829.3
      },
      {
       "image": "A/A-Q2-4.jpg",
       "shown": false,
-      "episode_t": 1624.6
+      "episode_t": 2789.8
      }
     ]
    },
    "A-Q3": {
-    "stop_t": 510,
+    "stop_t": 506,
     "items": [
      {
       "image": "A/A-Q3-1.jpg",
-      "shown": false,
-      "episode_t": 1689.3
+      "shown": true,
+      "episode_t": 497.3,
+      "video_t": 497.3,
+      "before_stop_s": 8.7
      },
      {
       "image": "A/A-Q3-2.jpg",
       "shown": true,
-      "episode_t": 487.5,
-      "video_t": 487.5,
-      "before_stop_s": 22.5
+      "episode_t": 489.7,
+      "video_t": 489.7,
+      "before_stop_s": 16.3
      },
      {
       "image": "A/A-Q3-3.jpg",
       "shown": false,
-      "episode_t": 2458.8
+      "episode_t": 1775.5
      },
      {
       "image": "A/A-Q3-4.jpg",
       "shown": true,
-      "episode_t": 464.7,
-      "video_t": 464.7,
-      "before_stop_s": 45.3
+      "episode_t": 452.5,
+      "video_t": 452.5,
+      "before_stop_s": 53.5
      }
     ]
    }
@@ -102,7 +102,7 @@
   "clip_s": 690,
   "stops": {
    "B-Q1": {
-    "stop_t": 143,
+    "stop_t": 150,
     "items": [
      {
       "image": "B/B-Q1-1.jpg",
@@ -111,80 +111,80 @@
      },
      {
       "image": "B/B-Q1-2.jpg",
-      "shown": true,
-      "episode_t": 113.6,
-      "video_t": 113.6,
-      "before_stop_s": 29.4
+      "shown": false,
+      "episode_t": 737.7
      },
      {
       "image": "B/B-Q1-3.jpg",
       "shown": true,
-      "episode_t": 96.1,
-      "video_t": 96.1,
-      "before_stop_s": 46.9
+      "episode_t": 113.6,
+      "video_t": 113.6,
+      "before_stop_s": 36.4
      },
      {
       "image": "B/B-Q1-4.jpg",
       "shown": false,
-      "episode_t": 779.1
+      "episode_t": 756.7
      }
     ]
    },
    "B-Q2": {
-    "stop_t": 303,
+    "stop_t": 314,
     "items": [
      {
       "image": "B/B-Q2-1.jpg",
       "shown": false,
-      "episode_t": 756.7
+      "episode_t": 859.7
      },
      {
       "image": "B/B-Q2-2.jpg",
       "shown": false,
-      "episode_t": 1188.9
+      "episode_t": 1114.2
      },
      {
       "image": "B/B-Q2-3.jpg",
       "shown": true,
-      "episode_t": 271.3,
-      "video_t": 271.3,
-      "before_stop_s": 31.7
+      "episode_t": 259.5,
+      "video_t": 259.5,
+      "before_stop_s": 54.5
      },
      {
       "image": "B/B-Q2-4.jpg",
-      "shown": false,
-      "episode_t": 903.6
+      "shown": true,
+      "episode_t": 267.1,
+      "video_t": 267.1,
+      "before_stop_s": 46.9
      }
     ]
    },
    "B-Q3": {
-    "stop_t": 512,
+    "stop_t": 513,
     "items": [
      {
       "image": "B/B-Q3-1.jpg",
       "shown": true,
-      "episode_t": 497.7,
-      "video_t": 497.7,
-      "before_stop_s": 14.3
+      "episode_t": 501.6,
+      "video_t": 501.6,
+      "before_stop_s": 11.4
      },
      {
       "image": "B/B-Q3-2.jpg",
       "shown": true,
-      "episode_t": 464.4,
-      "video_t": 464.4,
-      "before_stop_s": 47.6
+      "episode_t": 475.5,
+      "video_t": 475.5,
+      "before_stop_s": 37.5
      },
      {
       "image": "B/B-Q3-3.jpg",
       "shown": true,
-      "episode_t": 468.8,
-      "video_t": 468.8,
-      "before_stop_s": 43.2
+      "episode_t": 486.4,
+      "video_t": 486.4,
+      "before_stop_s": 26.6
      },
      {
       "image": "B/B-Q3-4.jpg",
       "shown": false,
-      "episode_t": 1067.6
+      "episode_t": 1100.5
      }
     ]
    }
@@ -201,25 +201,27 @@
     "items": [
      {
       "image": "C/C-Q1-1.jpg",
-      "shown": false,
-      "episode_t": 862.4
+      "shown": true,
+      "episode_t": 196.0,
+      "video_t": 196.0,
+      "before_stop_s": 36.0
      },
      {
       "image": "C/C-Q1-2.jpg",
       "shown": false,
-      "episode_t": 1076.1
+      "episode_t": 1238.2
      },
      {
       "image": "C/C-Q1-3.jpg",
       "shown": true,
-      "episode_t": 220.1,
-      "video_t": 220.1,
-      "before_stop_s": 11.9
+      "episode_t": 187.0,
+      "video_t": 187.0,
+      "before_stop_s": 45.0
      },
      {
       "image": "C/C-Q1-4.jpg",
       "shown": false,
-      "episode_t": 899.9
+      "episode_t": 763.8
      }
     ]
    },
@@ -229,57 +231,55 @@
      {
       "image": "C/C-Q2-1.jpg",
       "shown": true,
-      "episode_t": 382.5,
-      "video_t": 382.5,
-      "before_stop_s": 18.5
+      "episode_t": 394.0,
+      "video_t": 394.0,
+      "before_stop_s": 7.0
      },
      {
       "image": "C/C-Q2-2.jpg",
       "shown": false,
-      "episode_t": 1100.3
+      "episode_t": 770.0
      },
      {
       "image": "C/C-Q2-3.jpg",
       "shown": true,
-      "episode_t": 370.7,
-      "video_t": 370.7,
-      "before_stop_s": 30.3
+      "episode_t": 358.4,
+      "video_t": 358.4,
+      "before_stop_s": 42.6
      },
      {
       "image": "C/C-Q2-4.jpg",
       "shown": true,
-      "episode_t": 365.0,
-      "video_t": 365.0,
-      "before_stop_s": 36.0
+      "episode_t": 350.5,
+      "video_t": 350.5,
+      "before_stop_s": 50.5
      }
     ]
    },
    "C-Q3": {
-    "stop_t": 519,
+    "stop_t": 508,
     "items": [
      {
       "image": "C/C-Q3-1.jpg",
       "shown": false,
-      "episode_t": 1242.2
+      "episode_t": 1122.4
      },
      {
       "image": "C/C-Q3-2.jpg",
-      "shown": true,
-      "episode_t": 496.1,
-      "video_t": 496.1,
-      "before_stop_s": 22.9
+      "shown": false,
+      "episode_t": 1145.6
      },
      {
       "image": "C/C-Q3-3.jpg",
       "shown": false,
-      "episode_t": 945.1
+      "episode_t": 757.0
      },
      {
       "image": "C/C-Q3-4.jpg",
       "shown": true,
-      "episode_t": 465.0,
-      "video_t": 465.0,
-      "before_stop_s": 54.0
+      "episode_t": 455.4,
+      "video_t": 455.4,
+      "before_stop_s": 52.6
      }
     ]
    }
@@ -292,14 +292,14 @@
   "clip_s": 240,
   "stops": {
    "P-Q1": {
-    "stop_t": 134,
+    "stop_t": 133,
     "items": [
      {
       "image": "P/P-Q1-1.jpg",
       "shown": true,
-      "episode_t": 94.9,
-      "video_t": 94.9,
-      "before_stop_s": 39.1
+      "episode_t": 105.0,
+      "video_t": 105.0,
+      "before_stop_s": 28.0
      },
      {
       "image": "P/P-Q1-2.jpg",
@@ -314,9 +314,9 @@
      {
       "image": "P/P-Q1-4.jpg",
       "shown": true,
-      "episode_t": 111.2,
-      "video_t": 111.2,
-      "before_stop_s": 22.8
+      "episode_t": 125.3,
+      "video_t": 125.3,
+      "before_stop_s": 7.7
      }
     ]
    }

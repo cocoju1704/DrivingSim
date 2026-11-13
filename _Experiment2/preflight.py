@@ -24,22 +24,118 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import shutil
 import socket
 import ssl
 import sys
 import time
+import unicodedata
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-OK, WARN, FAIL = 'OK  ', '주의', '실패'
+OK, WARN, FAIL = 'OK', '주의', '실패'
 results = []
+NAME_COLS = 16          # display columns of the item's name (Hangul counts 2)
+
+
+class Style(object):
+    """ANSI colours on the console (Windows 10 cmd: virtual terminal mode switched on), none when the
+    output is not a console or NO_COLOR is set."""
+
+    def __init__(self):
+        self.on = sys.stdout.isatty() and not os.environ.get('NO_COLOR') and self._enable()
+
+    @staticmethod
+    def _enable():
+        if os.name != 'nt':
+            return True
+        try:
+            import ctypes  # pylint: disable=import-outside-toplevel
+            kernel = ctypes.windll.kernel32
+            handle = kernel.GetStdHandle(-11)
+            mode = ctypes.c_uint32()
+            if not kernel.GetConsoleMode(handle, ctypes.byref(mode)):
+                return False
+            return bool(kernel.SetConsoleMode(handle, mode.value | 0x0004))   # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        except Exception:  # pylint: disable=broad-except
+            return False
+
+    def __call__(self, text, *codes):
+        return '\033[%sm%s\033[0m' % (';'.join(codes), text) if self.on and codes else text
+
+
+style = Style()
+BADGE = {OK: (' OK ', '30', '42'), WARN: ('주의', '30', '43'), FAIL: ('실패', '97', '41')}
+TONE = {OK: '92', WARN: '93', FAIL: '91'}
+
+
+def cols(text):
+    """Display columns of text (East Asian wide characters count 2)."""
+    return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in text)
+
+
+def pad(text, width):
+    return text + ' ' * max(width - cols(text), 0)
+
+
+def wrap(text, width):
+    """Lines of at most width columns, broken at spaces where possible."""
+    lines, line = [], ''
+    for word in text.split(' '):
+        candidate = word if not line else line + ' ' + word
+        if cols(candidate) <= width or not line:
+            line = candidate
+        else:
+            lines.append(line)
+            line = word
+        while cols(line) > width:   # a word longer than the line
+            cut = 0
+            while cols(line[:cut + 1]) <= width:
+                cut += 1
+            lines.append(line[:cut])
+            line = line[cut:]
+    return lines + [line] if line else lines
+
+
+def term_width():
+    return max(min(shutil.get_terminal_size((100, 30)).columns, 110) - 1, 60)
+
+
+def busy(what):
+    """'checking ...' on the line the result will overwrite."""
+    if style.on:
+        sys.stdout.write('  %s %s %s' % (style('····', '90'), pad(what, NAME_COLS), style('확인 중…', '90')))
+        sys.stdout.flush()
 
 
 def report(level, what, text):
+    """One result: the badge, the item, what was found; after the first ': ' what to do, on its own
+    line(s) below in the result's colour."""
     results.append(level)
-    print('[%s] %-10s %s' % (level, what, text))
+    width = term_width()
+    indent = 2 + 4 + 1 + NAME_COLS + 1
+    found, _, todo = text.partition(': ')
+    label, fg, bg = BADGE[level]
+    if style.on:
+        head = '  %s %s ' % (style(label, fg, bg), style(pad(what, NAME_COLS), '1'))
+    else:   # no colours: the badge in brackets, all as wide as '[주의]'
+        head = '  %s %s ' % (pad('[%s]' % label.strip(), 6), pad(what, NAME_COLS))
+        indent += 2
+    lines = wrap(found, width - indent)
+    out = [head + (lines[0] if lines else '')] + [' ' * indent + l for l in lines[1:]]
+    for k, l in enumerate(wrap(todo, width - indent - 2) if todo else []):
+        out.append(' ' * indent + style(('→ ' if k == 0 else '  ') + l, TONE[level]))
+    if style.on:
+        sys.stdout.write('\r\033[2K')
+    print('\n'.join(out))
+
+
+def section(title):
+    width = term_width()
+    print()
+    print(style(' %s ' % title, '1', '96') + style('─' * max(width - cols(title) - 2, 0), '90'))
 
 
 def load_choices():
@@ -58,18 +154,41 @@ def get_json(url, timeout=6.0):
 
 
 def check_carla():
+    busy('CARLA')
     try:
-        import carla
-        client = carla.Client('127.0.0.1', 2000)
-        client.set_timeout(5.0)
-        version = client.get_server_version()
-        town = client.get_world().get_map().name.split('/')[-1]
+        with quiet_stdout():   # the CARLA client's own lines ("Found the required file in cache!")
+            import carla
+            client = carla.Client('127.0.0.1', 2000)
+            client.set_timeout(5.0)
+            version = client.get_server_version()
+            world = client.get_world()
+            town = world.get_map().name.split('/')[-1]
+            del world, client
         report(OK, 'CARLA', '서버 실행 중 (%s, 맵 %s)' % (version, town))
     except Exception as error:  # pylint: disable=broad-except
         report(WARN, 'CARLA', '서버 응답 없음: 시작 창에서 Start하면 켜집니다 (%s)' % str(error).splitlines()[0][:60])
 
 
+class quiet_stdout(object):  # pylint: disable=invalid-name
+    """Standard output (the file descriptor: a C++ library's prints too) to nowhere for a while."""
+
+    def __enter__(self):
+        sys.stdout.flush()
+        self._saved = os.dup(1)
+        self._null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(self._null, 1)
+        return self
+
+    def __exit__(self, *exc):
+        sys.stdout.flush()
+        os.dup2(self._saved, 1)
+        os.close(self._saved)
+        os.close(self._null)
+        return False
+
+
 def check_wheel(choices):
+    busy('핸들')
     os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
     try:
         import pygame
@@ -110,6 +229,7 @@ def check_video(choices):
             return
     if not base.startswith(('http://', 'https://')):
         base = 'http://' + base
+    busy('영상 서버')
     try:
         from launcher import run_plan
         phone = run_plan(choices)[1] == 'phone'
@@ -142,8 +262,8 @@ def check_video(choices):
     screen = state.get('screen') or '?'
     title = state.get('title') or ''
     text = 'v%d, 화면 %s%s, %.0f초 전 보고' % (version, screen, (' (%s)' % title) if title else '', age)
-    if version < 13:
-        report(FAIL, '글래스 앱', text + ': v13이 아닙니다. Meta AI 앱에서 웹앱 연결을 끊었다가 다시 연결하세요')
+    if version < 15:
+        report(FAIL, '글래스 앱', text + ': v15가 아닙니다 (v15부터 세트 클립을 처음부터 재생). Meta AI 앱에서 웹앱 연결을 끊었다가 다시 연결하세요')
     elif state.get('frozen'):
         report(WARN, '글래스 앱', text + ': 지난 블록의 정지 화면이 남아 있습니다 (시작하면 풀립니다)')
     else:
@@ -178,6 +298,7 @@ def check_g2(choices):
         report(WARN, 'Glasses 2', '시작 창에 주소가 비어 있습니다: 시선 데이터 없이 진행됩니다')
         return
     from g2_link import G2Link
+    busy('Glasses 2')
     try:
         # G2Link's own request (the IPv6 link-local address in a URL) without its thread's work
         link = G2Link.__new__(G2Link)
@@ -249,10 +370,16 @@ def check_sagat(wait):
             return
     server = SagatServer(DEFAULT_PORT)
     url = 'http://%s:%d/' % (own_address() or '<이 PC IP>', DEFAULT_PORT)
-    print('           SAGAT 화면을 %d초 동안 기다립니다: 태블릿/노트북에서 %s' % (wait, url))
     end = time.monotonic() + wait
+    if not style.on:
+        print('  SAGAT 화면을 %d초 동안 기다립니다: 태블릿/노트북에서 %s' % (wait, url))
     try:
         while time.monotonic() < end and not server.connected(within=2.0):
+            if style.on:   # a countdown on the result's line
+                sys.stdout.write('\r\033[2K  %s %s %s' % (
+                    style('····', '90'), pad('SAGAT', NAME_COLS),
+                    style('태블릿/노트북 기다리는 중 %2d초  %s' % (int(end - time.monotonic()) + 1, url), '90')))
+                sys.stdout.flush()
             time.sleep(0.3)
         if server.connected(within=2.0):
             report(OK, 'SAGAT', '태블릿(노트북) 연결됨 (%s)' % url)
@@ -267,21 +394,56 @@ def main():
     parser.add_argument('--wait', type=float, default=15.0, help='s to wait for the SAGAT tablet')
     args = parser.parse_args()
     choices = load_choices()
-    print('시작 창의 마지막 설정: 참가자 %s, 블록 %s, 입력 %s, 영상 %s, Glasses 2 %s' % (
-        choices.get('participant'), choices.get('block'), choices.get('input'), choices.get('video') or '-',
-        choices.get('g2') or '-'))
-    print()
+    started = time.monotonic()
+    header(choices)
+    section('시뮬레이터')
     check_carla()
     check_wheel(choices)
+    section('NDRT 영상')
     check_video(choices)
+    section('시선 (Glasses 2)')
     check_g2(choices)
+    section('SAGAT')
     check_sagat(args.wait)
+    return verdict(time.monotonic() - started)
+
+
+def header(choices):
+    """The title and the block the launcher's last settings start."""
+    width = term_width()
+    try:
+        from launcher import run_plan
+        set_name, condition = run_plan(choices)
+    except Exception:  # pylint: disable=broad-except
+        set_name, condition = choices.get('set'), choices.get('condition')
+    block = choices.get('block')
+    print(style('━' * width, '96'))
+    print(style('  사전 점검', '1') + style('   %s' % time.strftime('%Y-%m-%d %H:%M'), '90'))
+    print(style('━' * width, '96'))
+    rows = [('참가자', '%s%s' % (choices.get('participant'), '  (테스트)' if choices.get('test') else '')),
+            ('블록', '%s  →  세트 %s, 조건 %s' % ('연습' if block == 'P' else block, set_name or '?', condition or '?')),
+            ('입력', choices.get('input') or '-'),
+            ('영상 서버', choices.get('video') or ('이 PC' if choices.get('video_server') else '-')),
+            ('Glasses 2', choices.get('g2') or '-')]
+    for name, value in rows:
+        print('  %s %s' % (style(pad(name, 10), '90'), value))
+    print(style('  시작 창의 마지막 설정입니다. 바꾸려면 시작 창에서 고른 뒤 다시 점검하세요.', '90'))
+
+
+def verdict(seconds):
+    """The banner at the end; 1 with a failure."""
+    width = term_width()
+    fails, warns, oks = results.count(FAIL), results.count(WARN), results.count(OK)
+    if fails:
+        text, codes = '  ×  실패 %d개: 위의 → 를 고친 뒤 다시 점검하세요' % fails, ('1', '97', '41')
+    elif warns:
+        text, codes = '  ○  시작해도 됩니다 (주의 %d개: 위를 확인하세요)' % warns, ('1', '30', '43')
+    else:
+        text, codes = '  ○  모두 정상: 시작해도 됩니다', ('1', '30', '42')
     print()
-    if FAIL in results:
-        print('==> 실패 %d개: 위를 고친 뒤 다시 확인하세요.' % results.count(FAIL))
-        return 1
-    print('==> 시작해도 됩니다%s.' % (' (주의 %d개)' % results.count(WARN) if WARN in results else ''))
-    return 0
+    print(style(pad(text, width), *codes) if style.on else '==>' + text)
+    print(style('  OK %d · 주의 %d · 실패 %d · %.0f초 걸림' % (oks, warns, fails, seconds), '90'))
+    return 1 if fails else 0
 
 
 if __name__ == '__main__':

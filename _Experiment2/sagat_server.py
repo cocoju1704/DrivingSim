@@ -19,8 +19,8 @@ The page asks GET /state every 0.3 s:
     {"phase": "countdown", "count": 3}                         3, 2, 1 before the drive goes on
 and sends the answers with POST /answer:
     {"qid": "A-Q1", "items": {"behind_left": {"present": true, "confidence": 4}, ...}, "answer_ms": 18000}
-    items: behind_left, behind, behind_right, beside_left, beside_right, ahead_left, ahead, ahead_right
-    (abc_experiment.SAGAT_ITEMS), each yes / no with its own confidence 1..5
+    items: behind_left, behind, behind_right, ahead (abc_experiment.SAGAT_ITEMS, four zones since
+    2026-11-13), each yes / no with its own confidence 1..5
     {"qid": "A-Q1", "kind": "ndrt", "answers": [{"image": "A/A-Q1-1.jpg", "shown": true, "confidence": 3,
      "ms": 4100}, ...], "answer_ms": 21000}                    the video questions, in the order asked
 The frames are served from ndrt_items/ (GET /ndrt/A/A-Q1-1.jpg).

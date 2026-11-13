@@ -59,21 +59,61 @@ SCENE_PX = (960, 540)                # the live scene video
 SETTLE_S = 1.0                       # s after a target appears before its gaze counts
 COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
-MIRROR_MESSAGE = '미러는 운전할 때처럼 고개를 돌려서 보세요'   # before the first mirror target
+MIRROR_MESSAGE = ('다음 점은 미러 위에 나타납니다',          # before the first mirror target: the
+                  '운전할 때처럼 고개를 자연스럽게 돌려서 봐 주세요')   # participant's view, what comes next
 MIN_SAMPLES = 20
 # pass (the participant's fit is good enough for the experiment), from the 2026-11-11 pilot
 PASS_ROAD_DEG = 1.5              # the road target
-PASS_MONITOR_MEAN_DEG = 3.0      # all monitor and mirror targets
+PASS_MONITOR_MEAN_DEG = 3.0      # the monitor targets (the mirrors: PASS_MIRROR_DEG, each on its own)
+# each mirror target (2026-11-14; before, the mirrors were in the mean above, which a bad mirror could
+# pass and a bad monitor corner fail): the side mirrors are judged within 1 degree of their glass
+# (mirror_aoi.ENTER_DEG) less the validation offset there, the rear-view mirror within 2.5 (a large
+# glass, sky around it). Check drives 1113: right 1.3 degrees -> 6 of 6 glances found, 6.6 / 7.7 -> 2 of 13
+PASS_MIRROR_DEG = {'left mirror': 4.0, 'rear-view mirror': 5.0, 'right mirror': 4.0}
 PASS_DISPLAY_MEDIAN_DEG = 3.0    # the glasses display ("looking at it": the display is about 12 deg)
 # the monitors: (name, monitor: -1 left, 0 middle, 1 right, fraction of its width, of its height). The
-# middle monitor's centre and corners, then where the experiment's mirrors are (abc_experiment's driver
-# view over 3 x 1920 x 1080, measured on its screen snapshot): for those the head may turn, as it does
-# while driving. The rear-view mirror: at the right monitor's top left (its glass centre projected
-# from the driver's eyes, carla_base REAR_MIRROR at 43 degrees per monitor: 0.28, 0.14)
+# middle monitor's centre and corners, then the centre of each mirror's glass as the experiment draws
+# it: MIRRORS_FILE (abc_experiment writes it at every block start), else the fractions below (the
+# mirrors since 2026-11-13 afternoon; before, 0.60/0.80, 0.28/0.14, 0.935/0.76 were the old mirrors,
+# and after the mirrors moved they stayed: the targets 5.5-7.7 degrees off the glass centres, the
+# right one outside its glass). For the mirrors the head may turn, as it does while driving.
 MONITOR_POINTS = [('road', 0, 0.5, 0.45), ('middle top left', 0, 0.08, 0.15), ('middle top right', 0, 0.92, 0.15),
                   ('middle bottom right', 0, 0.92, 0.85), ('middle bottom left', 0, 0.08, 0.85),
-                  ('left mirror', -1, 0.60, 0.80), ('rear-view mirror', 1, 0.28, 0.14),
-                  ('right mirror', 1, 0.935, 0.76)]
+                  ('left mirror', -1, 0.724, 0.746), ('rear-view mirror', 1, 0.130, 0.123),
+                  ('right mirror', 1, 0.768, 0.651)]
+MIRRORS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mirrors_last.json')
+MIRROR_POINT_NAMES = {'left': 'left mirror', 'rear': 'rear-view mirror', 'right': 'right mirror'}
+MONITOR_PX = (1920, 1080)
+
+
+def glass_centre(poly):
+    """The centroid of a polygon [(x, y)]."""
+    area = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(poly, poly[1:] + poly[:1]):
+        c = x0 * y1 - x1 * y0
+        area += c
+        cx += (x0 + x1) * c
+        cy += (y0 + y1) * c
+    return cx / (3.0 * area), cy / (3.0 * area)
+
+
+def mirror_points():
+    """MONITOR_POINTS with the mirrors at their glass centres in MIRRORS_FILE (if there), and where
+    they came from."""
+    try:
+        with open(MIRRORS_FILE, encoding='utf-8') as handle:
+            mirrors = json.load(handle)['mirrors']
+    except (OSError, ValueError, KeyError):
+        return MONITOR_POINTS, 'g2_validate.py MONITOR_POINTS (no mirrors_last.json)'
+    points = []
+    for name, monitor, fx, fy in MONITOR_POINTS:
+        key = next((k for k, v in MIRROR_POINT_NAMES.items() if v == name), None)
+        if key in mirrors:
+            x, y = glass_centre(mirrors[key]['glass'])
+            monitor = int(x // MONITOR_PX[0]) - 1
+            fx, fy = round(x / MONITOR_PX[0] - (monitor + 1), 4), round(y / MONITOR_PX[1], 4)
+        points.append((name, monitor, fx, fy))
+    return points, 'mirrors_last.json (%s)' % time.strftime('%m-%d %H:%M', time.localtime(os.path.getmtime(MIRRORS_FILE)))
 TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
 DISPLAY_POINTS = [(300, 30), (570, 300), (300, 570), (30, 300), (165, 165), (435, 165), (435, 435), (165, 435)]
@@ -438,8 +478,12 @@ def validate_monitor(host, out_dir, screen, link):
         print('The monitor check needs OpenCV: python -m pip install opencv-python-headless')
         return None, None
     rec = Recording(host, os.path.join(out_dir, 'monitor'))
-    print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s)'
-          % (len(MONITOR_POINTS), len(MONITOR_POINTS) * (SETTLE_S + COLLECT_S)))
+    points, source = mirror_points()
+    print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s); the mirrors from %s'
+          % (len(points), len(points) * (SETTLE_S + COLLECT_S), source))
+    for name, monitor, fx, fy in points:
+        if 'mirror' in name:
+            print('  %-17s monitor %+d at %.3f, %.3f' % (name, monitor, fx, fy))
     screen.message('이제 모니터를 보세요', '점이 나타나면 점의 가운데를 봐 주세요')
     glasses_cue(link, '이제 모니터를 보세요')
     still = (time.time() + 0.5, time.time() + MESSAGE_S)    # the head still: the gyroscope's bias
@@ -447,11 +491,11 @@ def validate_monitor(host, out_dir, screen, link):
     glasses_cue(link)
     shown = []
     told = False
-    for point in MONITOR_POINTS:
+    for point in points:
         if screen.aborted:
             break
         if 'mirror' in point[0] and not told:
-            screen.message(MIRROR_MESSAGE)
+            screen.message(*MIRROR_MESSAGE)
             time.sleep(MESSAGE_S)
             told = True
         if screen.target(point[1:]):
@@ -490,6 +534,7 @@ def validate_monitor(host, out_dir, screen, link):
                 targets.append(target)
         name = point[0]
         out = _point_result(name, gaze, targets, errors, len([1 for ft, _ in frames if t0 <= ft <= t1]))
+        out['screen'] = [point[1], point[2], point[3]]   # monitor, fractions: where the target was drawn
         turned = [a for t, a in rotation if t0 <= t <= t1]
         if turned:
             # from the first target (the road ahead): which axis is the head's yaw and its sign is
@@ -597,11 +642,15 @@ def criteria(result):
         points = {p['point']: p for p in result['monitor'] or []}
         road = points.get('road', {}).get('accuracy_deg')
         rows.append(('도로 중앙', _deg(road), '≤ %.1f°' % PASS_ROAD_DEG, road is not None and road <= PASS_ROAD_DEG))
-        mirrors = [name for name, _, _, _ in MONITOR_POINTS if 'mirror' in name]
-        measured = [name for name in mirrors if 'accuracy_deg' in points.get(name, {})]
-        rows.append(('미러 측정', '%d / %d' % (len(measured), len(mirrors)), '모두', len(measured) == len(mirrors)))
-        mean = (result.get('monitor_summary') or {}).get('accuracy_mean_deg')
-        rows.append(('모니터·미러 평균', _deg(mean), '≤ %.1f°' % PASS_MONITOR_MEAN_DEG,
+        # each mirror on its own (2026-11-14): what mirror_aoi.py judges glances by is the error there
+        for name, limit in PASS_MIRROR_DEG.items():
+            value = points.get(name, {}).get('accuracy_deg')
+            rows.append((POINT_NAMES.get(name, name), _deg(value) if value is not None else '측정 안 됨',
+                         '≤ %.1f°' % limit, value is not None and value <= limit))
+        values = [p['accuracy_deg'] for name, p in points.items()
+                  if 'mirror' not in name and p.get('accuracy_deg') is not None]
+        mean = sum(values) / len(values) if values else None
+        rows.append(('모니터 평균', _deg(mean), '≤ %.1f°' % PASS_MONITOR_MEAN_DEG,
                      mean is not None and mean <= PASS_MONITOR_MEAN_DEG))
     if 'display' in result:
         median = (result.get('display_summary') or {}).get('accuracy_median_deg')

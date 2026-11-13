@@ -8,14 +8,19 @@ Scenario ABC: one block of the glasses / phone / HUD experiment (Notion: 주행 
     python _Experiment2\\abc_experiment.py --set P --test      practice drive, data to Data/test/
 
 The ego car drives itself in lane 2 (Town04's real lane 3) at 70 km/h (abc_config ego) until the TOR and reacts to
-nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc_schedule.py):
+nothing but the F's lead car (abc_follow). The cars around it follow the set's schedule (schedules/<set>.json, abc_schedule.py):
 
-    S   a car comes up in lane 1 or 3 behind the car and signals towards lane 2 for 5 s (left or right
-        side mirror)
-    SD  the same without the turn signal
-    R   a car comes up close behind in lane 2 (rear-view mirror)
-    F   the car ahead in lane 2 brakes (brake light 3 s, -8 km/h)
-    Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet (at most
+    S   a car comes up fast in lane 1 or 3 from behind (left or right side mirror), passes the car (T:
+        alongside), signals and moves over 30 m ahead (lane 1 -> lane 0, lane 3 -> lane 2, in front
+        of the car) and leaves ahead (since 2026-11-13; before: it held 12 m behind for 5 s and fell
+        back, before 2026-11-12 also SD, and S with a turn signal towards lane 2)
+    R   a car comes up close behind in lane 2 at +22.5 km/h (rear-view mirror)
+    F   the car ahead in lane 2 (20-22.5 m) brakes hard (brake light 3 s, -25 km/h at 5 m/s^2) and then
+        leaves ahead; the ego car brakes after it (abc_follow: 1 s later, down to about 40 km/h) and
+        makes the distance up; the other cars keep their speeds (since 2026-11-13; before 30 m, -20
+        km/h at 3.5 m/s^2, back to its place after)
+    Q   SAGAT: the simulation stops, the monitors go black, the questions are on the tablet (was there a
+        car in the own lane ahead, and in each lane behind: left / rear-view / right mirror; at most
         Q.max_answer_s, 30 s); then the NDRT video questions (ndrt_items/: 4 frames, was this scene in
         the video, yes / no + confidence) at the freeze + Q.ndrt_at_s (35 s) for everyone, the same
         recall delay; after them (or Q.ndrt_max_answer_s) 3-2-1 on the monitors and the tablet, then the
@@ -23,7 +28,7 @@ nothing. The cars around it follow the set's schedule (schedules/<set>.json, abc
     TOR at the end of every block (and of the practice drive), T = the schedule's time:
         T-15  no other car from here on (the schedule's background traffic is gone)
         T-9   the approaching car: 80 m behind in the unsafe lane, +20 km/h, no turn signal
-        T-3   a stopped car 270 m ahead in lane 2, hazard lights (~190 m, TTC ~7 s at T)
+        T-3   a stopped car 297 m ahead in lane 2, hazard lights (TTC ~8.0 s at T as logged; 7.0 s before 2026-11-13)
         T     the alert: beeps, "지금 직접 운전하세요" blinking above the cluster (and in the HUD
               area in the HUD condition), the video paused with the same text on the glasses / phone
         a move of the wheel or a pedal (carla_base's STEER_TAKEOVER, PEDAL_TAKEOVER from where they
@@ -85,6 +90,7 @@ import carla  # noqa: E402
 
 import carla_base as base  # noqa: E402  (pygame, manual_control, the wheel, the mirrors)
 from carla_base import pygame  # noqa: E402
+import abc_follow  # noqa: E402
 import abc_schedule  # noqa: E402
 import abc_traffic  # noqa: E402
 
@@ -99,7 +105,8 @@ HUD_OFF_RIM = (90, 95, 105, 150)
 CAMERA_ISO = 250.0                     # manual exposure of the monitor cameras: brighter than automatic
 FOG = (3.0, 60.0, 1.0)                 # fog_density, fog_distance m, fog_falloff: a light haze far ahead
 WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the blocks (the server's comes back after)
-GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end
+GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end (before 2026-11-13;
+                                      # since: S template window_rel_s, the car comes onto the side monitor)
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
 VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 %s점입니다.'  # said by the experimenter after the block
 # the NDRT video questions per set: the clip and per SAGAT stop the frames (ndrt_items/make_items.py)
@@ -285,16 +292,16 @@ class MirrorVisibility(object):
 # ==============================================================================
 
 
-# the questions on the tablet (sagat_app): was there a car ... (yes / no, each with its confidence 1-5),
-# one per lane and zone: a car counts for one question only
-SAGAT_ITEMS = ('behind_left', 'behind', 'behind_right',   # behind (cell_dx_m rear): in the mirrors
-               'beside_left', 'beside_right',             # alongside (side)
-               'ahead_left', 'ahead', 'ahead_right')       # ahead (front)
-ITEM_CELLS = {'behind_left': '1_rear', 'behind': '2_rear', 'behind_right': '3_rear',
-              'beside_left': '1_side', 'beside_right': '3_side',
-              'ahead_left': '1_front', 'ahead': '2_front', 'ahead_right': '3_front'}
-LANE_ITEMS = {1: ('behind_left', 'beside_left', 'ahead_left'), 2: ('behind', None, 'ahead'),
-              3: ('behind_right', 'beside_right', 'ahead_right')}
+# the questions on the tablet (sagat_app): was there a car ... (yes / no, each with its own confidence
+# 1-5), four zones since 2026-11-13 (before: eight cells, also beside and the side lanes ahead): the
+# own lane ahead and the three lanes behind, each what one mirror shows. They are asked by lane (the
+# rear-view mirror also shows the side lanes behind: the left lane behind is the left question). The
+# schedule keeps the beside cells empty at a question (a car there is half in the side mirror) and
+# puts cars in the side lanes ahead now and then (seen, not asked).
+SAGAT_ITEMS = ('behind_left', 'behind', 'behind_right',   # behind (cell_dx_m rear): left / rear-view / right mirror
+               'ahead')                                    # the own lane ahead (front)
+ITEM_CELLS = {'behind_left': '1_rear', 'behind': '2_rear', 'behind_right': '3_rear', 'ahead': '2_front'}
+LANE_ITEMS = {1: ('behind_left', None, None), 2: ('behind', None, 'ahead'), 3: ('behind_right', None, None)}
 
 
 def sagat_truth(snapshot, qt, mirrors=None):
@@ -303,7 +310,8 @@ def sagat_truth(snapshot, qt, mirrors=None):
     yes when a car is in its cell (cell_dx_m: behind 15-45 m, beside -4..4 m, ahead 5-35 m; the
     schedule keeps every car either in a cell or beyond gap_far_m at a question). A car that is in a
     gap anyway (its course off by a few metres) makes the questions on both sides of that gap
-    ambiguous unless a car is clearly in their cell: they are not scored."""
+    ambiguous unless a car is clearly in their cell: they are not scored. So does a car beside in lane
+    1 or 3 (the schedule keeps none there): it is half in that side mirror."""
     now = [(lane, dx) for _, lane, dx, _ in snapshot]
     history = {k: before for k, (_, _, _, before) in enumerate(snapshot) if before is not None}
     cells, approach, safe = abc_schedule.layout(now, history, qt)
@@ -311,9 +319,14 @@ def sagat_truth(snapshot, qt, mirrors=None):
     c = qt['cell_dx_m']
     ambiguous = set()
     for _, lane, dx, _ in snapshot:
-        if lane not in LANE_ITEMS or abc_schedule.zone_of(lane, dx, qt) != 'gap':
+        if lane not in LANE_ITEMS:
             continue
         behind, beside, ahead = LANE_ITEMS[lane]
+        zone = abc_schedule.zone_of(lane, dx, qt)
+        if zone in ('1_side', '3_side'):
+            ambiguous.update(k for k in (behind,) if not items[k])
+        if zone != 'gap':
+            continue
         if dx >= c['front'][1]:
             near = (ahead,)
         elif dx <= c['rear'][0]:
@@ -373,8 +386,8 @@ def sagat_score(truth, answer):
         marks = [correct[k] for k in keys if correct[k] is not None]
         return round(sum(marks) / float(len(marks)), 3) if marks else None
     return {'answered': True, 'correct': correct, 'confidence': confidence,
-            'behind': share(('behind_left', 'behind', 'behind_right')), 'beside': share(('beside_left', 'beside_right')),
-            'ahead': share(('ahead_left', 'ahead', 'ahead_right')), 'score': share(SAGAT_ITEMS),
+            'behind': share(('behind_left', 'behind', 'behind_right')), 'ahead': share(('ahead',)),
+            'score': share(SAGAT_ITEMS),
             'unscored': [k for k in SAGAT_ITEMS if correct[k] is None]}
 
 
@@ -595,8 +608,11 @@ class Block(object):
         for e in self.schedule['events']:
             if e['type'] in ('S', 'SD', 'R', 'F') and e['id'] not in self._marks_done and t >= e['t']:
                 self._marks_done.add(e['id'])
-                what = {'S': 'onset (turn signal on)', 'SD': 'onset (no signal)', 'R': 'onset (closer than 10 m)',
-                        'F': 'onset (brake light)'}[e['type']]
+                signal = any(c['id'] == e['id'] and c.get('lights') for c in self.schedule['cars'])
+                what = {'S': ('alongside (overtaking, then a lane change)' if 'lane_change' in e else
+                              'alongside (overtaking, no lane change)') if 'gone_t' in e else
+                        'onset (turn signal on)' if signal else 'onset (no signal)', 'SD': 'onset (no signal)',
+                        'R': 'onset (closer than 10 m)', 'F': 'onset (brake light)'}[e['type']]
                 self.mark(t, what, e['id'], type=e['type'])
             if e['type'] in ('S', 'SD', 'R', 'F') and e['id'] + '/end' not in self._marks_done:
                 end = self.gaze_window(e)[1]
@@ -619,6 +635,8 @@ class Block(object):
         if e['type'] == 'R':
             exit_t = self.exit_times.get(e['id'], e.get('t_exit'))
             return [start, round(exit_t + self.config['templates']['R']['window_after_exit_s'], 3)]
+        if 'gone_t' in e:   # the S that overtakes (2026-11-13), with or without a lane change
+            return [start, e['t'] + self.config['templates']['S']['window_rel_s'][1]]
         return [start, e['t'] + GAZE_AFTER[e['type']]]
 
     def track_visible(self, t, mirrors):
@@ -864,7 +882,8 @@ def run(args):
             block.media.append(HudVideo(args.video_file, args.video_start, resume=block.ndrt is None))
         elif args.video:
             from video_link import VideoLink
-            block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition))
+            block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition,
+                                         resume=block.ndrt is None))
             if args.condition == 'glasses' and block.log.dir:
                 # the app's version: where on the display it shows the video (v14 on: at the top;
                 # postprocess.display_outline)
@@ -978,6 +997,10 @@ def run(args):
         blinker = None  # the turn signal on: 'left', 'right' or None
         mirrors = {}    # the last frame's mirror visibility of each car (MirrorVisibility): SAGAT truth
         snaps = sorted(args.snap or [])
+        # the Fs' brakes [(brake, its lead car back at its place, lead car id)] (abc_schedule f_spans)
+        f_spans = sorted((a, b, c['id']) for c in schedule['cars'] for a, b in c.get('f_spans', [])
+                         if a >= args.start_at)
+        follow = None   # abc_follow.Follow while the ego car brakes for an F and makes the distance up
         clock = pygame.time.Clock()
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
         for player in block.media:
@@ -1030,7 +1053,15 @@ def run(args):
                 ticker.start()
                 continue
 
-            state = traffic.tick(t, world.player, dt)
+            # an F: the ego car brakes after the lead car (abc_follow), the other cars keep their speeds
+            if follow is None and f_spans and t >= f_spans[0][0] and block.mode == AUTO:
+                t_brake, t_back, f_car = f_spans.pop(0)
+                follow = abc_follow.Follow(block.config['templates']['F'], t_brake, t_back)
+                follow.car, follow.closest, follow.lowest = f_car, None, None
+                block.mark(t, 'F follow start', f_car)
+            v_nominal = follower._wanted_speed() / 3.6  # pylint: disable=protected-access
+            state = traffic.tick(t, world.player, dt, lag=follow.lag if follow else 0.0,
+                                 ref_speed=v_nominal if follow else None)
             for t_log, cid, what in traffic.log:
                 block.log.event(t_log, what, cid)
             del traffic.log[:]
@@ -1057,6 +1088,28 @@ def run(args):
             if block.mode in (AUTO, TOR):
                 control = follower.run_step()  # it drives itself until the takeover
                 pedal = control.throttle
+                if follow is not None:
+                    lead = state.get(follow.car)
+                    gap = lead[1] if lead and lead[1] > 0 else None
+                    v_lead = ego_speed + lead[2] / 3.6 if gap is not None else None
+                    wanted = follow.step(t, dt, v_nominal, ego_speed, gap, v_lead)
+                    if gap is not None:
+                        follow.closest = gap if follow.closest is None else min(follow.closest, gap)
+                    if wanted is not None and ego_speed > 0.3:
+                        follow.lowest = ego_speed if follow.lowest is None else min(follow.lowest, ego_speed)
+                        if wanted < ego_speed - 0.05:   # braking: no throttle, the brake light on
+                            control = carla.VehicleControl(throttle=0.0, steer=control.steer,
+                                                           brake=min(1.0, (ego_speed - wanted) / max(dt, 1e-3) / 8.0))
+                            pedal = 0.0
+                        world.player.set_target_velocity(carla.Vector3D(velocity.x * wanted / ego_speed,
+                                                                        velocity.y * wanted / ego_speed, velocity.z))
+                    if follow.done:
+                        block.mark(t, 'F follow end: lowest %.0f km/h, closest %.1f m, %.1f m behind at most' % (
+                            (follow.lowest or 0.0) * 3.6, follow.closest or -1.0, follow.most), follow.car)
+                        follow = None
+                        follower.engage()   # from the speed it has now (its controller was overridden)
+            elif follow is not None:   # the TOR or a takeover during an F: the driver drives
+                follow = None
             elif block.mode == STOPPED:
                 # full brake, and the speed brought down so that the car stops 3 m before the stopped
                 # car: from TTC 1.5 s at highway speed the brakes alone would not make it
@@ -1165,6 +1218,12 @@ def run(args):
                 logging.info('Gaze analyses and gaze_video.mp4 started in the background (postprocess.log)')
             except OSError as error:
                 logging.warning('postprocess.py not started: %s', error)
+        if sim_world is not None and client is not None:
+            try:  # all cars stay put: in asynchronous mode (below) they would roll on (guardrail, each other)
+                client.apply_batch_sync([carla.command.SetSimulatePhysics(a, False)
+                                         for a in sim_world.get_actors().filter('vehicle.*')], False)
+            except RuntimeError:
+                pass
         if server_weather is not None:
             try:
                 sim_world.set_weather(server_weather)
@@ -1181,6 +1240,17 @@ def run(args):
             driver_input.close()
         if audio is not None:
             audio.stop()
+            # its collision sensor on the car: the killed process does not destroy it
+            if world is not None and world.player is not None and sim_world is not None:
+                own = {s.id for s in (collision_sensor, getattr(getattr(world, 'collision_sensor', None), 'sensor', None))
+                       if s is not None}  # ours and the World's (world.destroy)
+                try:
+                    left = [a for a in sim_world.get_actors().filter('sensor.other.collision')
+                            if a.parent is not None and a.parent.id == world.player.id and a.id not in own]
+                    if left:
+                        base.destroy_actors(client, left)
+                except RuntimeError as error:
+                    logging.warning('Audio engine sensor not removed: %s', error)
         if sound is not None:
             sound.stop()
         if block.tor is not None:
@@ -1217,9 +1287,12 @@ def save_mirrors(manager, directory):
     if not mirrors:
         logging.warning('No mirrors to save (mirrors.json)')
         return
+    data = {'window_px': [manager.screen_width * manager.screens, manager.screen_size[1]], 'mirrors': mirrors}
     with open(os.path.join(directory, 'mirrors.json'), 'w', encoding='utf-8') as handle:
-        json.dump({'window_px': [manager.screen_width * manager.screens, manager.screen_size[1]],
-                   'mirrors': mirrors}, handle, indent=1)
+        json.dump(data, handle, indent=1)
+    # also where g2_validate.py puts its mirror targets (their glass centres): the mirrors as drawn now
+    with open(os.path.join(HERE, 'mirrors_last.json'), 'w', encoding='utf-8') as handle:
+        json.dump(data, handle, indent=1)
 
 
 def save_snapshot(display, manager, t, state, mirrors, directory):
@@ -1573,8 +1646,8 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
     block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if answer else 'skipped' if skipped else 'timeout'),
                q['id'])
     if score.get('answered'):
-        logging.info('   correct %.0f %% (behind %s, beside %s, ahead %s; not scored: %s)', 100 * (score['score'] or 0),
-                     score['behind'], score['beside'], score['ahead'], ', '.join(score['unscored']) or '-')
+        logging.info('   correct %.0f %% (behind %s, ahead %s; not scored: %s)', 100 * (score['score'] or 0),
+                     score['behind'], score['ahead'], ', '.join(score['unscored']) or '-')
     if stop and not ask_ndrt(block, q, t, stop, entry, started, sagat, overlay, display, clock):
         sagat.idle()
         car_sound(True)

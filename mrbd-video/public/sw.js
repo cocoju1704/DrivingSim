@@ -1,6 +1,6 @@
 // 앱 셸 프리캐시 → 안경에서 앱이 네트워크 없이도 즉시 뜸.
 // 영상(/media)과 API는 캐시하지 않음 (영상은 앱이 IndexedDB에 직접 저장).
-const CACHE = 'mrbd-video-v15';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib), v7: 점을 단색으로 (안경에서 그라디언트가 안 보임), v8: HTTP 캐시를 건너뛰고 받음, v9: 보정 점 시험 버튼, 버전 보고, v10: 임의 위치 점 (검증), v11: 보정 코드를 calib.js로, v12: blank (보정 중 메뉴 가림), v13: 실험 play가 영상을 직접 엶, v14: 영상을 화면 맨 위에, v15: 홈에서 유튜브·보정 점 시험 버튼 뺌, 이어보기 없앰 (항상 처음부터)
+const CACHE = 'mrbd-video-v16';  // v2: 실험 연동 (freeze/resume), v3: 영상 조각 저장, v4: 이어받기, v5: TOR 경고 (alert), v6: 시선 보정 점 (calib), v7: 점을 단색으로 (안경에서 그라디언트가 안 보임), v8: HTTP 캐시를 건너뛰고 받음, v9: 보정 점 시험 버튼, 버전 보고, v10: 임의 위치 점 (검증), v11: 보정 코드를 calib.js로, v12: blank (보정 중 메뉴 가림), v13: 실험 play가 영상을 직접 엶, v14: 영상을 화면 맨 위에, v15: play {restart} (세트 클립을 처음부터) / 홈에서 유튜브·보정 점 시험 버튼 뺌, 이어보기 없앰, v16: 둘을 합침 (항상 처음부터)
 // Cloudflare turns the server's no-cache into max-age=14400 (Browser Cache TTL), so the browser's HTTP
 // cache would keep old app files for 4 h: install with cache 'reload', refresh with cache 'no-cache'.
 const SHELL = ['/', '/index.html', '/app.js', '/calib.js', '/style.css', '/manifest.json', '/icon.png'];

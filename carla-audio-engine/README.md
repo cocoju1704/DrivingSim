@@ -24,7 +24,6 @@ The following sounds are implemented:
 
 - __Ambient Sounds__: Simulates environmental sounds such as wind and rain.
 - __Crash Sounds__: Plays a sound to simulate collisions between vehicles and objects.
-- __Speed Limit Alert__: Triggers a sound when exceeding 100 km/h.
 - __Reverse Gear Alert__: Plays a sound upon switching to reverse gears.
 - __Handbrake Sound__: Features the tire squealing when the handbreak is applied.
 - __EV Sound__: Simulates the characteristic audio of an Electrical-Car for operations.
