@@ -1287,9 +1287,12 @@ def save_mirrors(manager, directory):
     if not mirrors:
         logging.warning('No mirrors to save (mirrors.json)')
         return
+    data = {'window_px': [manager.screen_width * manager.screens, manager.screen_size[1]], 'mirrors': mirrors}
     with open(os.path.join(directory, 'mirrors.json'), 'w', encoding='utf-8') as handle:
-        json.dump({'window_px': [manager.screen_width * manager.screens, manager.screen_size[1]],
-                   'mirrors': mirrors}, handle, indent=1)
+        json.dump(data, handle, indent=1)
+    # also where g2_validate.py puts its mirror targets (their glass centres): the mirrors as drawn now
+    with open(os.path.join(HERE, 'mirrors_last.json'), 'w', encoding='utf-8') as handle:
+        json.dump(data, handle, indent=1)
 
 
 def save_snapshot(display, manager, t, state, mirrors, directory):

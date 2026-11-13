@@ -12,11 +12,11 @@ Needs in the block folder: g2_scene.ts, g2_data.jsonl, g2_sync.json, frames.csv 
 mirrors.json (each mirror's glass in window px, abc_experiment) and bezel_screen.json (the bezel
 markers in window px, mirror_register.py; abc_experiment copies it in).
 
-The right mirror is judged with the gaze moved by its validation offset (g2_validation.json, the
-'right mirror' point: measured - target, in the scene camera; CORRECT_MIRRORS, --no-correct): its
-gaze comes out 3-4 degrees below it at every validation (1111-1113: 3.8-4.3 degrees, the left
-mirror 0.4-1.6), and in 1113154053 the gaze of three right S stayed 1.5-5 degrees below the glass
-(not a glance at ENTER_DEG). <mirror>_raw_deg in mirror_aoi.csv: the distance without it.
+The side mirrors are judged with the gaze moved by their validation offset (g2_validation.json, the
+'left mirror' / 'right mirror' point: measured - target, in the scene camera; CORRECT_MIRRORS,
+--no-correct): the error there is what the glances hinge on (the eyes 25-40 degrees to a side in the
+head), and it differs from block to block (check drives 1113, the targets at the mirrors' glass
+centres since 2026-11-13 23:40). <mirror>_raw_deg in mirror_aoi.csv: the distance without it.
 
 Each looked-at frame (every STEP-th):
   1. the gaze point in the scene camera (px, 960 x 540; Glasses 2's gp, also off the frame)
@@ -26,7 +26,8 @@ Each looked-at frame (every STEP-th):
   3. per monitor with MIN_MARKERS markers: a homography from the NEAREST markers to the gaze (the
      monitors are curved), the gaze into window px, the glass outlines back into the scene camera,
      and the gaze's distance from each glass in degrees (negative: inside; SCENE_PX_PER_DEG)
-  4. the mirror: within ENTER_DEG of its glass (per mirror: the rear-view mirror 2.5 degrees since
+  4. the mirror: within ENTER_DEG of its glass (the side mirrors' glass grown GLASS_SCALE about its
+     centre first; per mirror: the rear-view mirror 2.5 degrees since
      2026-11-13, sky around it; the side mirrors 1, the side window next to them); a glance, once
      started, goes on within STAY_DEG (at least that mirror's ENTER_DEG)
      (the gaze jitters at the edge); gaps up to g2_block.GAP_S bridged
@@ -96,15 +97,21 @@ RATE_PRE_S = 10.0               # mirror_aoi_rates.csv: s before each SAGAT free
 RATE_POST_S = 10.0              # s after the TOR alert
 G2_HZ = 50.0                    # Glasses 2 gaze samples per s (eye data share)
 FREEZE_GAP_S = 0.5              # frames.csv rows further apart: a SAGAT freeze (left out of the real time)
-CORRECT_MIRRORS = {'right': 'right mirror'}   # mirror: its g2_validation.json point, the offset taken off the gaze
+CORRECT_MIRRORS = {'left': 'left mirror', 'right': 'right mirror'}   # mirror: its g2_validation.json point (left since 2026-11-14)
+GLASS_SCALE = {'left': 1.2, 'right': 1.2}   # side mirrors' judged area: the glass grown about its centre (2026-11-14: 1.2, check drives +2 looks of 30, no false frames)
 CORRECT_MIN_SAMPLES = 30        # a validation point with fewer gaze samples: no correction
 CORRECT_MAX_DEG = 6.0           # an offset larger than this: not trusted, no correction
 SCENE_PX = (960.0, 540.0)       # the scene camera's gp (0..1) in px
 
 
-def load(folder):
+def load(folder, scale=None):
     with open(os.path.join(folder, 'mirrors.json'), encoding='utf-8') as handle:
         mirrors = json.load(handle)['mirrors']
+    for name, k in (GLASS_SCALE if scale is None else scale).items():   # the judged area: the glass grown about its centre
+        if name in mirrors and k != 1.0:
+            poly = mirrors[name]['glass']
+            cx, cy = sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
+            mirrors[name]['glass'] = [[cx + (x - cx) * k, cy + (y - cy) * k] for x, y in poly]
     with open(os.path.join(folder, 'bezel_screen.json'), encoding='utf-8') as handle:
         bezel = json.load(handle)['markers']
     return mirrors, bezel
@@ -175,11 +182,11 @@ def gaze_on(cv2, markers, bezel, gx, gy):
 
 def _work(args):
     """Frames [first, last), every STEP-th: [(frame index, msec, row dict)]."""
-    folder, first, last, correct = args
+    folder, first, last, correct, scale = args
     import cv2  # pylint: disable=import-outside-toplevel
     cv2.setNumThreads(1)
     run = g2_block.Run(folder)
-    mirrors, bezel = load(folder)
+    mirrors, bezel = load(folder, scale)
     ids = {m['id']: n for n, m in bezel.items()}
     detector = mm.Detector(set(ids))
     side_of = {name: monitor_of_px(np.mean([p[0] for p in m['glass']])) for name, m in mirrors.items()}
@@ -276,7 +283,7 @@ def main():
     parser.add_argument('--from-csv', action='store_true',
                         help='the frames from mirror_aoi.csv (an earlier run): only the glances again')
     parser.add_argument('--no-correct', action='store_true',
-                        help='no validation offset for the right mirror (CORRECT_MIRRORS)')
+                        help='no validation offset for the side mirrors (CORRECT_MIRRORS)')
     args = parser.parse_args()
     import cv2  # pylint: disable=import-outside-toplevel
     folder = os.path.abspath(args.folder)
@@ -295,7 +302,7 @@ def main():
     capture.release()
     frame_s = STEP / fps
     chunk = int(math.ceil(frames / float(args.workers * 4) / STEP)) * STEP
-    jobs = [(folder, k, min(frames, k + chunk), correct) for k in range(0, frames, chunk)]
+    jobs = [(folder, k, min(frames, k + chunk), correct, dict(GLASS_SCALE)) for k in range(0, frames, chunk)]
     print('%d frames, %d jobs on %d workers...' % (frames, len(jobs), args.workers))
     results = []
     with multiprocessing.Pool(args.workers) as pool:

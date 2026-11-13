@@ -29,7 +29,7 @@ import os
 import statistics
 
 PEDAL_ON = 0.3
-TRIM_S = 0.3
+TRIM_S = 0.1     # was 0.3 (2026-11-14): marks of 0.5-0.7 s had no frames left
 MARGIN_S = 1.0
 YAW_BINS = ((0, 15), (15, 25), (25, 35), (35, 42), (42, 90))
 MIRRORS = ('left', 'rear', 'right')
@@ -56,9 +56,13 @@ def marks(folder):
                 out.append((side, held.pop(side), t))
     start = None
     last = None
+    released = False   # a pedal already down at the block start (its rest reads as pressed) is no mark
     for r in read(os.path.join(folder, 'frames.csv')):
         t = float(r['t_sim'])
         on = float(r.get('pedal_throttle') or 0) > PEDAL_ON
+        released = released or not on
+        if not released:
+            continue
         if on and start is None:
             start = t
         elif not on and start is not None:
