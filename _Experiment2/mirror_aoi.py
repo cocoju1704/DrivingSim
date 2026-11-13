@@ -12,6 +12,12 @@ Needs in the block folder: g2_scene.ts, g2_data.jsonl, g2_sync.json, frames.csv 
 mirrors.json (each mirror's glass in window px, abc_experiment) and bezel_screen.json (the bezel
 markers in window px, mirror_register.py; abc_experiment copies it in).
 
+The right mirror is judged with the gaze moved by its validation offset (g2_validation.json, the
+'right mirror' point: measured - target, in the scene camera; CORRECT_MIRRORS, --no-correct): its
+gaze comes out 3-4 degrees below it at every validation (1111-1113: 3.8-4.3 degrees, the left
+mirror 0.4-1.6), and in 1113154053 the gaze of three right S stayed 1.5-5 degrees below the glass
+(not a glance at ENTER_DEG). <mirror>_raw_deg in mirror_aoi.csv: the distance without it.
+
 Each looked-at frame (every STEP-th):
   1. the gaze point in the scene camera (px, 960 x 540; Glasses 2's gp, also off the frame)
   2. the bezel markers (mirror_markers.Detector); per side monitor, a marker counts when its corners
@@ -20,7 +26,9 @@ Each looked-at frame (every STEP-th):
   3. per monitor with MIN_MARKERS markers: a homography from the NEAREST markers to the gaze (the
      monitors are curved), the gaze into window px, the glass outlines back into the scene camera,
      and the gaze's distance from each glass in degrees (negative: inside; SCENE_PX_PER_DEG)
-  4. the mirror: within ENTER_DEG of its glass; a glance, once started, goes on within STAY_DEG
+  4. the mirror: within ENTER_DEG of its glass (per mirror: the rear-view mirror 2.5 degrees since
+     2026-11-13, sky around it; the side mirrors 1, the side window next to them); a glance, once
+     started, goes on within STAY_DEG (at least that mirror's ENTER_DEG)
      (the gaze jitters at the edge); gaps up to g2_block.GAP_S bridged
 
 Unsure: with the eyes turned UNSURE_DEG or more to a side in the head, Glasses 2 mostly has no gaze
@@ -75,8 +83,8 @@ MIN_MARKERS = 2                 # markers of a monitor for its homography
 NEAREST = 3                     # the markers nearest to the gaze in it
 RANSAC_PX = 40.0                # window px: a marker's corners this far from the others' homography: dropped
 MAX_FIT_PX = 25.0               # window px: the local homography's RMS on its markers' corners
-ENTER_DEG = 1.0                 # the gaze within this of a glass: on that mirror
-STAY_DEG = 2.5                  # a glance goes on within this
+ENTER_DEG = {'left': 1.0, 'rear': 2.5, 'right': 1.0}   # the gaze within this of a glass: on that mirror
+STAY_DEG = 2.5                  # a glance goes on within this (or the mirror's ENTER_DEG, if larger)
 MONITOR_SLACK_PX = 300          # the gaze counts on a side monitor up to this past its pixels (its bezel)
 UNSURE_DEG = 35.0               # eye yaw in the head (deg) from which a frame without a gaze point is unsure
 DROPOUT_MIN_S = 0.1             # no eye data at all (both pupils lost) for this long or longer ...
@@ -88,6 +96,10 @@ RATE_PRE_S = 10.0               # mirror_aoi_rates.csv: s before each SAGAT free
 RATE_POST_S = 10.0              # s after the TOR alert
 G2_HZ = 50.0                    # Glasses 2 gaze samples per s (eye data share)
 FREEZE_GAP_S = 0.5              # frames.csv rows further apart: a SAGAT freeze (left out of the real time)
+CORRECT_MIRRORS = {'right': 'right mirror'}   # mirror: its g2_validation.json point, the offset taken off the gaze
+CORRECT_MIN_SAMPLES = 30        # a validation point with fewer gaze samples: no correction
+CORRECT_MAX_DEG = 6.0           # an offset larger than this: not trusted, no correction
+SCENE_PX = (960.0, 540.0)       # the scene camera's gp (0..1) in px
 
 
 def load(folder):
@@ -96,6 +108,32 @@ def load(folder):
     with open(os.path.join(folder, 'bezel_screen.json'), encoding='utf-8') as handle:
         bezel = json.load(handle)['markers']
     return mirrors, bezel
+
+
+def offsets(folder, quiet=False):
+    """{mirror: (dx, dy) scene px} to take off the gaze for that mirror (CORRECT_MIRRORS): the
+    validation's measured - target at the mirror's point, when it has the samples and is not too large."""
+    out = {}
+    path = os.path.join(folder, 'g2_validation.json')
+    if not os.path.exists(path):
+        return out
+    with open(path, encoding='utf-8') as handle:
+        points = {m['point']: m for m in json.load(handle).get('monitor', [])}
+    for mirror, point in CORRECT_MIRRORS.items():
+        m = points.get(point)
+        if not m or not m.get('gaze_gp') or not m.get('target_gp'):
+            continue
+        dx = (m['gaze_gp'][0] - m['target_gp'][0]) * SCENE_PX[0]
+        dy = (m['gaze_gp'][1] - m['target_gp'][1]) * SCENE_PX[1]
+        deg = math.hypot(dx, dy) / SCENE_PX_PER_DEG
+        if m.get('samples', 0) < CORRECT_MIN_SAMPLES or deg > CORRECT_MAX_DEG:
+            if not quiet:
+                print('%s mirror: no correction (validation %d samples, offset %.1f deg)' % (mirror, m.get('samples', 0), deg))
+            continue
+        out[mirror] = (dx, dy)
+        if not quiet:
+            print('%s mirror: gaze corrected by its validation offset %.1f, %.1f scene px (%.1f deg)' % (mirror, -dx, -dy, deg))
+    return out
 
 
 def monitor_of_px(x):
@@ -137,7 +175,7 @@ def gaze_on(cv2, markers, bezel, gx, gy):
 
 def _work(args):
     """Frames [first, last), every STEP-th: [(frame index, msec, row dict)]."""
-    folder, first, last = args
+    folder, first, last, correct = args
     import cv2  # pylint: disable=import-outside-toplevel
     cv2.setNumThreads(1)
     run = g2_block.Run(folder)
@@ -190,18 +228,27 @@ def _work(args):
             for name, m in mirrors.items():
                 if side_of[name] != monitor:
                     continue
-                glass = cv2.perspectiveTransform(np.float32(m['glass']).reshape(-1, 1, 2), inverse)
+                glass = cv2.perspectiveTransform(np.float32(m['glass']).reshape(-1, 1, 2), inverse).astype(np.float32)
                 # pointPolygonTest: + inside, - outside (px); here distance: - inside, + outside (deg)
-                d = -cv2.pointPolygonTest(glass.astype(np.float32), (float(gx), float(gy)), True) / SCENE_PX_PER_DEG
+                d = -cv2.pointPolygonTest(glass, (float(gx), float(gy)), True) / SCENE_PX_PER_DEG
+                if name in correct:   # the gaze less the validation's offset at this mirror
+                    row['%s_raw_deg' % name] = round(d, 2)
+                    ox, oy = correct[name]
+                    d = -cv2.pointPolygonTest(glass, (float(gx - ox), float(gy - oy)), True) / SCENE_PX_PER_DEG
                 row['%s_deg' % name] = round(d, 2)
         if best:
             row['window_monitor'], row['window_x_px'], row['window_y_px'] = best[0], round(float(best[1])), round(float(best[2]))
-        dists = [(row['%s_deg' % m], m) for m in MIRRORS if '%s_deg' % m in row]
-        near = min(dists) if dists else None
-        row['mirror'] = near[1] if near and near[0] <= ENTER_DEG else ''
+        row['mirror'] = judge(row)
         out.append((index, msec, row))
         index += 1
     return out
+
+
+def judge(row):
+    """The mirror of this frame alone: the one the gaze is furthest inside its ENTER_DEG of, or ''."""
+    past = [(row['%s_deg' % m] - ENTER_DEG[m], m) for m in MIRRORS if '%s_deg' % m in row]
+    near = min(past) if past else None
+    return near[1] if near and near[0] <= 0 else ''
 
 
 def classify(rows):
@@ -214,7 +261,7 @@ def classify(rows):
             continue
         if current:
             d = row.get('%s_deg' % current)
-            if d is None or d > STAY_DEG or (row['mirror'] and row['mirror'] != current):
+            if d is None or d > max(STAY_DEG, ENTER_DEG[current]) or (row['mirror'] and row['mirror'] != current):
                 current = row['mirror'] or None
         else:
             current = row['mirror'] or None
@@ -228,6 +275,8 @@ def main():
     parser.add_argument('--workers', type=int, default=max(1, multiprocessing.cpu_count() - 2))
     parser.add_argument('--from-csv', action='store_true',
                         help='the frames from mirror_aoi.csv (an earlier run): only the glances again')
+    parser.add_argument('--no-correct', action='store_true',
+                        help='no validation offset for the right mirror (CORRECT_MIRRORS)')
     args = parser.parse_args()
     import cv2  # pylint: disable=import-outside-toplevel
     folder = os.path.abspath(args.folder)
@@ -239,13 +288,14 @@ def main():
     if args.from_csv:
         finish(folder, run, read_rows(folder), STEP / 50.0)
         return
+    correct = {} if args.no_correct else offsets(folder)
     capture = cv2.VideoCapture(run.video)
     frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = capture.get(cv2.CAP_PROP_FPS) or 50.0
     capture.release()
     frame_s = STEP / fps
     chunk = int(math.ceil(frames / float(args.workers * 4) / STEP)) * STEP
-    jobs = [(folder, k, min(frames, k + chunk)) for k in range(0, frames, chunk)]
+    jobs = [(folder, k, min(frames, k + chunk), correct) for k in range(0, frames, chunk)]
     print('%d frames, %d jobs on %d workers...' % (frames, len(jobs), args.workers))
     results = []
     with multiprocessing.Pool(args.workers) as pool:
@@ -270,10 +320,11 @@ def read_rows(folder):
             if r.get('dropout'):
                 continue
             row = {k: v for k, v in r.items() if v not in ('', None)}
-            for k in ['t_sim', 'eye_yaw', 'eye_pitch'] + ['%s_deg' % m for m in MIRRORS]:
+            for k in ['t_sim', 'eye_yaw', 'eye_pitch'] + ['%s_deg' % m for m in MIRRORS] + \
+                    ['%s_raw_deg' % m for m in CORRECT_MIRRORS]:
                 if k in row:
                     row[k] = float(row[k])
-            row.setdefault('mirror', '')
+            row['mirror'] = '' if row.get('unsure') else judge(row)   # again: ENTER_DEG may have changed
             row.setdefault('unsure', '')
             row.pop('glance', None)
             rows.append(row)
@@ -428,7 +479,8 @@ def finish(folder, run, rows, frame_s):
                                   if s <= row['t_sim'] <= e and m == SIDE_MIRROR[row['unsure']]), '')
     keys = ['t_sim', 'frame', 'gaze_x_px', 'gaze_y_px', 'eye_yaw', 'eye_pitch', 'markers_left', 'markers_right',
             'fit_left_px', 'fit_right_px', 'window_monitor', 'window_x_px', 'window_y_px'] + \
-           ['%s_deg' % m for m in MIRRORS] + ['mirror', 'glance', 'unsure', 'dropout']
+           ['%s_deg' % m for m in MIRRORS] + ['%s_raw_deg' % m for m in sorted(CORRECT_MIRRORS)] + \
+           ['mirror', 'glance', 'unsure', 'dropout']
     with open(os.path.join(folder, 'mirror_aoi.csv'), 'w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction='ignore')
         writer.writeheader()

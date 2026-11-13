@@ -407,9 +407,9 @@ class TorScene(object):
                     the ego car's speed: after the curve before the loop's long straight it is still
                     speeding up), so it is 30 m behind at T; release() at T: from then on it keeps its
                     speed (next to the ego car ~5.4 s later if that keeps its own)
-        obstacle()  T-3: in lane 2, standing (hand brake), hazard lights on: 270 m ahead at 95 km/h;
+        obstacle()  T-3: in lane 2, standing (hand brake), hazard lights on: 297 m ahead at 95 km/h;
                     at another speed (still speeding up after the curve) where it makes the same TTC at
-                    T, ~7.2 s (190 m at 95 km/h)
+                    T, ~8.25 s centre to centre, 8.0 s as logged (bumper to bumper; 270 m, 7.2 / 7.0 s before 2026-11-13)
         tick()      drives the approaching car; yield(): once the ego car has come into its lane less
                     than 10 m ahead of it, it brakes (6 m/s^2) and stays HAZARD_FOLLOW_GAP behind
     """
@@ -474,7 +474,7 @@ class TorScene(object):
         ahead it went."""
         settings = self.template['obstacle']
         v_alert = max(ego_speed + max(ego_accel, 0.0) * lead_s, 1.0)
-        # its TTC at the alert as designed (7.2 s: 270 m - 3 s at 95 km/h), also at a slower cruise speed
+        # its TTC at the alert as designed (8.25 s: 297 m - 3 s at 95 km/h, 8.0 s bumper to bumper as logged; 7.2 s before 2026-11-13), also at a slower cruise speed
         nominal_speed = settings.get('spawn_nominal_kmh', nominal_speed * 3.6) / 3.6
         ttc = settings['spawn_dx_m'] / nominal_speed - lead_s
         self.obstacle_spawn_dx = ttc * v_alert + lead_s * (ego_speed + v_alert) / 2.0

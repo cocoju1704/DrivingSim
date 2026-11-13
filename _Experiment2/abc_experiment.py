@@ -28,7 +28,7 @@ nothing but the F's lead car (abc_follow). The cars around it follow the set's s
     TOR at the end of every block (and of the practice drive), T = the schedule's time:
         T-15  no other car from here on (the schedule's background traffic is gone)
         T-9   the approaching car: 80 m behind in the unsafe lane, +20 km/h, no turn signal
-        T-3   a stopped car 270 m ahead in lane 2, hazard lights (~190 m, TTC ~7 s at T)
+        T-3   a stopped car 297 m ahead in lane 2, hazard lights (TTC ~8.0 s at T as logged; 7.0 s before 2026-11-13)
         T     the alert: beeps, "지금 직접 운전하세요" blinking above the cluster (and in the HUD
               area in the HUD condition), the video paused with the same text on the glasses / phone
         a move of the wheel or a pedal (carla_base's STEER_TAKEOVER, PEDAL_TAKEOVER from where they

@@ -169,7 +169,7 @@
       "obstacle": {
         "lane": 2,
         "spawn_rel_s": -3,
-        "spawn_dx_m": 270,
+        "spawn_dx_m": 297,
         "spawn_nominal_kmh": 95,
         "stopped": true,
         "hazard_lights": true,
