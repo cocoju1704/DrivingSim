@@ -48,6 +48,9 @@ import urllib.request
 TIMEOUT = 6.0   # s: through a phone hotspot the TLS handshake alone takes up to ~3 s
 CONFIRM_S = 3.0   # s: the phone app's report of a command (it reports at once and every 2 s)
 RETRY_S = 12.0    # s: a command sent again until an app got it (the phone: did it) for up to this long
+SYNC_S = 2.0      # s: the glasses' sound (phone / HUD condition without earphones) checked against the picture
+SYNC_MAX_S = 0.4  # s apart: sought
+SEEK_LEAD_S = 0.3  # s: a seek lands this much later (the command's trip, the decoder)
 # Cloudflare (https://video.cocoju.dev) answers urllib's default "Python-urllib/x.y" with 403 (error 1010)
 HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
@@ -77,7 +80,8 @@ def earphones_on():
 
 
 class VideoLink(object):
-    def __init__(self, address, video_file=None, start_s=0.0, device='glasses', resume=True, pc_sound=True):
+    def __init__(self, address, video_file=None, start_s=0.0, device='glasses', resume=True, pc_sound=True,
+                 glasses_sound=False, master=None):
         address = address.strip().rstrip('/')
         if not address.startswith(('http://', 'https://')):
             address = 'http://' + address
@@ -96,6 +100,14 @@ class VideoLink(object):
         self._worker.start()
         self.audio = None   # the video's sound on this PC (device_audio), glasses / phone condition
         self._pc_sound = pc_sound and device in ('glasses', 'phone')   # made at the first start()
+        # 2026-11-14: no earphones on the PC, phone / HUD condition: the glasses play the video's sound under
+        # their black screen (app v18, play {sound}); the phone plays muted. Kept with the picture: master
+        # (HUD: the HudVideo; phone: None = the phone's reports), a seek to the glasses alone when apart
+        self.glasses_sound = bool(glasses_sound) and device in ('phone', 'hud')
+        self._master = master
+        self._sync = None
+        if self.glasses_sound:
+            self._pc_sound = False
 
     def _post(self, path, data, tries=3):
         """POST JSON; tried again (up to tries) on a failure: through the tunnel a request now and then
@@ -219,6 +231,7 @@ class VideoLink(object):
             self.results.put((time.time(), action, delivered, state))
 
     def close(self, wait=3.0):
+        self._sync = None
         if self.audio is not None:
             self.audio.close()
         self._jobs.put(None)
@@ -258,7 +271,50 @@ class VideoLink(object):
         if self.audio is not None:
             fields['mute'] = True      # the sound on this PC: the glasses app v17+, the phone app v3+
             self.audio.follow()
+        if self.glasses_sound:
+            fields['sound'] = True     # the glasses app v18: the video's sound under its black screen
+            if self._condition == 'phone':
+                fields['mute'] = True  # the phone silent (the glasses ignore mute in sound-only)
+            logging.info('Video sound: the glasses (no earphones on this PC), %s condition', self._condition)
+            if self._sync is None:
+                self._sync = threading.Thread(target=self._follow, daemon=True)
+                self._sync.start()
         self._send('play', **fields)
+
+    def _position(self, device):
+        """(t now, playing) of a device from its last report (t moved on by the report's age), or None."""
+        try:
+            request = urllib.request.Request(self.base + '/api/state?device=' + device, headers=HEADERS)
+            with urllib.request.urlopen(request, timeout=TIMEOUT, context=self._context) as response:
+                s = json.loads(response.read().decode('utf-8') or '{}')
+        except (OSError, ValueError, urllib.error.URLError):
+            return None
+        if s.get('t') is None or not s.get('received_ts') or not s.get('server_ts'):
+            return None
+        playing = s.get('paused') is False and not s.get('frozen')
+        age = max(0.0, (s['server_ts'] - s['received_ts']) / 1000.0)
+        if age > 6.0:
+            return None
+        return s['t'] + (age if playing else 0.0), playing
+
+    def _follow(self):
+        """The glasses' sound kept with the picture (HUD / phone): every SYNC_S, a seek to the glasses
+        alone (device glasses: the phone app ignores it) when they are SYNC_MAX_S apart, both playing."""
+        while self._sync is not None:
+            time.sleep(SYNC_S)
+            if self._master is not None:
+                master = self._master.sync_position()
+            else:
+                master = self._position('phone')
+            glasses = self._position('glasses')
+            if not master or not glasses or not master[1] or not glasses[1]:
+                continue
+            apart = glasses[0] - master[0]
+            if abs(apart) > SYNC_MAX_S and self._jobs.empty():   # not behind other commands (they come first)
+                t = round(master[0] + SEEK_LEAD_S, 2)
+                self._jobs.put(('seek', {'t': t, 'device': 'glasses'}))
+                logging.info('Video sound: the glasses %.2f s %s the picture, sought to %.2f s', abs(apart),
+                             'ahead of' if apart > 0 else 'behind', t)
 
     def pause(self, qid=''):
         if self.audio is not None:

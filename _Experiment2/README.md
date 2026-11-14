@@ -307,7 +307,10 @@ venv_carla\Scripts\python.exe _Experiment2\abc_experiment.py --set P --test --st
 - 글래스·휴대폰 조건의 영상 소리: 기기는 음소거하고(`play {mute}`, 안경 앱 v17·폰 앱 v3), 실험 PC가 같은 클립의 소리를 기본 출력(이어폰)으로 재생합니다(`device_audio.py`).
   기기가 보고하는 재생 위치 `t`에 맞추고, 0.3 s 넘게 어긋나면 다시 맞춥니다. SAGAT·TOR 정지 때는 바로 끄고, 재개 뒤 기기 보고가 재생 중이면 다시 켭니다.
   보고가 6 s 없거나 기기가 음소거가 아니면(옛 앱) PC는 소리를 내지 않습니다.
-  블록 시작 때 Windows 기본 출력이 이어폰(`devices.json` `"earphones"`)이 아니면 PC가 영상 소리를 내지 않고 기기가 직접 냅니다(음소거 없는 play: 글래스는 Ray-Ban 스피커, 휴대폰은 폰 스피커; `video_link.earphones_on`, 2026-11-14). 차량 소리·TOR 경고음·HUD 영상 소리는 PC에서만 나오므로 그때의 기본 출력으로 나갑니다. 기기 위치보다 0.2 s 앞에서 냅니다(`LEAD_S`: 보고 지연 + 블루투스).
+  블록 시작 때 Windows 기본 출력이 이어폰(`devices.json` `"earphones"`)이 아니면 영상 소리는 모든 조건에서 글래스(Ray-Ban 스피커)가 냅니다(2026-11-14):
+  글래스 조건은 음소거 없는 play, 휴대폰·HUD 조건은 play {sound}로 안경 앱(v18)이 검은 화면 아래에서 같은 클립을 틀어 소리만 내고 폰은 음소거, HUD 영상은 PC에서 소리 없이(`HudVideo(sound=False)`).
+  안경 소리는 그림(HUD: `HudVideo.sync_position`, 휴대폰: 폰 보고)과 2 s마다 비교해 0.4 s 넘게 어긋나면 안경에만 seek(`device: glasses`, 폰 앱은 무시; `video_link._follow`).
+  안경 앱이 v18보다 옛것이면 예전대로(HUD는 PC 기본 출력, 폰은 폰 스피커). 차량 소리·TOR 경고음은 PC에서만 나오므로 그때의 기본 출력(모니터 스피커)으로 나갑니다.
   클립은 실험 PC의 `mrbd-video/media/`에도 있어야 합니다. events.csv의 `video pc_sound_start / resync / stop`.
 - 블루투스 지연(한 번 재서 여기 적기): TOR 경고음 시각은 소리를 보낸 시각입니다. `venv_carla\Scripts\python.exe _Experiment2\bt_latency.py`
   (2초마다 클릭음 + 창이 하얗게, 10회, 보낸 시각은 `claude_reply/bt_latency_*.csv`)를 휴대폰 슬로모션(240 fps)으로 화면과 이어폰을 함께 찍어

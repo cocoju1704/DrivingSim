@@ -320,8 +320,8 @@ def check_audio():
         report(WARN, '소리 출력', '기본 출력 장치 %s (이어폰 아님): 이어폰(%s)은 연결돼 있으니 소리 아이콘에서 기본 장치로 고르세요' % (
             default, wanted))
     else:
-        report(WARN, '소리 출력', '기본 출력 장치 %s (이어폰 아님): 이어폰(%s)이 연결 안 됨. 이대로면 글래스·휴대폰 조건의 영상 소리는 '
-               '기기가 직접 내고, 차량 소리·TOR 경고음·HUD 영상 소리는 이 장치로 나감' % (default, wanted))
+        report(WARN, '소리 출력', '기본 출력 장치 %s (이어폰 아님): 이어폰(%s)이 연결 안 됨. 이대로면 영상 소리는 '
+               '모든 조건에서 글래스가 내고(안경 앱 v18), 차량 소리·TOR 경고음은 이 장치로 나감' % (default, wanted))
 
 
 def check_video(choices):

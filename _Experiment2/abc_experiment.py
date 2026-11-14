@@ -97,6 +97,7 @@ DATA_DIR = os.path.join(HERE, 'Data')
 CONDITIONS = ('glasses', 'phone', 'hud')
 CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유리 화면'}
 AUTO, TOR, MANUAL, STOPPED = 'AUTO', 'TOR', 'MANUAL', 'STOPPED'  # TOR: the alert, still driving itself
+GLASSES_SOUND_APP = 18      # the glasses app version that plays a phone / HUD block's sound under its black screen
 AUDIO_MUTE_PORT = 5006     # carla-audio-engine fmain.py: "mute" / "unmute" (the car sound during a question)
 RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variable one would be the freeze)
 HUD_OFF_GLASS = (10, 12, 16, 110)       # the switched-off HUD on the windshield: a faint dark pane
@@ -928,17 +929,35 @@ def run(args):
             logging.warning("--video-file %s is not set %s's clip %s: no video questions", args.video_file, args.set,
                             block.ndrt['clip'])
             block.ndrt = None
+        # no earphones on this PC (the Windows default output, devices.json "earphones"), phone or HUD
+        # condition: the glasses play the video's sound under their black screen (app v18; 2026-11-14), the
+        # phone muted, the HUD video silent here; an older glasses app: as before (HUD: this PC, phone: its own)
+        glasses_sound = False
+        if args.video and args.condition in ('phone', 'hud'):
+            from video_link import earphones_on, VideoLink
+            on, output = earphones_on()
+            if on is False:
+                probe = VideoLink(args.video, device='glasses')
+                version = probe.app_version()
+                probe.close(0.0)
+                glasses_sound = version >= GLASSES_SOUND_APP
+                logging.warning('Earphones not the default output (%s): the video sound %s', output,
+                                'from the glasses' if glasses_sound else
+                                'not from the glasses (their app v%d, needs v%d): %s' % (
+                                    version, GLASSES_SOUND_APP, 'this PC' if args.condition == 'hud' else 'the phone'))
+        hud_video = None
         if args.condition == 'hud':
             # the HUD's video: played here, in the HUD area
             from hud_video import HudVideo
-            block.media.append(HudVideo(args.video_file, args.video_start, resume=block.ndrt is None))
+            hud_video = HudVideo(args.video_file, args.video_start, resume=block.ndrt is None, sound=not glasses_sound)
+            block.media.append(hud_video)
         if args.video:
             # the glasses and phone apps; in the phone and HUD conditions the glasses app (v17) keeps its
             # display black for the block (the commands carry the condition). The PC plays the video's
             # sound only in the glasses and phone conditions (device_audio; HUD: HudVideo)
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition,
-                                         resume=block.ndrt is None))
+                                         resume=block.ndrt is None, glasses_sound=glasses_sound, master=hud_video))
             if args.condition == 'glasses' and block.log.dir:
                 # the app's version: where on the display it shows the video (v14 on: at the top;
                 # postprocess.display_outline)

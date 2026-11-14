@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 17;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 18;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -746,11 +746,14 @@ function connectEvents() {
  *   alert_off     아무것도 안 함 (가림·정지는 그대로: 블록 끝까지 수동 운전)
  *   pause / play / seek {t}   블록 시작·끝. play {mute}: 소리는 실험 PC가 (device_audio.py), 안경은 음소거
  *   blank {on}    안경 화면 전체를 검게 / 원래대로 (v17)
+ *   play {sound}  다른 조건(휴대폰·HUD) 블록에서 실험 PC에 이어폰이 없을 때 (v18): 화면은 검은 채로 영상을 열어 소리만 냄,
+ *                 그 블록의 freeze/resume/seek/pause를 글래스 조건처럼 따름
  * 명령의 device가 glasses가 아니면 (휴대폰·HUD 조건 블록, v17): play = 블록 동안 화면 전체를 검게 (영상 안 엶),
  *   pause = 블록 끝, 원래대로; 그 밖의 명령은 무시 (calib만 따름)
  *   calib {dot}   시선 보정 (calib.js): 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; px:X,Y = 600x600 화면의 한 점; blank = 점 없이 비움; off = 끔)
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
+let soundOnly = false; // v18: another condition's block with play {sound}: black, the video's sound only
 
 // v17: the whole display black (another condition's block, or blank {on}); made here if an old
 // index.html in the cache has no #blankblock
@@ -766,16 +769,21 @@ function blanked() { const box = $('#blankblock'); return !!box && !box.hidden; 
 
 function control(d) {
   const a = d.action;
+  if (a === 'play' && (!d.device || d.device === 'glasses')) soundOnly = false;  // a HUD block cut short
   if (d.device && d.device !== 'glasses' && a !== 'calib' && a !== 'blank') {
-    // another condition's block (phone, HUD): black for the whole block, its commands not followed
-    if (a === 'play') blankBlock(true);
-    else if (a === 'pause') blankBlock(false);
-    report(a, d.id);
-    return;
+    // another condition's block (phone, HUD): black for the whole block, its commands not followed;
+    // v18: with play {sound} (no earphones on the PC) the video plays under the black for its sound
+    if (a === 'play') { soundOnly = !!d.sound; blankBlock(true); }
+    if (!soundOnly) {
+      if (a === 'pause') blankBlock(false);
+      report(a, d.id);
+      return;
+    }
   }
   if (a === 'freeze' || a === 'pause' || a === 'alert') {
     if (!held) held = { wasPlaying: !!mode && !P.paused(), frozen: false };
     P.pause();
+    if (a === 'pause' && soundOnly) { soundOnly = false; held = null; blankBlock(false); }  // the block's end
     // the TOR (alert) as a question's freeze: covered, no text (the request is on the monitors only)
     if (a === 'freeze' || a === 'alert') { held.frozen = true; $('#freeze').hidden = false; }
   } else if (a === 'alert_off') {
@@ -792,8 +800,10 @@ function control(d) {
     if (mode && (!h || h.wasPlaying)) P.play();
   } else if (a === 'play') {
     held = null;
-    blankBlock(false);
-    video.muted = !!d.mute;   // mute: the sound plays on the experiment PC (its earphones)
+    blankBlock(soundOnly);
+    // mute: the sound plays on the experiment PC (its earphones); sound-only: the glasses have the sound
+    // (the phone plays muted then, its play carries mute for the phone)
+    video.muted = soundOnly ? false : !!d.mute;
     $('#freeze').hidden = true;
     $('#freeze').textContent = '';
     $('#freeze').classList.remove('alert');
@@ -823,7 +833,7 @@ function report(action, id) {
     action: action || 'status', id: id || '', screen: current, mode: mode || '',
     title: $('#osd-title').textContent || '', t: mode ? Math.round(P.time() * 1000) / 1000 : null,
     paused: mode ? P.paused() : null, frozen: !!(held && held.frozen), ts: Date.now(),
-    muted: video.muted, blank: blanked(),   // v17
+    muted: video.muted, blank: blanked(), sound_only: soundOnly,   // v17, v18
     v: APP_VERSION, calib: typeof calibState === 'function' ? calibState() : null,  // calib.js
   };
   fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' },

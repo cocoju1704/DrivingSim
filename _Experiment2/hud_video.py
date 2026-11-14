@@ -103,7 +103,7 @@ def contain(width, height, box_w, box_h):
 class HudVideo(object):
     device = 'hud'
 
-    def __init__(self, video_file=None, start_s=0.0, resume=True):
+    def __init__(self, video_file=None, start_s=0.0, resume=True, sound=True):
         self.results = queue.Queue()   # (time.time(), command, delivered, state): the experiment logs them
         self.path = find_video(video_file)
         self.title = os.path.basename(self.path) if self.path else (video_file or '')
@@ -133,7 +133,10 @@ class HudVideo(object):
             logging.warning('HUD video: %s', error)
             self.path = None
             return
-        self._audio_init()
+        if sound:
+            self._audio_init()
+        else:   # 2026-11-14: no earphones on this PC: the glasses play the sound (video_link glasses_sound)
+            logging.info('HUD video: no sound on this PC (the glasses play it)')
         logging.info('HUD video: %s (%dx%d, %.0f s)', self.path, self._width, self._height, self._duration)
 
     # -- sound --------------------------------------------------------------------------------
@@ -264,6 +267,12 @@ class HudVideo(object):
         if self._playing:
             return self._pos + time.monotonic() - self._since
         return self._pos
+
+    def sync_position(self):
+        """(t, playing) for video_link's glasses sound to follow."""
+        if self.path is None:
+            return None
+        return self.position(), self._playing and not self._frozen
 
     def _play(self):
         with self._lock:
