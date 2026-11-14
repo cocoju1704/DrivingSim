@@ -61,8 +61,8 @@
     "R": {
       "spawn_dx_m": -80,
       "despawn_dx_m": -75,
-      "_comment": "2026-11-13: comes up at +22.5 km/h (was 15)",
-      "approach_dv_kmh": 22.5,
+      "_comment": "2026-11-14: comes up at +30 km/h (22.5 since 2026-11-13, 15 before)",
+      "approach_dv_kmh": 30,
       "hold_dx_m": -13,
       "onset_dx_m": -14.8,
       "release_rel_s": 5,
@@ -80,6 +80,9 @@
     },
     "F": {
       "_comment": "2026-11-13: closer and harder (was 30-32.5 m, -20 km/h at 3.5 m/s^2, then back to its place), and it leaves after: the lead car holds lead_dx_m ahead, brake light brake_s, down by decel_dv_kmh at decel_mps2 (relative to where the ego car would be), then up to +away_dv_kmh at away_mps2 and away ahead (as the background cars, 250 m; abc_schedule.f_brake). Its F is over once it is gone_dx_m ahead. The ego car (abc_follow.py): follows after follow_react_s with a time-gap ACC (5 m + follow_time_gap_s x its speed, follow_gain), its decel at most follow_decel_mps2, then makes up the distance it lost (at most follow_catch_up_kmh faster); the other cars keep their speeds (but the lane 2 cars behind it). Offline: closest 11.6-14.1 m centre to centre (6.8-9.3 m bumpers), lowest 40-41 km/h, 23-24 m behind at most, back at its place ~18.5 s after the brake. min_gap_m: m bumper to bumper the planned lead car keeps outside the brake",
+      "lead_vehicle": "vehicle.tesla.model3",
+      "lead_color": "25,75,210",
+      "_comment_lead": "2026-11-14: the lead car is this model: of 18 models 21 m behind at ISO 180 its brake light lit the most pixels (170; lincoln.mkz_2020 114, the Citroen C3 of A-F1 0)",
       "lead_dx_m": [20, 22.5],
       "brake_s": 3,
       "decel_dv_kmh": -25,
@@ -97,11 +100,11 @@
       "shift_s": 40
     },
     "Q": {
-      "_comment_zones": "2026-11-13: four questions (was eight cells): a car in the own lane ahead (2_front) and in each lane behind (1_rear / 2_rear / 3_rear: left / rear-view / right mirror), asked by lane. The sets' cells: in each set every question yes once or twice of three, no 1_side / 3_side at a question (half in the side mirror), 1_front / 3_front now and then (seen, not asked; not in a lane with a car behind asked about: next to an S that passes in that lane the two would not fit)",
+      "_comment_zones": "2026-11-14: the three lanes behind (1_rear / 2_rear / 3_rear: left side mirror / rear-view mirror / right side mirror; there, was there a car: yes / no / do not know) and ahead one question: which of the three lanes ahead (1_front / 2_front / 3_front) had the car, or do not know. At every question exactly one car ahead (never none: a floor effect), its lane spread evenly over a set (each once); behind every question yes once or twice of three per set; no 1_side / 3_side at a question (half in the side mirror). The question cars clearly in place for hold_s: behind 18-25 m, ahead 10-20 m (lane 2: 20-24 m; target_dx_m)",
       "_comment_ndrt": "2026-11-12: after the SAGAT questions (at most max_answer_s) the NDRT video questions (ndrt_items/ndrt_items.json: 4 frames, was this scene in the video, yes / no + confidence) come at the freeze + ndrt_at_s for everyone (the same recall delay: an early SAGAT answer waits), at most ndrt_max_answer_s",
-      "max_answer_s": 30,
-      "ndrt_at_s": 35,
-      "ndrt_max_answer_s": 40,
+      "max_answer_s": 40,
+      "ndrt_at_s": 45,
+      "ndrt_max_answer_s": 30,
       "countdown_s": 3,
       "cell_dx_m": {
         "front": [
@@ -119,22 +122,26 @@
       },
       "gap_far_m": 70,
       "target_dx_m": {
+        "_comment": "2026-11-14: nearer (was ahead 12-31 m, behind 22-38 / 32-40 m): clearly ahead / behind and clearly in the side mirror (lanes 1 and 3) or the rear-view mirror (lane 2, which since 2026-11-14 shows no side lane within 30 m behind)",
         "front": [
-          12,
-          31
+          10,
+          20
         ],
-        "lane2_front_min": 20,
+        "lane2_front": [
+          20,
+          24
+        ],
         "side": [
           -2,
           2
         ],
         "rear_lane1_3": [
-          -38,
-          -22
+          -23,
+          -18
         ],
         "rear_lane2": [
-          -40,
-          -32
+          -25,
+          -20
         ]
       },
       "unsafe_dx_m": [
@@ -143,6 +150,9 @@
       ],
       "approach_window_s": 5,
       "hold_s": 10,
+      "_comment_far": "2026-11-14: during hold_s the grid (gap_far_m) stands still; far ahead (far_dx_m) far_n cars keep coming and going, so the hold does not give the question away",
+      "far_n": 2,
+      "far_dx_m": [100, 240],
       "check_approach_safe": false,
       "approach_dv_kmh": 3,
       "margin_m": 2.5
@@ -155,6 +165,35 @@
         270
       ],
       "safe_lane_clear_abs_dx_m": 70,
+      "_comment_rear": "2026-11-14: a car behind in every lane (2, 3, 4 of the road; 1, 2, 3 here): the unsafe lane's (hazard_vehicle) comes up and passes; the own lane's (rear_own) comes up behind and urges on after the alert, and moves over to the unsafe lane (the other lane than the driver's) as soon as the driver starts a lane change, or when the driver has not (TTC evade_ttc_s to the stopped car, before the automatic stop; or slower than evade_below_kmh), once that lane is free; the safe lane's (rear_safe) holds dx_at_alert_m behind, then keeps its speed, and once the driver is in its lane ahead of it, follows at follow_gap_m (never nearer than min_gap_m): no braking down to a crawl there, no threat. Lane 0 (the road's lane 1): cars at a constant speed (speed_kmh, not relative to the ego car) from clear_rel_s on",
+      "rear_own": {
+        "spawn_rel_s": -9,
+        "spawn_dx_m": -80,
+        "dx_at_alert_m": -26,
+        "urge_gap_m": 14,
+        "urge_s": 4,
+        "min_gap_m": 6,
+        "evade_ttc_s": 3.0,
+        "evade_below_kmh": 40,
+        "evade_clear_m": [-12, 12],
+        "blueprint": "vehicle.audi.a2",
+        "color": "40,40,45"
+      },
+      "rear_safe": {
+        "spawn_rel_s": -9,
+        "spawn_dx_m": -80,
+        "dx_at_alert_m": -42,
+        "follow_gap_m": 20,
+        "min_gap_m": 15,
+        "blueprint": "vehicle.toyota.prius",
+        "color": "235,235,235"
+      },
+      "lane0": {
+        "speed_kmh": 100,
+        "spawn_dx_m": -80,
+        "every_s": [7, 12],
+        "gone_dx_m": [-120, 250]
+      },
       "hazard_vehicle": {
         "lane": "event.unsafe_lane",
         "spawn_rel_s": -9,
@@ -179,7 +218,7 @@
       "alert": {
         "sound": true,
         "cluster_text": "지금 직접 운전하세요",
-        "ndrt_screen_text": true,
+        "ndrt_screen_text": false,
         "pause_video": true
       },
       "takeover_input": [
@@ -254,8 +293,7 @@
         "type": "Q",
         "cells": [
           "2_front",
-          "2_rear",
-          "3_front"
+          "2_rear"
         ],
         "approach": [],
         "safe": "1"
@@ -291,6 +329,7 @@
         "id": "A-Q2",
         "type": "Q",
         "cells": [
+          "1_front",
           "1_rear",
           "3_rear"
         ],
@@ -410,9 +449,7 @@
         "id": "B-Q2",
         "type": "Q",
         "cells": [
-          "1_front",
-          "2_front",
-          "3_front"
+          "2_front"
         ],
         "approach": [],
         "safe": "both"
@@ -453,8 +490,8 @@
         "id": "B-Q3",
         "type": "Q",
         "cells": [
+          "1_front",
           "1_rear",
-          "2_front",
           "3_rear"
         ],
         "approach": [
@@ -509,7 +546,6 @@
         "id": "C-Q1",
         "type": "Q",
         "cells": [
-          "1_front",
           "2_front",
           "3_rear"
         ],
@@ -581,7 +617,6 @@
         "type": "Q",
         "cells": [
           "1_rear",
-          "2_front",
           "3_front"
         ],
         "approach": [

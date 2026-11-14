@@ -88,7 +88,8 @@ def main():
     # (t, glance, unsure, |eye yaw| or None); an unsure frame joined to a glance counts as the glance's
     # (mirror_aoi.join), unsure only when not
     rows = [(float(r['t_sim']), r['glance'], '' if r['glance'] else r['unsure'],
-             abs(float(r['eye_yaw'])) if r['eye_yaw'] else None) for r in aoi]
+             abs(float(r['eye_yaw'])) if r['eye_yaw'] else None) for r in aoi
+            if not r.get('display_only') or r['display_only'] in ('0', '')]   # display position rows: no gaze
     print('%d marked looks: %s' % (len(looks), ', '.join('%s %d' % (m, sum(1 for l in looks if l[0] == m))
                                                          for m in MIRRORS)))
     print('%-6s %-11s %7s %6s %7s %7s %7s %7s  %s' % ('mirror', 'when', 'eye yaw', 'frames', 'on it', 'other',

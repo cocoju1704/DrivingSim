@@ -36,8 +36,17 @@ STEPS = [
     ('실험', '실험 시작', '시작 창: 참가자·블록을 고르고 시작', 'Scenario ABC experiment',
      ['py launcher.py']),
     ('실험', '사전 점검', 'CARLA, 핸들, 영상 서버·글래스 앱, Glasses 2, SAGAT', 'Scenario ABC - preflight check',
-     ['py preflight.py']),
-    ('Glasses 2', '착용 점검', '각도 측정: 오른쪽 모니터에 "착용 OK"가 나오면 Esc', 'Glasses 2 fit',
+     ['py preflight.py --hold']),
+    # between blocks (the glasses come off every block): fit -> calibration (1 point) and the glasses
+    # display -> the short validation (road, 3 side monitor points, 4 display points), each after the last
+    ('Glasses 2', '빠른 재착용', '블록마다: 착용 점검(OK면 Esc) → 캘리브레이션 → 안경 화면 → 짧은 검증',
+     'Glasses 2 re-wear', ['py g2_aim.py --aim-v=-3.5 --good=2', '&& py g2_calibrate.py --validate',
+                           '&& py g2_validate.py --quick']),
+    # after each block, before the glasses come off (2026-11-14): the road and the HUD's place (centre and
+    # corners, every condition) -> hud_gaze_post.json in the newest block folder: how far the glasses slid
+    ('Glasses 2', '블록 뒤 HUD 점검', '블록이 끝나면 벗기 전에: 도로 중앙 + 계기판 위 영상 자리 5점 (약 15초)',
+     'Glasses 2 HUD after the block', ['py g2_validate.py --hud --post-last']),
+    ('Glasses 2', '착용 점검','각도 측정: 오른쪽 모니터에 "착용 OK"가 나오면 Esc 또는 우클릭', 'Glasses 2 fit',
      ['py g2_aim.py --aim-v=-3.5 --good=2']),
     ('Glasses 2', '캘리브레이션 + 검증', '가운데 모니터 타깃 → 안경 화면 점 → 성공하면 바로 검증',
      'Glasses 2 calibration', ['py g2_calibrate.py --validate', '&& py g2_validate.py']),
@@ -45,6 +54,9 @@ STEPS = [
      ['py g2_validate.py']),
     ('Glasses 2', '안경 화면 보정만', 'Ray-Ban Display 점만 다시 (+ 검증)', 'Glasses 2 display',
      ['py g2_calibrate.py --display-only --validate', '&& py g2_validate.py']),
+    # the gaze analyses are no longer started after each block (the CPU load slowed the next block)
+    ('분석', '블록 분석 (실험 끝나고)', '아직 분석 안 한 블록 모두: 미러 응시, SAGAT·화면 시선, gaze_video.mp4 (블록당 수십 분)',
+     'Scenario ABC - analyses', ['py postprocess.py --pending']),
     ('기타', 'CARLA 서버만 켜기', '시작 창이 알아서 켜므로 보통은 필요 없음', None, ['bat CarlaUE4_nosound.bat']),
 ]
 
@@ -62,7 +74,7 @@ def command(title, lines):
         else:
             parts.append(run)
     if any('preflight' in line for line in lines):
-        return ' & '.join(parts) + ' & echo. & pause'       # its result is this console
+        return ' & '.join(parts)       # its result is this console: preflight --hold waits (a key, a right click)
     # the console closes by itself (the results are on the monitors), but after an error: its message
     return ' & '.join(parts) + ' & if errorlevel 1 (echo. & echo 오류로 멈췄습니다: 위 메시지를 확인하세요. & pause)'
 
@@ -107,7 +119,8 @@ def status():
         at = os.path.getmtime(VALIDATION_FILE)
         same = val.get('g2_calibration') == (cal.get('ca_id') if rows[0][1] is None else None)
         verdict = val.get('pass')
-        text = '검증: %s (%s)' % ('통과' if verdict else '다시 착용' if verdict is False else '판정 없음', _ago(time.time() - at))
+        text = '%s: %s (%s)' % ('짧은 검증' if val.get('quick') else '검증',
+                                '통과' if verdict else '다시 착용' if verdict is False else '판정 없음', _ago(time.time() - at))
         if verdict is False and val.get('pass_reasons'):
             text += '  ·  ' + ', '.join(val['pass_reasons'])
         if not same:

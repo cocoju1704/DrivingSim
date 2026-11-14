@@ -8,9 +8,20 @@ PC: python mrbd-video/server.py).
     block start   play {file, t}: the app opens the video itself if none is open, seeks to t (--video-start)
     SAGAT         freeze: paused and covered (the glasses show nothing), its buttons do nothing
     after 3-2-1   resume: uncovered, playing again if it was playing before
-    TOR           alert: as freeze (paused, covered), no text on the glasses: the request is on the monitors
+    TOR           alert: as freeze (paused, covered), no text on the glasses / phone: the request is on
+                  the monitors (and no text on the HUD either), the same for every condition
     takeover      alert_off: nothing to take away, still covered and paused (manual driving to the end)
     block end     pause
+
+The sound (glasses and phone conditions): played on this PC (its default output, the earphones) by
+device_audio.DeviceAudio, in step with the device's reports; play carries mute (the device plays
+muted: glasses app v17, phone app v3; an older app reports no "muted" and keeps its own sound, this
+PC stays silent). --no-pc-sound / pc_sound=False: the device's own sound.
+
+Another condition's block (phone, HUD): the glasses app (v17) shows nothing for the whole block (its
+display black from the play to the pause), as it gets every command with the block's condition;
+the HUD condition needs a VideoLink for this too (abc_experiment: one in every condition with a
+video server).
 
 The commands go to the server (POST /api/control), which passes them to the glasses app over its
 event stream, and to the phone app (mrbd-video/phone_app) in the phone condition: each command
@@ -40,7 +51,7 @@ HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
 
 
 class VideoLink(object):
-    def __init__(self, address, video_file=None, start_s=0.0, device='glasses', resume=True):
+    def __init__(self, address, video_file=None, start_s=0.0, device='glasses', resume=True, pc_sound=True):
         address = address.strip().rstrip('/')
         if not address.startswith(('http://', 'https://')):
             address = 'http://' + address
@@ -57,6 +68,8 @@ class VideoLink(object):
         self._jobs = queue.Queue()     # one worker: the commands arrive in order
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
+        self.audio = None   # the video's sound on this PC (device_audio), glasses / phone condition
+        self._pc_sound = pc_sound and device in ('glasses', 'phone')   # made at the first start()
 
     def _post(self, path, data, tries=3):
         """POST JSON; tried again (up to tries) on a failure: through the tunnel a request now and then
@@ -180,6 +193,8 @@ class VideoLink(object):
             self.results.put((time.time(), action, delivered, state))
 
     def close(self, wait=3.0):
+        if self.audio is not None:
+            self.audio.close()
         self._jobs.put(None)
         self._worker.join(wait)
 
@@ -194,18 +209,37 @@ class VideoLink(object):
             fields['t'] = self._start
         elif not self._resume:
             fields['restart'] = True   # from the start: the phone app v2+, the glasses app v15+
+        if self._pc_sound and self.audio is None:
+            self._pc_sound = False
+            try:
+                from device_audio import DeviceAudio
+                self.audio = DeviceAudio(self.base, self.device, HEADERS, self._file, self.results)
+                if not self.audio.ok:
+                    self.audio = None
+            except Exception as error:  # pylint: disable=broad-except
+                logging.warning('Video sound on this PC: none (%s): the device plays it', error)
+                self.audio = None
+        if self.audio is not None:
+            fields['mute'] = True      # the sound on this PC: the glasses app v17+, the phone app v3+
+            self.audio.follow()
         self._send('play', **fields)
 
     def pause(self, qid=''):
+        if self.audio is not None:
+            self.audio.hold()
         self._send('freeze', id=qid)
 
     def resume(self, qid=''):
+        if self.audio is not None:
+            self.audio.follow()
         self._send('resume', id=qid)
 
     def alert(self, eid='', text=''):
         """The TOR: the video stops and is hidden (as at a question), but no message on the glasses:
         the takeover request is on the monitors (above the cluster, and in the HUD condition the HUD),
         the same for every condition. text is kept for the log only."""
+        if self.audio is not None:
+            self.audio.hold()
         self._send('freeze', id=eid)
 
     def alert_off(self, eid=''):
@@ -215,5 +249,12 @@ class VideoLink(object):
         """Gaze calibration (g2_calibrate.py): one dot on a black screen, c / tl / tr / br / bl, 'off'."""
         self._send('calib', dot=dot)
 
+    def blank(self, on=True):
+        """The glasses app's display all black (v17), or back (on False); the block's other commands
+        do this by themselves outside the glasses condition (see above)."""
+        self._send('blank', on=bool(on))
+
     def stop(self):
+        if self.audio is not None:
+            self.audio.stop()
         self._send('pause')

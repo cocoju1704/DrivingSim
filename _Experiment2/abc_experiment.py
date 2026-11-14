@@ -35,7 +35,7 @@ nothing but the F's lead car (abc_follow). The cars around it follow the set's s
         were at T) takes over: manual driving, the alert off. No takeover: at TTC 1.5 s to the
         stopped car an automatic emergency stop (no_takeover). The approaching car keeps its speed;
         if the ego car comes into its lane less than 10 m ahead of it, it brakes (conflict).
-        The block ends at T+30, or 5 s after the car stands still.
+        The block ends at T+50 (T+30 before 2026-11-13), or 5 s after the car stands still.
 
 The participant answers nothing but the SAGAT and video questions: the events are measured by the gaze only
 (Tobii Pro Glasses 2 with its event markers; analysed afterwards). For that, every frame logs in
@@ -47,8 +47,7 @@ and each event gets its gaze window (gaze_windows.csv):
             back past 10 m
     F       the car ahead, T .. T+5
 tor_events.csv has the TOR's measures (one row). At the end the monitors only say that the drive
-is over; the experimenter gives the video score (the video questions' share correct; feedback.txt
-has the line). SAGAT scores are kept in the data, not told.
+is over. No score is told to the participant (video questions and SAGAT are kept in the data only).
 
 Keys (experimenter): ESC ends the run, TAB the next camera view, F1 the info panel, N during a
 question skips it (no answer; during the SAGAT questions: on to the video questions).
@@ -67,7 +66,7 @@ Data (--out, else Data/P<nn>_B<block>_<set>_<condition>/, --test: Data/test/<MMD
     sagat.json      each question: the real layout at the freeze, the answer, the scores, the video
                     questions (ndrt: the frames, the answers, the score)
     ndrt.csv        each video question: the frame, in the video or not, the answer, confidence, time
-    summary.json, feedback.txt
+    summary.json
 """
 
 from __future__ import print_function
@@ -102,13 +101,13 @@ AUDIO_MUTE_PORT = 5006     # carla-audio-engine fmain.py: "mute" / "unmute" (the
 RESUME_FIXED_FRAMES = 3     # frames with a fixed step after a freeze (a variable one would be the freeze)
 HUD_OFF_GLASS = (10, 12, 16, 110)       # the switched-off HUD on the windshield: a faint dark pane
 HUD_OFF_RIM = (90, 95, 105, 150)
-CAMERA_ISO = 250.0                     # manual exposure of the monitor cameras: brighter than automatic
+CAMERA_ISO = 180.0                     # manual exposure of the monitor cameras and the mirrors (2026-11-14: 250 was
+                                       # so bright the glasses' video was hard to see on it)
 FOG = (3.0, 60.0, 1.0)                 # fog_density, fog_distance m, fog_falloff: a light haze far ahead
 WEATHER = 'ClearNoon'                  # carla.WeatherParameters preset for the blocks (the server's comes back after)
 GAZE_AFTER = {'S': 7.0, 'SD': 7.0}    # s after T the side mirror events' gaze windows end (before 2026-11-13;
                                       # since: S template window_rel_s, the car comes onto the side monitor)
 F_GAZE = (0.0, 5.0)                     # s around T: the car ahead's gaze window
-VIDEO_FEEDBACK = '수고하셨습니다. 이번 영상 시험 점수는 %s점입니다.'  # said by the experimenter after the block
 # the NDRT video questions per set: the clip and per SAGAT stop the frames (ndrt_items/make_items.py)
 NDRT_ITEMS = os.path.join(HERE, 'ndrt_items', 'ndrt_items.json')
 NDRT_COLUMNS = ('qid', 'k', 'image', 'in_video', 'answer', 'confidence', 'ms', 'correct', 'video_t',
@@ -131,7 +130,9 @@ GORE_OBJECTS = ('SM_SecWaterDrums',                       # all water drums (the
 TOR_COLUMNS = ('participant', 'block', 'set', 'condition', 't_tor', 'safe_lane', 'unsafe_lane', 't_first_input',
                't_manual', 'first_input_type', 't_lane_change_start', 't_lane_change_end', 'chosen_lane',
                'chose_safe', 'min_ttc_obstacle_s', 'min_gap_hazard_m', 'conflict', 'collision', 'no_takeover',
-               't_blinker', 'blinker_side', 'blinker_before_lane_change', 'blinker_matches_lane')
+               't_blinker', 'blinker_side', 'blinker_before_lane_change', 'blinker_matches_lane',
+               # 2026-11-14: the cars behind (abc_traffic.TorCars): bumper gaps while in the same lane
+               'min_gap_rear_own_m', 'min_gap_rear_safe_m', 't_rear_own_moved', 'rear_own_moved_to')
 
 
 # ==============================================================================
@@ -178,9 +179,9 @@ class DataLog(object):
             values += [extra.get(k, '') for k in self._gaze_columns]
         self._files[name][1].writerow(values)
 
-    def event(self, t, what, eid='-'):
+    def event(self, t, what, eid='-', wall=None):
         logging.info('%7.2f s  %-8s %s', t, eid, what)
-        self.row('events.csv', (round(t, 3), round(time.time(), 3), eid, what))
+        self.row('events.csv', (round(t, 3), round(time.time() if wall is None else wall, 3), eid, what))
 
     def json(self, name, data):
         if self.dir:
@@ -292,52 +293,66 @@ class MirrorVisibility(object):
 # ==============================================================================
 
 
-# the questions on the tablet (sagat_app): was there a car ... (yes / no, each with its own confidence
-# 1-5), four zones since 2026-11-13 (before: eight cells, also beside and the side lanes ahead): the
-# own lane ahead and the three lanes behind, each what one mirror shows. They are asked by lane (the
-# rear-view mirror also shows the side lanes behind: the left lane behind is the left question). The
-# schedule keeps the beside cells empty at a question (a car there is half in the side mirror) and
-# puts cars in the side lanes ahead now and then (seen, not asked).
+# the questions on the tablet (sagat_app), since 2026-11-14: the three lanes behind, each what one mirror
+# shows (left side mirror, rear-view mirror, right side mirror; the rear-view mirror shows no side lane
+# within 30 m since then): was there a car - yes / no (each with its confidence 1-5) / do not know (no
+# confidence: a guess kept apart, as confidence 1 would mean). Then ahead: in which of the three lanes ahead
+# was the car - left / own / right (confidence 1-5) or do not know. The schedule puts exactly one car
+# ahead at every question (1_front, 2_front or 3_front, each once a set) and keeps the beside cells empty
+# (a car there is half in the side mirror). 2026-11-13 .. 14: four yes / no zones (the own lane ahead and
+# the three behind); before: eight cells, also beside and the side lanes ahead.
 SAGAT_ITEMS = ('behind_left', 'behind', 'behind_right',   # behind (cell_dx_m rear): left / rear-view / right mirror
-               'ahead')                                    # the own lane ahead (front)
-ITEM_CELLS = {'behind_left': '1_rear', 'behind': '2_rear', 'behind_right': '3_rear', 'ahead': '2_front'}
-LANE_ITEMS = {1: ('behind_left', None, None), 2: ('behind', None, 'ahead'), 3: ('behind_right', None, None)}
+               'ahead')                                    # which lane ahead (front): 1, 2, 3
+REAR_ITEMS = SAGAT_ITEMS[:3]
+ITEM_CELLS = {'behind_left': '1_rear', 'behind': '2_rear', 'behind_right': '3_rear'}
+FRONT_CELLS = {1: '1_front', 2: '2_front', 3: '3_front'}
+LANE_ITEMS = {1: ('behind_left', None, 'ahead'), 2: ('behind', None, 'ahead'), 3: ('behind_right', None, 'ahead')}
 
 
 def sagat_truth(snapshot, qt, mirrors=None):
     """The answers from the cars as they are at the freeze: snapshot [(id, lane, dx, dx 5 s before)],
-    mirrors {id: {mirror: px}} (MirrorVisibility, the last frame; kept for the record). A question is
-    yes when a car is in its cell (cell_dx_m: behind 15-45 m, beside -4..4 m, ahead 5-35 m; the
-    schedule keeps every car either in a cell or beyond gap_far_m at a question). A car that is in a
-    gap anyway (its course off by a few metres) makes the questions on both sides of that gap
-    ambiguous unless a car is clearly in their cell: they are not scored. So does a car beside in lane
-    1 or 3 (the schedule keeps none there): it is half in that side mirror."""
+    mirrors {id: {mirror: px}} (MirrorVisibility, the last frame; kept for the record). A question behind
+    is yes when a car is in its cell (cell_dx_m: behind 15-45 m); ahead is the lane (1, 2, 3) whose cell
+    ahead (5-35 m) has a car (None: none; ambiguous when more than one). The schedule keeps every car
+    either in a cell or beyond gap_far_m at a question. A car that is in a gap anyway (its course off by a
+    few metres) makes the questions on both sides of that gap ambiguous unless a car is clearly in their
+    cell (ahead: unless that car is in the lane of the answer): they are not scored. So does a car beside
+    in lane 1 or 3 (the schedule keeps none there): it is half in that side mirror."""
     now = [(lane, dx) for _, lane, dx, _ in snapshot]
     history = {k: before for k, (_, _, _, before) in enumerate(snapshot) if before is not None}
     cells, approach, safe = abc_schedule.layout(now, history, qt)
     items = {key: bool(cells.get(cell)) for key, cell in ITEM_CELLS.items()}
+    ahead = [lane for lane, cell in sorted(FRONT_CELLS.items()) if cells.get(cell)]
+    items['ahead'] = ahead[0] if len(ahead) == 1 else None
     c = qt['cell_dx_m']
     ambiguous = set()
+    if len(ahead) > 1:
+        ambiguous.add('ahead')
     for _, lane, dx, _ in snapshot:
         if lane not in LANE_ITEMS:
             continue
-        behind, beside, ahead = LANE_ITEMS[lane]
+        behind, beside, front = LANE_ITEMS[lane]
         zone = abc_schedule.zone_of(lane, dx, qt)
         if zone in ('1_side', '3_side'):
             ambiguous.update(k for k in (behind,) if not items[k])
         if zone != 'gap':
             continue
         if dx >= c['front'][1]:
-            near = (ahead,)
+            near = (front,)
         elif dx <= c['rear'][0]:
             near = (behind,)
         elif lane == 2:
-            near = (behind, ahead)
+            near = (behind, front)
         elif dx < c['side'][0]:
             near = (behind, beside)
         else:
-            near = (beside, ahead)
-        ambiguous.update(k for k in near if k and not items[k])
+            near = (beside, front)
+        for k in near:
+            if k == 'ahead':
+                if items['ahead'] != lane:   # a car near the cells ahead in another lane than the answer's
+                    ambiguous.add(k)
+            elif k and not items[k]:
+                ambiguous.add(k)
     mirrors = mirrors or {}
     return {'items': items, 'ambiguous': sorted(ambiguous), 'cells': cells, 'approach': approach, 'safe': safe,
             'cars': [{'id': cid, 'lane': lane, 'dx': round(dx, 2), 'dx_5s_before': None if b is None else round(b, 2),
@@ -370,24 +385,46 @@ def ndrt_score(stop, answer):
 
 
 def sagat_score(truth, answer):
-    """Per question: correct or not (None: not answered, or ambiguous), its confidence; score = the
-    share correct of the scored ones (also by group)."""
+    """Per question: correct or not (None: not answered, do not know, or ambiguous), its confidence; score =
+    the share correct of the scored ones (also behind / ahead). Behind also as signal detection (d' in the
+    analysis): hits, misses, false alarms, correct rejections; "do not know" is none of them (counted in
+    unknown). An answer that came at the time limit (ended_by timeout) has the questions answered by then."""
     if answer is None:
         return {'answered': False}
     given = answer.get('items') or {}
-    correct, confidence = {}, {}
+    correct, confidence, said = {}, {}, {}
+    sdt = {'hits': 0, 'misses': 0, 'false_alarms': 0, 'correct_rejections': 0, 'unknown': 0, 'unanswered': 0}
     for key in SAGAT_ITEMS:
         a = given.get(key) or {}
-        unscored = a.get('present') is None or key in truth.get('ambiguous', ())
-        correct[key] = None if unscored else bool(a['present']) == truth['items'][key]
-        confidence[key] = a.get('confidence')
+        unknown = bool(a.get('unknown'))
+        value = a.get('lane') if key == 'ahead' else a.get('present')
+        said[key] = 'unknown' if unknown else value
+        truth_value = truth['items'].get(key)
+        unscored = unknown or value is None or key in truth.get('ambiguous', ()) or (key == 'ahead' and truth_value is None)
+        if unscored:
+            correct[key] = None
+        elif key == 'ahead':
+            correct[key] = int(value) == truth_value
+        else:
+            correct[key] = bool(value) == truth_value
+        confidence[key] = None if unknown else a.get('confidence')
+        if key in REAR_ITEMS and key not in truth.get('ambiguous', ()):
+            if unknown:
+                sdt['unknown'] += 1
+            elif value is None:
+                sdt['unanswered'] += 1
+            elif truth_value:
+                sdt['hits' if value else 'misses'] += 1
+            else:
+                sdt['false_alarms' if value else 'correct_rejections'] += 1
 
     def share(keys):
         marks = [correct[k] for k in keys if correct[k] is not None]
         return round(sum(marks) / float(len(marks)), 3) if marks else None
-    return {'answered': True, 'correct': correct, 'confidence': confidence,
-            'behind': share(('behind_left', 'behind', 'behind_right')), 'ahead': share(('ahead',)),
-            'score': share(SAGAT_ITEMS),
+    return {'answered': True, 'said': said, 'correct': correct, 'confidence': confidence,
+            'behind': share(REAR_ITEMS), 'ahead': share(('ahead',)),
+            'score': share(SAGAT_ITEMS), 'behind_sdt': sdt,
+            'unknown': [k for k in SAGAT_ITEMS if said[k] == 'unknown'],
             'unscored': [k for k in SAGAT_ITEMS if correct[k] is None]}
 
 
@@ -401,19 +438,25 @@ class Overlay(object):
     alert (blinking above the cluster; in the HUD condition in the HUD area too), and the black
     screens of a question and of the end.
 
-    Layout at the bottom of the middle monitor: the cluster in the middle, the HUD's video area at
-    the monitor's right edge (where the glasses' display appears in the view), a plain rectangle
+    Layout at the bottom of the middle monitor: the cluster in the middle, the HUD's video area right
+    of it (HUD_RIGHT_DEG, where the glasses' video is seen looking ahead), a plain rectangle
     HUD_DEG wide in the video's shape (HUD_ASPECT, no windshield perspective), its bottom just above the
     dashboard (the cluster's top). hud_rect is where the HUD condition's video goes (--hud-preview
     draws its outline)."""
 
     _draw_cluster = base.TakeoverExperiment._draw_cluster
-    HUD_DEG = 10.0    # degrees across: 25 % wider than the glasses' display (8 degrees), which looked bigger
+    HUD_DEG = 11.0    # degrees across (2026-11-14: 10 -> 11): the glasses app v17's 400 px video measured 10.5-11.4
+                      # degrees (two display calibrations; 600 px = 15.7 / 17.1), and a larger HUD has fewer gaze
+                      # samples going in and out at its border. Its left edge stays just right of the TOR alert box
     HUD_ASPECT = 9.0 / 16.0   # height / width: the video's own shape (16:9), no empty band above or below
     # The video as light added to the view (as a HUD's projection and the glasses' display: black is
     # see-through, the dark parts let the road show), at this share of its brightness: lower, more see-through
     HUD_VIDEO_GAIN = 0.6
-    HUD_RIGHT_DEG = 9.5   # the HUD's centre, degrees right of straight ahead: clear of the badge and the TOR alert above the cluster
+    # the HUD's centre, degrees right of straight ahead (2026-11-14: 8.5, was at the monitor's right edge,
+    # about 17): where the glasses' video is, at the display's top right, looking ahead (about 8 right);
+    # never over the TOR alert above the cluster (then right of it, HUD_ALERT_GAP_PX)
+    HUD_RIGHT_DEG = 8.5
+    HUD_ALERT_GAP_PX = 16
     HUD_ABOVE_PX = 12     # px between the HUD's bottom and the cluster's top (the dashboard)
     HUD_EDGE_PX = 8       # px between the HUD and the middle monitor's right edge
     HUD_NEAR_M = 0.75     # m from the driver's eyes to the HUD's bottom edge on the windshield
@@ -431,7 +474,12 @@ class Overlay(object):
         # HUD_DEG and as high as the video (HUD_ASPECT), its bottom just above the dashboard (the cluster's top)
         bottom = face['origin'][1] - self.HUD_ABOVE_PX
         tall = int(round(hud * self.HUD_ASPECT))
-        self.hud_rect = pygame.Rect(width - self.HUD_EDGE_PX - hud, bottom - tall, hud, tall)
+        fov = self._world.camera_manager.screen_fov if hasattr(self._world.camera_manager, 'screen_fov') else 43.0
+        focal = width / 2.0 / math.tan(math.radians(fov / 2.0))
+        x = int(round(width / 2.0 + focal * math.tan(math.radians(self.HUD_RIGHT_DEG)) - hud / 2.0))
+        alert_right = left + panel_w // 2 + (self.big.size(base.TOR_MESSAGE)[0] + 60) // 2   # _draw_alert's box
+        x = min(max(x, alert_right + self.HUD_ALERT_GAP_PX), width - self.HUD_EDGE_PX - hud)
+        self.hud_rect = pygame.Rect(x, bottom - tall, hud, tall)
         r = self.hud_rect
         self.hud_poly = [(r.left, r.bottom), (r.right, r.bottom), (r.right, r.top), (r.left, r.top)]
         return face
@@ -550,12 +598,8 @@ class Overlay(object):
         box = text.get_rect(midbottom=(middle, self._cluster['origin'][1] - 60)).inflate(60, 28)
         pygame.draw.rect(display, (220, 30, 30), box, border_radius=10)
         display.blit(text, text.get_rect(center=box.center))
-        if self._condition == 'hud' and self.hud_rect is not None:  # the NDRT screen: the same text
-            rect = self.hud_rect.move(x0, 0)
-            pygame.draw.polygon(display, (220, 30, 30), [(x + x0, y) for x, y in self.hud_poly])
-            for k, line in enumerate(('지금 직접', '운전하세요')):
-                line_text = self.big.render(line, True, (255, 255, 255))
-                display.blit(line_text, line_text.get_rect(center=(rect.centerx, rect.centery + (k - 0.5) * 56)))
+        # 2026-11-14: no text on the HUD (it was filled red with the same text): the glasses and the phone
+        # only stop and cover their video, so the HUD only goes dark (hud_video's alert) in all fairness
 
     def black(self, display, lines=(), count=None):
         display.fill((0, 0, 0))
@@ -673,13 +717,19 @@ class Block(object):
         for player in self.media:
             while not player.results.empty():
                 wall, action, delivered, state = player.results.get()
+                layout = (state or {}).get('layout')
+                if layout and self.log.dir and layout != getattr(self, '_phone_layout', None):
+                    # the phone app (v4): its markers and the video in phone px, for mirror_aoi.py
+                    self._phone_layout = layout
+                    with open(os.path.join(self.log.dir, 'phone_screen.json'), 'w', encoding='utf-8') as handle:
+                        json.dump(dict(layout, v=state.get('v')), handle, indent=1)
                 what = 'video %s: %s' % (action, 'not sent' if delivered is None else
                                          'no player connected' if not delivered else
                                          '%s at %s s%s%s%s' % (player.device, state.get('t'), ', paused' if state.get('paused') else '',
                                                                     ', covered' if state.get('frozen') else '',
                                                                     # the video (gaze_video.py shows it on the display)
                                                                     ' [%s]' % state['title'] if state.get('title') else ''))
-                self.log.event(t, what, state.get('id') or '-')
+                self.log.event(t, what, state.get('id') or '-', wall=wall)  # when the player did it
 
     # -- the end -------------------------------------------------------------------------------
 
@@ -702,7 +752,6 @@ class Block(object):
         asked = [q['ndrt']['score'] for q in self.questions if q.get('ndrt')]
         n_items = sum(a['asked'] for a in asked)
         video = round(100.0 * sum(a['correct'] for a in asked) / n_items) if n_items else None
-        feedback = VIDEO_FEEDBACK % ('○○' if video is None else video)
         summary = {
             'set': self.args.set, 'block': self.args.block, 'condition': self.args.condition,
             'participant': self.args.participant, 'test': self.args.test, 'aborted': aborted, 't_end': round(t_end, 2),
@@ -710,13 +759,11 @@ class Block(object):
             'tor': self.tor.row(self) if self.tor is not None and self.tor.t_alert is not None else None,
             'sagat': {'score_percent': sagat, 'questions': [{'id': q['id'], **q['score']} for q in self.questions]},
             'ndrt': {'score_percent': video, 'clip': self.ndrt['clip'] if self.ndrt else None,
-                     'questions': [{'id': q['id'], **q['ndrt']['score']} for q in self.questions if q.get('ndrt')]},
-            'feedback': feedback}
+                     'questions': [{'id': q['id'], **q['ndrt']['score']} for q in self.questions if q.get('ndrt')]}}
         self.log.json('summary.json', summary)
         if summary['tor']:
             self.log.row('tor_events.csv', [('' if summary['tor'][k] is None else summary['tor'][k]) for k in TOR_COLUMNS])
         self.log.json('sagat.json', self.questions)
-        self.log.text('feedback.txt', feedback + '\n(블록 뒤 실험자가 읽음: 영상 질문 정답 비율. 주변 차량 질문 점수는 알리지 않음)\n')
         print()
         print('=' * 78)
         print('Block over (%s). SAGAT %s (not told to the participant). Gaze windows: %d events%s' % (
@@ -730,7 +777,7 @@ class Block(object):
                 'no takeover', tor['first_input_type'] or '-', tor['chosen_lane'] or '-',
                 'safe' if tor['chose_safe'] else '-' if tor['chose_safe'] is None else 'not the safe lane', tor['min_ttc_obstacle_s'], tor['conflict'],
                 tor['collision'] or 'none'))
-        print('Video questions: %s. Say: "%s"' % ('-' if video is None else '%d %% of %d' % (video, n_items), feedback))
+        print('Video questions: %s (not told to the participant)' % ('-' if video is None else '%d %% of %d' % (video, n_items)))
         if self.log.dir:
             print('  data: %s' % self.log.dir)
         print('=' * 78)
@@ -792,8 +839,12 @@ def build_args():
     parser.add_argument('--g2-record', action='store_true', help='with --g2: start and stop a recording too')
     parser.add_argument('--g2-no-stream', action='store_true',
                         help='with --g2: do not save the live gaze and scene video in the data folder')
-    parser.add_argument('--no-post', action='store_true',
-                        help='with --g2: no postprocess.py at the end (mirror glances, SAGAT gaze, gaze_video.mp4)')
+    # 2026-11-14: not by default; the analyses load the CPU and the next block's frame rate fell (19 fps,
+    # 1114030006 ran 9 % slow). After the session: menu "블록 분석" (postprocess.py --pending)
+    parser.add_argument('--post', action='store_true',
+                        help='with --g2: postprocess.py in the background at the end (mirror glances, SAGAT gaze, '
+                             'gaze_video.mp4); off by default (load during the next block)')
+    parser.add_argument('--no-post', action='store_true', help=argparse.SUPPRESS)   # the default now
     parser.add_argument('--video', metavar='HOST[:PORT]',
                         help='the NDRT video player on the glasses / phone (mrbd_video): paused at the questions')
     parser.add_argument('--video-file', default=None, help='the video the player plays (its name on the device)')
@@ -859,7 +910,9 @@ def run(args):
                               stream_dir=None if args.g2_no_stream else block.log.dir)
             # the glasses display in the Glasses 2 gaze (g2_calibrate.py) and the gaze's accuracy (g2_validate.py)
             # and the bezel markers in the window's pixels (mirror_register.py), for mirror_aoi.py
-            for name in ('g2_display.json', 'g2_validation.json', os.path.join('mirror_markers', 'bezel_screen.json')):
+            # hud_gaze.json: the HUD's outline as the gaze saw it in the validation (g2_validate, 2026-11-14)
+            for name in ('g2_display.json', 'g2_validation.json', 'hud_gaze.json',
+                         os.path.join('mirror_markers', 'bezel_screen.json')):
                 path = os.path.join(HERE, name)
                 if block.log.dir and os.path.isfile(path):
                     import shutil
@@ -876,11 +929,13 @@ def run(args):
                             block.ndrt['clip'])
             block.ndrt = None
         if args.condition == 'hud':
-            # the HUD's video: played here, in the HUD area (no glasses / phone app: the glasses app
-            # would do the commands of every condition)
+            # the HUD's video: played here, in the HUD area
             from hud_video import HudVideo
             block.media.append(HudVideo(args.video_file, args.video_start, resume=block.ndrt is None))
-        elif args.video:
+        if args.video:
+            # the glasses and phone apps; in the phone and HUD conditions the glasses app (v17) keeps its
+            # display black for the block (the commands carry the condition). The PC plays the video's
+            # sound only in the glasses and phone conditions (device_audio; HUD: HudVideo)
             from video_link import VideoLink
             block.media.append(VideoLink(args.video, args.video_file, args.video_start, args.condition,
                                          resume=block.ndrt is None))
@@ -1001,12 +1056,15 @@ def run(args):
         f_spans = sorted((a, b, c['id']) for c in schedule['cars'] for a, b in c.get('f_spans', [])
                          if a >= args.start_at)
         follow = None   # abc_follow.Follow while the ego car brakes for an F and makes the distance up
+        hud_saved = False   # hud.json / hud_last.json written (save_hud, once the overlay has its HUD)
         clock = pygame.time.Clock()
+        pacer = Pacer(args.fps)
         block.mark(args.start_at, 'block start', set=args.set, condition=args.condition)
         for player in block.media:
             player.start()
         while True:
-            clock.tick_busy_loop(args.fps)
+            pacer.wait()
+            clock.tick()   # only measures (get_time, get_fps)
             ticker.wait()
             snapshot = sim_world.get_snapshot()
             t = snapshot.timestamp.elapsed_seconds - t_zero
@@ -1019,7 +1077,7 @@ def run(args):
                     sim_world.apply_settings(settings)
             keys = pygame.key.get_pressed()
             for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+                if ended_by(event):
                     return
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_TAB:
                     base.next_view(world)
@@ -1050,6 +1108,7 @@ def run(args):
                 settings.fixed_delta_seconds = 1.0 / args.fps  # the next step is one frame, not the freeze
                 sim_world.apply_settings(settings)
                 fixed_frames = RESUME_FIXED_FRAMES
+                pacer.reset()
                 ticker.start()
                 continue
 
@@ -1104,7 +1163,7 @@ def run(args):
                         world.player.set_target_velocity(carla.Vector3D(velocity.x * wanted / ego_speed,
                                                                         velocity.y * wanted / ego_speed, velocity.z))
                     if follow.done:
-                        block.mark(t, 'F follow end: lowest %.0f km/h, closest %.1f m, %.1f m behind at most' % (
+                        block.mark(t, 'F follow end: lowest %.0f km/h, closest %.1f m (centre to centre), %.1f m behind at most' % (
                             (follow.lowest or 0.0) * 3.6, follow.closest or -1.0, follow.most), follow.car)
                         follow = None
                         follower.engage()   # from the speed it has now (its controller was overridden)
@@ -1184,6 +1243,8 @@ def run(args):
             world.render(display)
             overlay.render(display, block.mode, speed_kmh, pedal,
                            block.tor.alert_wall if block.tor is not None and block.mode in (TOR, STOPPED) else None)
+            if not hud_saved and overlay.hud_rect is not None:
+                hud_saved = save_hud(overlay, block.log.dir)
             pygame.display.flip()
             if snaps and t >= snaps[0]:
                 snaps.pop(0)
@@ -1210,7 +1271,7 @@ def run(args):
             block.mark(t, 'run end')
             block.g2.close()
         block.log.close()
-        if block.g2 is not None and not args.g2_no_stream and not args.no_post and block.log.dir:
+        if block.g2 is not None and not args.g2_no_stream and args.post and not args.no_post and block.log.dir:
             # the gaze analyses and the gaze video, in the background at idle priority (postprocess.py)
             try:
                 import postprocess
@@ -1255,6 +1316,7 @@ def run(args):
             sound.stop()
         if block.tor is not None:
             block.tor.scene.destroy()
+            block.tor.more.destroy()
         if collision_sensor is not None:
             collision_sensor.stop()
             collision_sensor.destroy()
@@ -1272,6 +1334,23 @@ def run(args):
                 logging.exception('Feedback screen')
         pygame.quit()
     return aborted
+
+
+def save_hud(overlay, directory):
+    """The HUD's rectangle in window px (every condition: it is drawn switched off in the others):
+    hud.json in the block folder and hud_last.json next to this script, where g2_validate.py puts its
+    validation points (the HUD's outline as the gaze sees it, hud_gaze.json)."""
+    x0, _, _ = overlay.middle()
+    r = overlay.hud_rect
+    data = {'rect_px': [r.x + x0, r.y, r.width, r.height], 'hud_deg': overlay.HUD_DEG,
+            'right_deg': overlay.HUD_RIGHT_DEG, 'monitor_px': list(overlay._world.camera_manager.screen_size)}  # pylint: disable=protected-access
+    for path in ([os.path.join(directory, 'hud.json')] if directory else []) + [os.path.join(HERE, 'hud_last.json')]:
+        try:
+            with open(path, 'w', encoding='utf-8') as handle:
+                json.dump(data, handle, indent=1)
+        except OSError as error:
+            logging.warning('%s not written: %s', path, error)
+    return True
 
 
 def save_mirrors(manager, directory):
@@ -1400,6 +1479,11 @@ class TorRun(object):
         self._seen_logged = False
         self._hits_before = 0      # collisions before the alert (not the TOR's)
         self._new = False          # the approaching car appeared this frame
+        # the cars behind in lane 2 and the safe lane, the lane 0 traffic (2026-11-14)
+        import random
+        self.more = abc_traffic.TorCars(scene._traffic, scene, template, self.t,  # pylint: disable=protected-access
+                                        random.Random(event['id']))
+        self.min_gap_own = self.min_gap_safe = None
 
     # -- the cars ----------------------------------------------------------------------------
 
@@ -1422,6 +1506,9 @@ class TorRun(object):
             return 'obstacle'
         if self.scene.hazard_actor is not None and actor_id == self.scene.hazard_actor.id:
             return 'hazard'
+        for car in self.more.cars():
+            if car.actor.id == actor_id:
+                return car.name if not car.name.startswith('lane0') else 'lane0'
         return 'other'
 
     def cars(self, transform, ego_s, ego_speed):
@@ -1435,6 +1522,10 @@ class TorRun(object):
         if self.scene.obstacle_actor is not None:
             out.append((prefix + '-obstacle', 2, self.scene.obstacle_dx(ego_s), -ego_speed * 3.6, 'hazard',
                         self.scene.obstacle_actor))
+        for car in self.more.cars():
+            if not car.fresh:
+                out.append((prefix + '-' + car.name, car.lane, car.dx(transform), (car.speed - ego_speed) * 3.6,
+                            abc_traffic._light_names(car.light), car.actor))  # pylint: disable=protected-access
         return out
 
     def seen(self, t, block, cid, mirrors):
@@ -1476,6 +1567,27 @@ class TorRun(object):
                     scene.obstacle_spawn_dx, ego_speed * 3.6), eid)
         if scene.hazard_actor is not None and not self._new:
             scene.tick(t, transform, ego_speed, dt)  # (the client sees where it is from the frame after it appeared)
+        # the cars behind and lane 0 (2026-11-14)
+        half = base.LANE_WIDTH / 2.0
+        ego_lanes = {lane for lane in (1, 2, 3)
+                     if abs(lateral - (lane - 2) * base.LANE_WIDTH) < half + self._ego_width / 2.0}
+        if self.phase:
+            if self.phase != 'clear':
+                self.more.spawn_rear(t, transform, ego_speed)
+            self.more.spawn_lane0(t, transform)
+            self.more.tick(t, transform, ego_speed, ego_lanes, self._ego_length, dt)
+            for car, attr in ((self.more.own, 'min_gap_own'), (self.more.safe, 'min_gap_safe')):
+                if car is None or car.fresh or car.lane not in ego_lanes:
+                    continue
+                dx = car.dx(transform)
+                if dx < 0 and self.t_alert is not None:
+                    gap = -dx - (self._ego_length + car.length) / 2.0
+                    if getattr(self, attr) is None or gap < getattr(self, attr):
+                        setattr(self, attr, gap)
+            if self.more.own_evaded is not None and not getattr(self, '_evade_logged', False):
+                self._evade_logged = True
+                block.mark(self.more.own_evaded[0], 'the car behind (lane 2) moves over to lane %d' %
+                           self.more.own_evaded[1], eid)
         if t >= self.t and self.t_alert is None and scene.obstacle_actor is not None:
             self.t_alert = t
             self.alert_wall = time.monotonic()
@@ -1550,6 +1662,16 @@ class TorRun(object):
             elif self.lc_start is not None:
                 self.lc_start = None  # back in lane 2
                 block.mark(t, 'lane change given up', eid)
+        # the car behind in lane 2 moves over too: to the other lane than the driver's (its car behind
+        # would be in the way there), or with no lane change yet before the automatic stop / when slow
+        rear = self.tt.get('rear_own')
+        if rear and self.more.own is not None and self.more.own_target is None:
+            if self.lc_start is not None:
+                towards = 3 if lateral > 0 else 1
+                self.more.evade(self.unsafe if towards == self.safe else self.safe)
+            elif (self.ttc is not None and self.ttc <= rear['evade_ttc_s']) or \
+                    (ego_speed * 3.6 < rear['evade_below_kmh'] and t > self.t_alert + 1.0):
+                self.more.evade(self.unsafe)
         # the approaching car: the gap while the ego car is (partly) in its lane, and its yielding
         hazard = scene.hazard_dx(transform)
         middle = (self.unsafe - 2) * base.LANE_WIDTH
@@ -1591,7 +1713,49 @@ class TorRun(object):
                 'blinker_before_lane_change': None if self.t_blinker is None or self.lc_start is None
                 else self.t_blinker <= self.lc_start,
                 'blinker_matches_lane': None if self.t_blinker is None or self.chosen is None
-                else (self.blinker_side == 'left') == (self.chosen == 1)}
+                else (self.blinker_side == 'left') == (self.chosen == 1),
+                'min_gap_rear_own_m': r(self.min_gap_own), 'min_gap_rear_safe_m': r(self.min_gap_safe),
+                't_rear_own_moved': r(self.more.own_evaded[0], 3) if self.more.own_evaded else None,
+                'rear_own_moved_to': self.more.own_evaded[1] if self.more.own_evaded else None}
+
+
+def ended_by(event):
+    """ESC or the window's QUIT: the run ends; which one goes into the log (C, 2026-11-14, ended in the
+    video questions with no key pressed)."""
+    if event.type == pygame.QUIT:
+        logging.warning('Run ended: pygame QUIT (the window was closed, or Windows asked it to)')
+        return True
+    if event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE:
+        logging.warning('Run ended: ESC')
+        return True
+    return False
+
+
+class Pacer:
+    """Frames at 1/fps s of real time on average. pygame's Clock.tick_busy_loop(34) waits whole ms (29 ms,
+    34.5 fps): with the simulation's fixed 1/34 s steps its time ran 1.4 % ahead of the real one, and the
+    NDRT video (real time) was 6.6 s behind it at the TOR of A (2026-11-14), the video questions' scenes
+    not yet shown. Late frames are made up (no wait) up to CATCH_UP_S, beyond that (a stall) the pace starts
+    again from now."""
+    CATCH_UP_S = 0.25
+
+    def __init__(self, fps):
+        self.step = 1.0 / fps
+        self.next = None
+
+    def reset(self):
+        self.next = None
+
+    def wait(self):
+        now = time.perf_counter()
+        if self.next is None or now - self.next > self.CATCH_UP_S:
+            self.next = now
+        else:
+            if self.next - now > 0.003:
+                time.sleep(self.next - now - 0.002)
+            while time.perf_counter() < self.next:
+                pass
+        self.next += self.step
 
 
 def car_sound(on):
@@ -1622,12 +1786,13 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
     skipped = False
     while True:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+            if ended_by(event):
                 sagat.idle()
                 car_sound(True)
                 return False
             if event.type == pygame.KEYDOWN and event.key == pygame.K_n:
                 skipped = True
+        block.media_results(t)   # the freeze into the log now, not after the resume
         answer = sagat.answer()
         waited = time.monotonic() - started
         if answer is not None or skipped or waited >= seconds:
@@ -1636,15 +1801,18 @@ def ask_question(block, q, number, t, traffic, sagat, overlay, display, clock, m
         pygame.display.flip()
         clock.tick(30)
     answer_s = round(time.monotonic() - started, 2)
+    ended = 'answer' if answer is not None else 'skipped' if skipped else 'timeout'
+    if answer is None and not skipped:
+        # out of time (2026-11-14): the questions answered by then count, the others are unanswered
+        answer = sagat.draft()
     score = sagat_score(truth, answer)
     entry = {'id': q['id'], 'number': number, 't': round(t, 3), 't_planned': q['t'],
              'planned': {'cells': q['cells'], 'approach': q['approach'], 'safe': q['safe']},
-             'truth': truth, 'answer': answer, 'answer_s': answer_s,
-             'ended_by': 'answer' if answer is not None else 'skipped' if skipped else 'timeout',
-             'score': score}
+             'truth': truth, 'answer': answer, 'answer_s': answer_s, 'ended_by': ended,
+             'partial': bool(answer and answer.get('partial')), 'score': score}
     block.questions.append(entry)
-    block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if answer else 'skipped' if skipped else 'timeout'),
-               q['id'])
+    block.mark(t, 'answer after %.1f s (%s)' % (answer_s, 'answered' if ended == 'answer' else ended +
+                                                (', the answers so far' if answer else '')), q['id'])
     if score.get('answered'):
         logging.info('   correct %.0f %% (behind %s, ahead %s; not scored: %s)', 100 * (score['score'] or 0),
                      score['behind'], score['ahead'], ', '.join(score['unscored']) or '-')
@@ -1677,7 +1845,7 @@ def ask_ndrt(block, q, t, stop, entry, started, sagat, overlay, display, clock):
         """The black monitors until done() or until (time.monotonic()): 'esc', 'skip' (N) or None."""
         while not done() and time.monotonic() < until:
             for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+                if ended_by(event):
                     return 'esc'
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_n:
                     return 'skip'
@@ -1702,6 +1870,8 @@ def ask_ndrt(block, q, t, stop, entry, started, sagat, overlay, display, clock):
             return False
         answer = sagat.answer()
         ended = 'answer' if answer is not None else 'skipped' if result == 'skip' else 'timeout'
+        if answer is None and ended == 'timeout':
+            answer = sagat.draft()   # the frames answered by then (2026-11-14)
     score = ndrt_score(stop, answer)
     entry['ndrt'] = {'asked_after_freeze_s': None if asked_at is None else round(asked_at - started, 2),
                      'answer_s': None if asked_at is None else round(time.monotonic() - asked_at, 2),

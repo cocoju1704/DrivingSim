@@ -45,11 +45,24 @@ mirror_check 1112173906 (glances marked by the driver): with the gaze point, the
 degrees in the head 72-78 % of the marked frames on the mirror, 25-35: 45 %, 35-42: 25 %; unmarked
 frames on a mirror 0.1-0.3 %.
 
+The phone condition (phone_screen.json, written by abc_experiment from the phone app v4's report):
+the app shows ArUco markers PHONE_IDS at its screen's corners; per frame with PHONE_MIN_MARKERS of
+them a homography from the phone's px to the scene camera (RANSAC over their corners), the video's
+rectangle and the whole screen into the scene camera, and the gaze's distance from them in degrees
+(phone_deg, phone_screen_deg: negative inside; postprocess.screen_gaze judges phone_deg like the
+glasses' and the HUD's outlines).
+
 Out, into the folder:
     mirror_aoi.csv          per frame looked at: sim time, gaze (scene px) or none, the eyes' angles,
                             the markers per monitor, the gaze in window px and its monitor, each
                             mirror's distance (deg), the mirror of this frame alone and with the
-                            hysteresis (glance), unsure
+                            hysteresis (glance), unsure; in the glasses condition (g2_display.json)
+                            also where the glasses display lay over the monitors (place_display:
+                            display_on middle / left / right, display_fit_px, display_band_px = the
+                            NDRT video's band and display_full_px = the whole 600 x 600, window px
+                            'x,y x,y x,y x,y' tl tr br bl), for every frame looked at: the frames
+                            without a gaze point are rows too then (display_only 1, not judged; a
+                            reader of the gaze rows skips them)
     mirror_aoi_glances.csv  the glances (mirror, start, end, s, frames, closest deg, of it unsure s),
                             and the unsure runs not joined to one as mirror 'left?' / 'right?'
     mirror_aoi_rates.csv    the main measure (TODO 4): per segment (block, auto = to the TOR alert,
@@ -102,6 +115,52 @@ GLASS_SCALE = {'left': 1.2, 'right': 1.2}   # side mirrors' judged area: the gla
 CORRECT_MIN_SAMPLES = 30        # a validation point with fewer gaze samples: no correction
 CORRECT_MAX_DEG = 6.0           # an offset larger than this: not trusted, no correction
 SCENE_PX = (960.0, 540.0)       # the scene camera's gp (0..1) in px
+INNER_MARKERS = {'left': ('L3', 'L4'), 'right': ('R1', 'R3')}   # the side monitors' markers by the middle monitor
+MIDDLE_FIT_PX = 2 * MAX_FIT_PX  # window px: the middle monitor's homography (inner markers, across it) RMS at most
+MIDDLE_X = (1920, 3840)         # window px of the middle monitor (no markers on it)
+PHONE_IDS = (20, 21, 22, 23)    # the phone app's markers (v4): top left, top right, bottom right, bottom left
+PHONE_MIN_MARKERS = 2           # of them in a frame for the phone's homography
+PHONE_FIT_PX = 3.0              # scene px: that homography's RMS on the markers' corners at most
+
+
+def phone_layout(folder):
+    """phone_screen.json (the phone app's layout, phone px): ({id: 4 x 2 corners tl tr br bl}, the
+    video's rectangle, the screen's rectangle, both as 4 x 2 corners), None if the block has none."""
+    try:
+        with open(os.path.join(folder, 'phone_screen.json'), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    corners = {}
+    for key, (x, y, size) in data['markers_px'].items():
+        corners[int(key)] = np.float32([(x, y), (x + size, y), (x + size, y + size), (x, y + size)])
+    l, t, r, b = data['video_px']
+    w, h = data['screen_px']
+    return corners, np.float32([(l, t), (r, t), (r, b), (l, b)]), np.float32([(0, 0), (w, 0), (w, h), (0, h)])
+
+
+def place_phone(cv2, found, layout, gx, gy, row):
+    """The phone's markers in this frame: the gaze's distance (deg) from its video and screen."""
+    corners, video, screen = layout
+    ids = sorted(i for i in found if i in corners)
+    row['phone_markers'] = ' '.join(str(i) for i in ids)
+    if len(ids) < PHONE_MIN_MARKERS:
+        return
+    src = np.concatenate([corners[i] for i in ids]).reshape(-1, 1, 2)
+    dst = np.concatenate([np.float32(found[i]) for i in ids]).reshape(-1, 1, 2)
+    h, _ = cv2.findHomography(src, dst, cv2.RANSAC, 2 * PHONE_FIT_PX)
+    if h is None:
+        return
+    rms = float(np.sqrt(np.mean(np.sum((cv2.perspectiveTransform(src, h) - dst) ** 2, axis=2))))
+    if rms > PHONE_FIT_PX:
+        return
+    row['phone_fit_px'] = round(rms, 2)
+    for key, poly in (('phone_deg', video), ('phone_screen_deg', screen)):
+        scene = cv2.perspectiveTransform(poly.reshape(-1, 1, 2), h).astype(np.float32)
+        row[key] = round(-cv2.pointPolygonTest(scene, (float(gx), float(gy)), True) / SCENE_PX_PER_DEG, 2)
+    if 'phone_px' not in row:
+        row['phone_px'] = ' '.join('%d,%d' % (p[0][0], p[0][1]) for p in
+                                   cv2.perspectiveTransform(video.reshape(-1, 1, 2), h))
 
 
 def load(folder, scale=None):
@@ -180,6 +239,67 @@ def gaze_on(cv2, markers, bezel, gx, gy):
     return h, float(np.sqrt(np.mean(np.sum((back - dst) ** 2, axis=1))))
 
 
+def display_outlines(folder):
+    """The glasses display in the scene camera (px), fixed to the head: {'display_full': its 600 x 600,
+    'display_band': the NDRT video's band (postprocess.ndrt_rect)} as 4 x 2 arrays (tl, tr, br, bl);
+    None outside the glasses condition or without g2_display.json (postprocess.display_map)."""
+    import postprocess  # pylint: disable=import-outside-toplevel
+    to_gp = postprocess.display_map(folder)
+    if to_gp is None:
+        return None
+    left, top, right, bottom = postprocess.ndrt_rect(folder)   # app v17 on: 400 px at the top right
+    d = postprocess.DISPLAY_PX
+    out = {}
+    for name, poly in (('display_full', ((0, 0), (d, 0), (d, d), (0, d))),
+                       ('display_band', ((left, top), (right, top), (right, bottom), (left, bottom)))):
+        out[name] = np.float32([[p[0] * SCENE_PX[0], p[1] * SCENE_PX[1]] for p in (to_gp(x, y) for x, y in poly)])
+    return out
+
+
+def _fit(cv2, markers, bezel, names):
+    """Homography (scene -> window px) through the named markers' corners and its RMS (window px)."""
+    src = np.float32([p for n in names for p in markers[n]])
+    dst = np.float32([p for n in names for p in bezel[n]['corners_px']])
+    h, _ = cv2.findHomography(src, dst, 0)
+    if h is None:
+        return None, None
+    back = cv2.perspectiveTransform(src.reshape(-1, 1, 2), h).reshape(-1, 2)
+    return h, float(np.sqrt(np.mean(np.sum((back - dst) ** 2, axis=1))))
+
+
+def place_display(cv2, markers, bezel, display, row):
+    """The glasses display's outlines into window px (row: display_on, display_fit_px, display_band_px,
+    display_full_px as 'x,y x,y x,y x,y'). The band's centre over the middle monitor (no markers on it):
+    a homography from the side monitors' inner markers (INNER_MARKERS, at least one each side), an
+    approximation (the monitors are curved); over a side monitor: that monitor's markers nearest to it
+    (gaze_on)."""
+    centre = display['display_band'].mean(axis=0)
+    h = None
+    inner = [n for side in ('left', 'right') for n in INNER_MARKERS[side] if n in markers[side]]
+    if all(any(n in markers[side] for n in INNER_MARKERS[side]) for side in ('left', 'right')):
+        both = dict(markers['left'], **markers['right'])
+        hm, rms = _fit(cv2, both, bezel, inner)
+        if hm is not None and rms <= MIDDLE_FIT_PX:
+            cx = cv2.perspectiveTransform(centre.reshape(1, 1, 2), hm)[0, 0, 0]
+            if MIDDLE_X[0] <= cx < MIDDLE_X[1]:
+                h, row['display_on'], row['display_fit_px'] = hm, 'middle', round(rms, 1)
+    if h is None:
+        for side in ('left', 'right'):
+            hs, rms = gaze_on(cv2, markers[side], bezel, float(centre[0]), float(centre[1]))
+            if hs is None or rms > MAX_FIT_PX:
+                continue
+            cx = cv2.perspectiveTransform(centre.reshape(1, 1, 2), hs)[0, 0, 0]
+            x0 = mm.MONITOR_INDEX[side] * mm.MONITOR_PX[0]
+            if x0 - MONITOR_SLACK_PX <= cx < x0 + mm.MONITOR_PX[0] + MONITOR_SLACK_PX:
+                h, row['display_on'], row['display_fit_px'] = hs, side, round(rms, 1)
+                break
+    if h is None:
+        return
+    for name, poly in display.items():
+        q = cv2.perspectiveTransform(poly.reshape(-1, 1, 2), h).reshape(-1, 2)
+        row[name + '_px'] = ' '.join('%.0f,%.0f' % (x, y) for x, y in q)
+
+
 def _work(args):
     """Frames [first, last), every STEP-th: [(frame index, msec, row dict)]."""
     folder, first, last, correct, scale = args
@@ -187,8 +307,10 @@ def _work(args):
     cv2.setNumThreads(1)
     run = g2_block.Run(folder)
     mirrors, bezel = load(folder, scale)
+    display = display_outlines(folder)
     ids = {m['id']: n for n, m in bezel.items()}
-    detector = mm.Detector(set(ids))
+    phone = phone_layout(folder)
+    detector = mm.Detector(set(ids) | (set(PHONE_IDS) if phone else set()))
     side_of = {name: monitor_of_px(np.mean([p[0] for p in m['glass']])) for name, m in mirrors.items()}
     capture = cv2.VideoCapture(run.video)
     capture.set(cv2.CAP_PROP_POS_FRAMES, first)
@@ -208,20 +330,34 @@ def _work(args):
         gaze, eye = run.gaze_at(ts), run.eye_at(ts)
         row = {'eye_yaw': '' if eye is None else round(eye[0], 1), 'eye_pitch': '' if eye is None else round(eye[1], 1),
                'mirror': '', 'unsure': ''}
-        if gaze is None:
+        if gaze is None and eye is not None and abs(eye[0]) >= UNSURE_DEG:
+            row['unsure'] = 'left?' if eye[0] > 0 else 'right?'
+        if gaze is None and display is None:
             # no gaze point: the eyes far to a side (unsure), else nothing to say
-            if eye is not None and abs(eye[0]) >= UNSURE_DEG:
-                row['unsure'] = 'left?' if eye[0] > 0 else 'right?'
+            if row['unsure']:
                 out.append((index, msec, row))
+            index += 1
+            continue
+        _, frame = capture.retrieve()
+        raw = detector(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        found = {ids[i]: c for i, c in raw.items() if i in ids}
+        sides = {monitor: consistent(cv2, found, bezel, monitor) for monitor in ('left', 'right')}
+        if display is not None:   # where the glasses display lay over the monitors (any frame, gaze or not)
+            place_display(cv2, sides, bezel, display, row)
+        if gaze is None:
+            # a frame without a gaze point, there only for the display's place: display_only (not judged)
+            if not row['unsure']:
+                row['display_only'] = 1
+            out.append((index, msec, row))
             index += 1
             continue
         gx, gy = gaze
         row.update({'gaze_x_px': round(gx, 1), 'gaze_y_px': round(gy, 1)})
-        _, frame = capture.retrieve()
-        found = {ids[i]: c for i, c in detector(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)).items()}
+        if phone is not None:
+            place_phone(cv2, raw, phone, gx, gy, row)
         best = None   # (monitor, window px) of the gaze, on the side monitor it falls on
         for monitor in ('left', 'right'):
-            markers = consistent(cv2, found, bezel, monitor)
+            markers = sides[monitor]
             row['markers_%s' % monitor] = ' '.join(sorted(markers))
             h, rms = gaze_on(cv2, markers, bezel, gx, gy)
             if h is None or rms > MAX_FIT_PX:
@@ -243,6 +379,15 @@ def _work(args):
                     ox, oy = correct[name]
                     d = -cv2.pointPolygonTest(glass, (float(gx - ox), float(gy - oy)), True) / SCENE_PX_PER_DEG
                 row['%s_deg' % name] = round(d, 2)
+        if best is None and all(any(n in sides[s] for n in INNER_MARKERS[s]) for s in ('left', 'right')):
+            # over the middle monitor (no markers on it, 2026-11-14: the HUD's gaze in window px, as
+            # place_display does for the glasses display): the side monitors' inner markers
+            inner = [n for s in ('left', 'right') for n in INNER_MARKERS[s] if n in sides[s]]
+            hm, rms = _fit(cv2, dict(sides['left'], **sides['right']), bezel, inner)
+            if hm is not None and rms <= MIDDLE_FIT_PX:
+                wx, wy = cv2.perspectiveTransform(np.float32([[[gx, gy]]]), hm)[0, 0]
+                if MIDDLE_X[0] <= wx < MIDDLE_X[1]:
+                    best = ('middle', wx, wy)
         if best:
             row['window_monitor'], row['window_x_px'], row['window_y_px'] = best[0], round(float(best[1])), round(float(best[2]))
         row['mirror'] = judge(row)
@@ -320,7 +465,8 @@ def main():
 
 
 def read_rows(folder):
-    """mirror_aoi.csv's frames (not its dropout rows: made again), numbers as numbers."""
+    """mirror_aoi.csv's frames (not its dropout rows: made again; display_only rows kept as they are),
+    numbers as numbers."""
     rows = []
     with open(os.path.join(folder, 'mirror_aoi.csv'), encoding='utf-8') as handle:
         for r in csv.DictReader(handle):
@@ -472,8 +618,12 @@ def write_rates(folder, run, rows, joined, unsure, frame_s):
 
 
 def finish(folder, run, rows, frame_s):
-    """The glances from the frames (and the dropouts), the files out, the summary printed."""
-    rows = sorted(rows + dropouts(run, frame_s), key=lambda r: r['t_sim'])
+    """The glances from the frames (and the dropouts), the files out, the summary printed. The
+    display_only rows (no gaze point, only the glasses display's place) are written, not judged."""
+    extra = [r for r in rows if r.get('display_only')]
+    for r in extra:
+        r.update({'mirror': '', 'glance': '', 'unsure': ''})
+    rows = sorted([r for r in rows if not r.get('display_only')] + dropouts(run, frame_s), key=lambda r: r['t_sim'])
     states = classify(rows)
     for row, state in zip(rows, states):
         row['glance'] = state or ''
@@ -487,11 +637,13 @@ def finish(folder, run, rows, frame_s):
     keys = ['t_sim', 'frame', 'gaze_x_px', 'gaze_y_px', 'eye_yaw', 'eye_pitch', 'markers_left', 'markers_right',
             'fit_left_px', 'fit_right_px', 'window_monitor', 'window_x_px', 'window_y_px'] + \
            ['%s_deg' % m for m in MIRRORS] + ['%s_raw_deg' % m for m in sorted(CORRECT_MIRRORS)] + \
-           ['mirror', 'glance', 'unsure', 'dropout']
+           ['mirror', 'glance', 'unsure', 'dropout', 'display_only', 'display_on', 'display_fit_px',
+            'display_band_px', 'display_full_px', 'phone_markers', 'phone_fit_px', 'phone_deg', 'phone_screen_deg',
+            'phone_px']
     with open(os.path.join(folder, 'mirror_aoi.csv'), 'w', newline='', encoding='utf-8') as handle:
         writer = csv.DictWriter(handle, fieldnames=keys, extrasaction='ignore')
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(sorted(rows + extra, key=lambda r: r['t_sim']))
     runs = [(m, s, e) for m, s, e, _ in joined]
     with open(os.path.join(folder, 'mirror_aoi_glances.csv'), 'w', newline='', encoding='utf-8') as handle:
         writer = csv.writer(handle)

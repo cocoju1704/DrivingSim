@@ -329,7 +329,13 @@ REAR_MIRROR_SIZE = (0.2479, 0.0755)  # m
 # the bare glass in the window: across the edge of the middle and the right monitor, slanted.
 REAR_MIRROR_OUTLINE = [(0.0, 0.64), (0.02, 0.18), (0.05, 0.05), (0.18, 0.01), (0.91, 0.32), (0.97, 0.39), (0.98, 0.51),
                        (1.0, 0.89), (0.99, 0.97), (0.94, 1.0), (0.08, 0.8), (0.01, 0.75)]
-REAR_MIRROR_FOV = 45.0             # degrees
+# _Experiment2 (2026-11-14): 10 degrees (was 45): the own lane behind only. At 45 a car in a side lane was in the
+# rear-view mirror from 5 to 80 m behind (and the S cars 81-89 % of their gaze window): the participants looked
+# there, not at the side mirror. At 10 a side lane shows from about 30 m behind on (half the car at 40 m, all
+# of it from 55 m), the own lane from 10 m behind (all of a car's width from 15 m). The glass is about 18 degrees
+# across from the driver's eyes: the image is 1.8 times magnified (45: 0.4 times)
+REAR_MIRROR_FOV = 10.0             # degrees
+REAR_MIRROR_PITCH = -1.0           # degrees (was -2: with 10 degrees a car 20 m behind went over the bottom edge)
 REAR_CAMERA_X = -0.55              # _Experiment2: the rear-view mirror camera, x share of the half length (behind the rear seats)
 REAR_CAMERA_Z = 2.1                # ... and height share of the half height (just above the roof)
 MIRROR_FPS = 15.0  # images per second of the mirror cameras: each camera is a full render pass on the server
@@ -801,7 +807,7 @@ def car_mirrors(extent, view):
          # _Experiment2: on the roof above the rear window (behind the rear bumper, cars right behind in
          # the next lanes filled its edges; at the mirror inside, the headrests hid most of the road)
          carla.Transform(carla.Location(x=REAR_CAMERA_X * extent.x, z=REAR_CAMERA_Z * extent.z),
-                         carla.Rotation(pitch=-2.0, yaw=180.0)),
+                         carla.Rotation(pitch=REAR_MIRROR_PITCH, yaw=180.0)),
          REAR_MIRROR_FOV, 0),
     ]
 
@@ -1017,6 +1023,8 @@ def _respawn_view(manager):
             blueprint.set_attribute('fov', str(fov))
             blueprint.set_attribute('sensor_tick', str(1.0 / MIRROR_FPS))
             blueprint.set_attribute('gamma', str(manager.sensors[0][-1].get_attribute('gamma').as_float()))
+            # the mirrors keep the automatic exposure: with the view's manual one (ISO 180, 2026-11-14) the
+            # rear-view mirror came out white
             camera = manager._parent.get_world().spawn_actor(
                 blueprint, transform, attach_to=manager._parent, attachment_type=carla.AttachmentType.Rigid)
             view = {'image': None, 'surface': None, 'mask': outline and _glass_mask(rect.size, outline),

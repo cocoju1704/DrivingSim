@@ -10,7 +10,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const SCREENS = ['home', 'yt', 'lib', 'player'];
 const LS_VER = 1;
-const APP_VERSION = 16;  // shown on the home screen and sent in /api/state: which app files the glasses run
+const APP_VERSION = 17;  // shown on the home screen and sent in /api/state: which app files the glasses run
 let current = 'home';
 let lastPopAt = 0;
 const lastFocusKey = {};
@@ -391,7 +391,7 @@ async function renderLib() {
   if (!local.length) list.append(el('p', { class: 'empty' }, '아직 없음 — 아래 목록에서 받아 오세요.'));
   for (const m of local) {
     list.append(el('div', { class: 'row' },
-      el('button', { class: 'item grow', dataset: { key: m.id }, onclick: () => playStored(m) },
+      el('button', { class: 'item grow', dataset: { key: m.id }, onclick: () => { video.muted = false; playStored(m); } },
         el('span', { class: 'ico' }, '▶'),
         el('span', { class: 'name' }, m.name),
         el('span', { class: 'meta' }, fmtSize(m.size))),
@@ -411,7 +411,7 @@ async function renderLib() {
         el('span', { class: 'name' }, v.name),
         el('span', { class: 'meta', 'data-prog': id }, pct != null ? pct + '%' : fmtSize(v.size))),
       el('button', { class: 'item small', dataset: { key: 'st:' + id },
-        onclick: () => playUrl(v.url, v.name, id) }, '스트림')));
+        onclick: () => { video.muted = false; playUrl(v.url, v.name, id); } }, '스트림')));
   }
 
   list.append(el('div', { class: 'row' },
@@ -742,23 +742,47 @@ function connectEvents() {
  * 실험 PC가 /api/control 로 보냄:
  *   freeze  일시정지 + 화면 가림 (SAGAT 시작), 조작도 막음
  *   resume  가림 해제 + freeze 전에 재생 중이었으면 이어 재생
- *   alert {text}  TOR: 일시정지 + 가림 + 빨간 경고 문구 (깜빡임)
- *   alert_off     경고 문구만 지움 (가림·정지는 그대로: 블록 끝까지 수동 운전)
- *   pause / play / seek {t}   블록 시작·끝
+ *   alert         TOR: freeze와 같음 (일시정지 + 가림), 문구 없음 (v17: 모든 조건에서 TOR 문구는 모니터에만)
+ *   alert_off     아무것도 안 함 (가림·정지는 그대로: 블록 끝까지 수동 운전)
+ *   pause / play / seek {t}   블록 시작·끝. play {mute}: 소리는 실험 PC가 (device_audio.py), 안경은 음소거
+ *   blank {on}    안경 화면 전체를 검게 / 원래대로 (v17)
+ * 명령의 device가 glasses가 아니면 (휴대폰·HUD 조건 블록, v17): play = 블록 동안 화면 전체를 검게 (영상 안 엶),
+ *   pause = 블록 끝, 원래대로; 그 밖의 명령은 무시 (calib만 따름)
  *   calib {dot}   시선 보정 (calib.js): 검은 화면에 점 하나 (c, tl, tr, br, bl = 중심, 네 꼭짓점; px:X,Y = 600x600 화면의 한 점; blank = 점 없이 비움; off = 끔)
  * 처리 후 /api/state 로 상태(재생 위치 등)를 보고 -> 실험 로그에 남음 */
 let held = null; // freeze/pause 동안: { wasPlaying, frozen }
 
+// v17: the whole display black (another condition's block, or blank {on}); made here if an old
+// index.html in the cache has no #blankblock
+function blankBlock(on) {
+  let box = $('#blankblock');
+  if (!box) { box = document.createElement('div'); box.id = 'blankblock'; document.body.appendChild(box); }
+  Object.assign(box.style, { position: 'fixed', left: '0', top: '0', width: '100%', height: '100%',
+    background: '#000', zIndex: '105', display: on ? 'block' : 'none' });
+  box.hidden = !on;
+  if (on && mode && !P.paused()) P.pause();
+}
+function blanked() { const box = $('#blankblock'); return !!box && !box.hidden; }
+
 function control(d) {
   const a = d.action;
+  if (d.device && d.device !== 'glasses' && a !== 'calib' && a !== 'blank') {
+    // another condition's block (phone, HUD): black for the whole block, its commands not followed
+    if (a === 'play') blankBlock(true);
+    else if (a === 'pause') blankBlock(false);
+    report(a, d.id);
+    return;
+  }
   if (a === 'freeze' || a === 'pause' || a === 'alert') {
     if (!held) held = { wasPlaying: !!mode && !P.paused(), frozen: false };
     P.pause();
+    // the TOR (alert) as a question's freeze: covered, no text (the request is on the monitors only)
     if (a === 'freeze' || a === 'alert') { held.frozen = true; $('#freeze').hidden = false; }
-    if (a === 'alert') { $('#freeze').textContent = d.text || '지금 직접 운전하세요'; $('#freeze').classList.add('alert'); }
   } else if (a === 'alert_off') {
     $('#freeze').textContent = '';
     $('#freeze').classList.remove('alert');
+  } else if (a === 'blank') {
+    blankBlock(!!d.on);
   } else if (a === 'resume') {
     const h = held;
     held = null;
@@ -768,6 +792,8 @@ function control(d) {
     if (mode && (!h || h.wasPlaying)) P.play();
   } else if (a === 'play') {
     held = null;
+    blankBlock(false);
+    video.muted = !!d.mute;   // mute: the sound plays on the experiment PC (its earphones)
     $('#freeze').hidden = true;
     $('#freeze').textContent = '';
     $('#freeze').classList.remove('alert');
@@ -797,6 +823,7 @@ function report(action, id) {
     action: action || 'status', id: id || '', screen: current, mode: mode || '',
     title: $('#osd-title').textContent || '', t: mode ? Math.round(P.time() * 1000) / 1000 : null,
     paused: mode ? P.paused() : null, frozen: !!(held && held.frozen), ts: Date.now(),
+    muted: video.muted, blank: blanked(),   // v17
     v: APP_VERSION, calib: typeof calibState === 'function' ? calibState() : null,  // calib.js
   };
   fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' },

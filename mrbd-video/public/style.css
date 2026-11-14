@@ -44,6 +44,12 @@ input.item::placeholder { color: #778; }
 /* v14: the picture at the top of the display (600 x 338 for 16:9), not in the middle: the Glasses 2 track
    the eyes poorly when they look down at the display's lower half (_Experiment2 postprocess: NDRT_BAND) */
 #video { object-fit: contain; object-position: center top; }
+/* v17: 400 px wide (about 10 deg, the HUD's width) at the display's top right: 400 x 225 for 16:9
+   (_Experiment2 postprocess: ndrt_rect). The rest of the display is black, i.e. see-through */
+#video { left: auto; right: 0; top: 0; bottom: auto; width: 400px; height: 225px; object-position: right top; }
+/* v17: another condition's block (phone, HUD): the whole display black for the block */
+#blankblock { position: absolute; inset: 0; background: #000; z-index: 105; }
+#blankblock[hidden] { display: none; }
 #yt-host iframe { width: 600px; height: 338px; border: 0; pointer-events: none; }
 #player.mode-yt #video, #player.mode-local #yt-host { visibility: hidden; }
 

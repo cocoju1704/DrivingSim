@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from g2_block import Run  # noqa: E402  (the video / gaze / block time mapping)
-from postprocess import DISPLAY_MARGIN, DISPLAY_PX, display_map, display_outline, inside as in_poly, ndrt_band  # noqa: E402
+from postprocess import DISPLAY_MARGIN, DISPLAY_PX, display_map, display_outline, inside as in_poly, ndrt_rect  # noqa: E402
 
 TRAIL_S = 0.3
 EVENT_S = 3.0
@@ -100,17 +100,20 @@ class NdrtTimeline(object):
 
 class NdrtVideo(object):
     """The NDRT video's frames, read on in order (a seek only on a jump), laid out as the glasses
-    app does: 600 x 600, the video fitted in its width (object-fit: contain), from top px down
-    (postprocess.ndrt_band: at the top from app v14 on, in the middle before)."""
+    app does: 600 x 600, the video fitted in its box (object-fit: contain) at the box's top
+    (postprocess.ndrt_rect: from app v17 on 400 px wide at the top right, from v14 on the display's
+    width at its top, in the middle before; None: the whole display, centred)."""
 
-    def __init__(self, cv2, np, path, top=None):
+    def __init__(self, cv2, np, path, rect=None):
         self.cv2, self.np = cv2, np
         self.capture = cv2.VideoCapture(path)
         self.fps = self.capture.get(cv2.CAP_PROP_FPS) or 30.0
         vw, vh = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH), self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        scale = min(600.0 / vw, 600.0 / vh)
+        left, top, right, bottom = rect if rect is not None else (0, None, 600, 600)
+        scale = min((right - left) / vw, ((bottom - top) if top is not None else 600.0) / vh)
         self.size = int(round(vw * scale)), int(round(vh * scale))
-        self.offset = (600 - self.size[0]) // 2, (600 - self.size[1]) // 2 if top is None else int(round(top))
+        self.offset = (int(round(left + (right - left - self.size[0]) / 2.0)),
+                       (600 - self.size[1]) // 2 if top is None else int(round(top)))
         self.index = -1
         self.frame = None
 
@@ -230,7 +233,7 @@ def main():
     if outline and (args.ndrt or args.ndrt_video) and not args.no_ndrt:
         path = args.ndrt_video or find_ndrt_video(ndrt_timeline.title)
         if path and os.path.isfile(path):
-            ndrt = NdrtVideo(cv2, np, path, ndrt_band(folder)[0])
+            ndrt = NdrtVideo(cv2, np, path, ndrt_rect(folder))
             print('NDRT video: %s' % path)
             corners = [(0, 0), (DISPLAY_PX, 0), (DISPLAY_PX, DISPLAY_PX), (0, DISPLAY_PX)]
             to_gp = display_map(folder)

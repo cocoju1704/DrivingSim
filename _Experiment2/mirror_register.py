@@ -118,7 +118,7 @@ def record(out_dir):
 
     def steps():
         try:
-            screen.message('미러 마커 등록', '글래스를 쓰고 앉으세요. 화면 안내대로 정면을 보다가 고개를 좌우로 돌립니다 (약 16초)\n'
+            screen.message('사이드 모니터 마커 등록', '글래스를 쓰고 앉으세요. 화면 안내대로 정면을 보다가 고개를 좌우로 돌립니다 (약 16초)\n'
                                            'Enter: 시작   Esc: 그만')
             if not screen.wait_enter():
                 return

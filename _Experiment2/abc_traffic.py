@@ -188,6 +188,9 @@ class ScriptedTraffic(object):
         self._ref_hint = {}
         library = sim_world.get_blueprint_library()
         self._event_blueprint = library.find(config['event_vehicle'])
+        f_template = config.get('templates', {}).get('F', {})
+        self._f_blueprint = library.find(f_template['lead_vehicle']) if f_template.get('lead_vehicle') else None
+        self._f_color = f_template.get('lead_color')
         # background cars: bright, saturated colours (the recommended ones are mostly dark grey, black
         # and silver: hard to tell apart in the mirrors and at a SAGAT question)
         self._colors = config.get('background', {}).get('colors') or None
@@ -306,6 +309,11 @@ class ScriptedTraffic(object):
         if course.kind == 'event':
             blueprint = self._event_blueprint
             color = course.color
+        elif course.f_spans and self._f_blueprint is not None:
+            # an F's lead car (2026-11-14): the model whose brake light shows most (config F lead_vehicle;
+            # 1114 A-F1's Citroen C3 showed none)
+            blueprint = self._f_blueprint
+            color = self._f_color
         else:  # a fixed choice per car id: the same cars every run
             digest = int(hashlib.md5(course.id.encode('ascii')).hexdigest(), 16)
             blueprint = self._blueprints[digest % len(self._blueprints)]
@@ -561,6 +569,238 @@ class TorScene(object):
         if actors:
             base.destroy_actors(self._traffic._client, actors)  # pylint: disable=protected-access
         self.hazard_actor = self.obstacle_actor = None
+
+
+class TorCar(object):
+    """One more car of the TOR (2026-11-14), driven by TorCars: a lane (its route), where it is along it,
+    its speed. Its lane can change (steer_along takes it across, SIDEWAYS at most)."""
+
+    def __init__(self, traffic, name, actor, lane, s, speed):
+        self.traffic, self.name, self.actor, self.lane = traffic, name, actor, lane
+        self.s, self.speed = s, speed
+        self.hint = traffic._routes[lane].index_at(s)  # pylint: disable=protected-access
+        extent = actor.bounding_box.extent
+        self.length, self.width = 2.0 * extent.x, 2.0 * extent.y
+        self.fresh = True
+        self.light = 0
+        self.blink = 0      # turn signal flags (moving over)
+
+    def route(self):
+        return self.traffic._routes[self.lane]  # pylint: disable=protected-access
+
+    def locate(self):
+        loc = self.actor.get_location()
+        self.hint, self.s = self.route().locate(loc.x, loc.y, self.hint)
+
+    def dx(self, ego_transform):
+        """m ahead of the ego car (< 0 behind), centre to centre, along its lane."""
+        return self.route().wrap(self.s - self.traffic.ref_s(self.lane, ego_transform))
+
+    def move_to(self, lane, ego_transform):
+        """From now on along `lane`'s route (it moves across)."""
+        dx = self.dx(ego_transform)
+        self.lane = lane
+        self.s = self.traffic.ref_s(lane, ego_transform) + dx
+        self.hint = self.route().index_at(self.s)
+
+    def drive(self, goal, dt, accel=2.5, decel=7.0):
+        step = self.speed + max(-decel * dt, min(goal - self.speed, accel * dt))
+        light = base.BRAKE_LIGHT if step < self.speed - 0.5 * dt else 0
+        self.speed = max(0.0, step)
+        steer_along(self.actor, self.route(), self.s, self.speed)
+        if (light | self.blink) != self.light:
+            self.light = light | self.blink
+            self.actor.set_light_state(carla.VehicleLightState(self.light))
+
+
+class TorCars(object):
+    """The TOR's cars behind in the ego car's lane and in the safe lane, and the lane 0 traffic
+    (2026-11-14; config TOR rear_own, rear_safe, lane0). The approaching car of the unsafe lane is
+    TorScene's.
+
+    rear_own (lane 2): from spawn_dx_m behind at spawn_rel_s, comes up to dx_at_alert_m by the alert
+        (a course relative to the ego car, as the approaching car's); then it urges on: its gap to the
+        ego car's bumper down to urge_gap_m over urge_s, never nearer than min_gap_m (it brakes with the
+        ego car). evade(lane): it moves over to that lane once it is free of the approaching car
+        (evade_clear_m around it), then on at its speed at the alert.
+    rear_safe (the safe lane): comes up to dx_at_alert_m by the alert, then keeps the speed it has;
+        once the ego car is in its lane ahead of it, it follows at follow_gap_m (min_gap_m at least):
+        close behind, no threat.
+    lane 0: every every_s a car spawn_dx_m behind at speed_kmh, a constant speed whatever the ego car
+        does, gone beyond gone_dx_m.
+    Every car also keeps behind any car ahead in its lane (the approaching car, the ego car, each other)."""
+
+    def __init__(self, traffic, scene, template, t_alert, rng):
+        self.traffic, self.scene, self.tt = traffic, scene, template
+        self.t_alert = t_alert
+        self.rng = rng
+        self.own = self.safe = None
+        self.lane0 = []
+        self._own_course = self._safe_course = None
+        self._own_cruise = self._safe_cruise = None
+        self.own_target = None       # the lane rear_own is to move over to
+        self.own_evaded = None       # (t, lane) it went over
+        self._own_gap0 = None
+        self._next0 = None
+        self._count0 = 0
+
+    def _spawn(self, name, settings, lane, ego_transform, speed):
+        s = self.traffic.ref_s(lane, ego_transform) + settings['spawn_dx_m']
+        route = self.traffic._routes[lane]  # pylint: disable=protected-access
+        loc, yaw, (fx, fy), _ = route.pose(s)
+        library = self.traffic._world.get_blueprint_library()  # pylint: disable=protected-access
+        blueprint = library.find(settings.get('blueprint') or 'vehicle.tesla.model3')
+        blueprint.set_attribute('role_name', 'npc')
+        if settings.get('color') and blueprint.has_attribute('color'):
+            blueprint.set_attribute('color', settings['color'])
+        actor = self.traffic._world.try_spawn_actor(  # pylint: disable=protected-access
+            blueprint, carla.Transform(carla.Location(loc.x, loc.y, loc.z + 0.3), carla.Rotation(yaw=yaw)))
+        if actor is None:
+            return None
+        actor.set_target_velocity(carla.Vector3D(fx * speed, fy * speed, 0.0))
+        return TorCar(self.traffic, name, actor, lane, s, speed)
+
+    def spawn_rear(self, t, ego_transform, ego_speed):
+        """The two cars behind (spawn_rel_s): True once both are there."""
+        for key in ('rear_own', 'rear_safe'):
+            settings = self.tt.get(key)
+            if not settings or getattr(self, key[5:]) is not None or t < self.t_alert + settings['spawn_rel_s']:
+                continue
+            lane = 2 if key == 'rear_own' else self.scene.safe
+            v_rel = (settings['dx_at_alert_m'] - settings['spawn_dx_m']) / max(self.t_alert - t, 1.0)
+            car = self._spawn(key, settings, lane, ego_transform, ego_speed + v_rel)
+            if car is not None:
+                setattr(self, key[5:], car)
+                course = (t, settings['spawn_dx_m'], v_rel)
+                if key == 'rear_own':
+                    self._own_course = course
+                else:
+                    self._safe_course = course
+                logging.info('TOR: car behind in lane %d, %.0f m behind', lane, -settings['spawn_dx_m'])
+
+    def spawn_lane0(self, t, ego_transform):
+        settings = self.tt.get('lane0')
+        if not settings:
+            return
+        if self._next0 is None:
+            self._next0 = t
+        if t < self._next0:
+            return
+        car = self._spawn('lane0-%d' % (self._count0 + 1), settings, 0, ego_transform, settings['speed_kmh'] / 3.6)
+        if car is not None:
+            self._count0 += 1
+            self.lane0.append(car)
+            self._next0 = t + self.rng.uniform(*settings['every_s'])
+
+    def cars(self):
+        return [c for c in [self.own, self.safe] + self.lane0 if c is not None]
+
+    def evade(self, lane):
+        if self.own is not None and self.own_target is None and self.own_evaded is None:
+            self.own_target = lane
+
+    def _ahead(self, car, ego_transform, ego_lanes, ego_length, ego_speed):
+        """(bumper gap m, speed m/s) of the nearest car ahead in its lane, or None."""
+        best = None
+        mine = car.dx(ego_transform)
+        others = []
+        if car.lane in ego_lanes:
+            others.append((0.0, ego_length, ego_speed))
+        hazard = self.scene.hazard_actor
+        if hazard is not None and self.scene.unsafe == car.lane:
+            dx = self.scene.hazard_dx(ego_transform)
+            if dx is not None:
+                others.append((dx, self.scene.hazard_length, self.scene.hazard_speed or 0.0))
+        for other in self.cars():
+            if other is not car and other.lane == car.lane and not other.fresh:
+                others.append((other.dx(ego_transform), other.length, other.speed))
+        for dx, length, speed in others:
+            if dx > mine:
+                gap = dx - mine - (length + car.length) / 2.0
+                if best is None or gap < best[0]:
+                    best = (gap, speed)
+        return best
+
+    def tick(self, t, ego_transform, ego_speed, ego_lanes, ego_length, dt):
+        dt = max(dt, 1e-3)
+        for car in self.cars():
+            if car.fresh:   # spawned this frame: the client sees it from the next one
+                car.fresh = False
+                continue
+            car.locate()
+            dx = car.dx(ego_transform)
+            if car is self.own:
+                goal = self._tick_own(t, car, dx, ego_transform, ego_speed, ego_lanes, ego_length)
+            elif car is self.safe:
+                goal = self._tick_safe(t, car, dx, ego_speed, ego_lanes, ego_length)
+            else:
+                goal = self.tt['lane0']['speed_kmh'] / 3.6
+            ahead = self._ahead(car, ego_transform, ego_lanes, ego_length, ego_speed)
+            if ahead is not None:   # never into the car ahead: 1 s and min 6 m behind it
+                gap, v_lead = ahead
+                keep = max(6.0, 1.0 * car.speed)
+                goal = min(goal, max(0.0, v_lead + 0.5 * (gap - keep)))
+            car.drive(goal, dt)
+        low, high = self.tt.get('lane0', {}).get('gone_dx_m', (-120, 250))
+        for car in list(self.lane0):
+            if not car.fresh and not low <= car.dx(ego_transform) <= high:
+                base.destroy_actors(self.traffic._client, [car.actor])  # pylint: disable=protected-access
+                self.lane0.remove(car)
+
+    def _course_goal(self, course, t, dx, ego_speed):
+        t0, x0, v_rel = course
+        planned = x0 + v_rel * (t - t0)
+        return ego_speed + v_rel + max(-CATCH_UP, min(GAIN * (planned - dx), CATCH_UP))
+
+    def _tick_own(self, t, car, dx, ego_transform, ego_speed, ego_lanes, ego_length):
+        settings = self.tt['rear_own']
+        if t < self.t_alert:
+            return self._course_goal(self._own_course, t, dx, ego_speed)
+        if self._own_cruise is None:
+            self._own_cruise = car.speed
+            self._own_gap0 = -dx - (ego_length + car.length) / 2.0
+        if self.own_target is not None and self.own_evaded is None:
+            # over to the other lane once the approaching car is not beside it there
+            clear = True
+            if self.scene.hazard_actor is not None and self.scene.unsafe == self.own_target:
+                gap = self.scene.hazard_dx(ego_transform) - dx
+                low, high = settings['evade_clear_m']
+                clear = not low <= gap <= high
+            if clear:
+                car.move_to(self.own_target, ego_transform)
+                self.own_evaded = (t, self.own_target)
+                car.blink = base.LEFT_BLINKER if self.own_target == 1 else base.RIGHT_BLINKER
+                logging.info('TOR: the car behind moves over to lane %d', self.own_target)
+        if self.own_evaded is not None:
+            return max(self._own_cruise, car.speed)
+        # behind the ego car in lane 2: its gap down to urge_gap_m over urge_s, never below min_gap_m
+        share = min(1.0, (t - self.t_alert) / max(settings['urge_s'], 0.1))
+        wanted = self._own_gap0 + (settings['urge_gap_m'] - self._own_gap0) * share
+        gap = -dx - (ego_length + car.length) / 2.0
+        goal = ego_speed + 0.5 * (gap - max(wanted, settings['min_gap_m']))
+        return max(0.0, min(goal, ego_speed + 15.0 / 3.6))
+
+    def _tick_safe(self, t, car, dx, ego_speed, ego_lanes, ego_length):
+        settings = self.tt['rear_safe']
+        if t < self.t_alert:
+            return self._course_goal(self._safe_course, t, dx, ego_speed)
+        if self._safe_cruise is None:
+            self._safe_cruise = car.speed
+        if car.lane in ego_lanes and dx < 0:
+            # the driver is in its lane ahead: close behind at follow_gap_m, at least min_gap_m
+            gap = -dx - (ego_length + car.length) / 2.0
+            goal = ego_speed + 0.4 * (gap - settings['follow_gap_m'])
+            if gap < settings['min_gap_m']:
+                goal = min(goal, ego_speed - 1.0)
+            return max(0.0, min(goal, self._safe_cruise + 10.0 / 3.6))
+        return self._safe_cruise
+
+    def destroy(self):
+        actors = [c.actor for c in self.cars()]
+        if actors:
+            base.destroy_actors(self.traffic._client, actors)  # pylint: disable=protected-access
+        self.own = self.safe = None
+        self.lane0 = []
 
 
 def _light_names(flags):

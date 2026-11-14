@@ -18,9 +18,14 @@ The page asks GET /state every 0.3 s:
                                                                time, was this scene in the video
     {"phase": "countdown", "count": 3}                         3, 2, 1 before the drive goes on
 and sends the answers with POST /answer:
-    {"qid": "A-Q1", "items": {"behind_left": {"present": true, "confidence": 4}, ...}, "answer_ms": 18000}
-    items: behind_left, behind, behind_right, ahead (abc_experiment.SAGAT_ITEMS, four zones since
-    2026-11-13), each yes / no with its own confidence 1..5
+    {"qid": "A-Q1", "items": {"behind_left": {"present": true, "confidence": 4, "ms": 5200},
+     "behind": {"present": null, "unknown": true, "ms": 3100}, ..., "ahead": {"lane": 3, "confidence": 2}},
+     "answer_ms": 18000}
+    items (abc_experiment.SAGAT_ITEMS, since 2026-11-14): behind_left, behind, behind_right - yes / no
+    (present, with its confidence 1..5) or do not know (unknown, no confidence); ahead - which lane ahead
+    had the car (lane 1, 2, 3 with a confidence) or do not know
+    {"qid": ..., "kind": "draft", "items": {...}}             the answers so far, sent at every tap: at the
+                                                               time limit they are the answer (partial)
     {"qid": "A-Q1", "kind": "ndrt", "answers": [{"image": "A/A-Q1-1.jpg", "shown": true, "confidence": 3,
      "ms": 4100}, ...], "answer_ms": 21000}                    the video questions, in the order asked
 The frames are served from ndrt_items/ (GET /ndrt/A/A-Q1-1.jpg).
@@ -64,6 +69,7 @@ class SagatServer(object):
         self.run = '%x' % int(time.time() * 1000)
         self._deadline = None
         self._answer = None
+        self._draft = None             # the answers so far (kind "draft" / "ndrt_draft"): taken at the time limit
         self.last_seen = None          # time.monotonic() of the tablet's last request
         server = self
 
@@ -78,7 +84,10 @@ class SagatServer(object):
                 self.send_header('Content-Length', str(len(data)))
                 self.send_header('Cache-Control', 'no-store')
                 self.end_headers()
-                self.wfile.write(data)
+                try:
+                    self.wfile.write(data)
+                except ConnectionError:   # the page gave up on this request (a slow answer): it asks again
+                    pass
 
             def do_GET(self):
                 server.last_seen = time.monotonic()
@@ -133,7 +142,7 @@ class SagatServer(object):
     def ask(self, qid, number, seconds, preload=()):
         """The SAGAT questions; preload: the NDRT frames (ndrt_items/ paths) the page loads meanwhile."""
         with self._lock:
-            self._answer = None
+            self._answer = self._draft = None
             self._deadline = time.monotonic() + seconds
             self._state = {'phase': 'question', 'qid': qid, 'number': number,
                            'preload': ['/ndrt/' + p for p in preload]}
@@ -146,22 +155,38 @@ class SagatServer(object):
     def ask_ndrt(self, qid, images, seconds):
         """The NDRT video questions: the frames (ndrt_items/ paths), in this order."""
         with self._lock:
-            self._answer = None
+            self._answer = self._draft = None
             self._deadline = time.monotonic() + seconds
             self._state = {'phase': 'ndrt', 'qid': qid, 'images': ['/ndrt/' + p for p in images]}
 
     def receive(self, answer):
         with self._lock:
             phase = self._state.get('phase')
-            if answer.get('qid') != self._state.get('qid') or                     phase != ('ndrt' if answer.get('kind') == 'ndrt' else 'question'):
+            kind = answer.get('kind') or ''
+            if answer.get('qid') != self._state.get('qid') or                     phase != ('ndrt' if kind.startswith('ndrt') else 'question'):
                 return False
             answer['received'] = time.time()
-            self._answer = answer
+            if kind.endswith('draft'):
+                if self._answer is None:
+                    self._draft = answer
+            else:
+                self._answer = answer
             return True
 
     def answer(self):
         with self._lock:
             return self._answer
+
+    def draft(self):
+        """The answers so far (None: nothing tapped yet), marked partial: at the time limit."""
+        with self._lock:
+            if self._draft is None:
+                return None
+            draft = dict(self._draft, partial=True)
+            draft['kind'] = 'ndrt' if draft.get('kind', '').startswith('ndrt') else None
+            if draft['kind'] is None:
+                draft.pop('kind')
+            return draft
 
     def countdown(self, count):
         with self._lock:

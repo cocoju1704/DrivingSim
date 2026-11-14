@@ -208,7 +208,7 @@ def main():
         w.attributes('-topmost', True)
         c = tk.Canvas(w, width=right - left, height=bottom - top, background=colour, highlightthickness=0)
         c.pack()
-        for key in ('<Escape>', 'q'):
+        for key in ('<Escape>', 'q', '<Button-3>'):     # Esc, q or a right click: the end
             w.bind(key, lambda e: stop.set())
         return c
 

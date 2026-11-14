@@ -1,8 +1,11 @@
 package com.drivingsim.ndrtvideo;
 
 import android.app.Activity;
+import android.media.MediaPlayer;
 import android.content.SharedPreferences;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
@@ -57,14 +60,19 @@ import java.util.concurrent.Executors;
  *                   to t (t 0: where it was last left; with restart: from the start), play
  *   freeze          SAGAT: paused and covered (black), touches do nothing
  *   resume          uncovered, playing again if it was playing before
- *   alert {text}    paused, covered, a red line of text; alert_off: the text away (still covered)
+ *   alert           the TOR: as freeze (paused, covered), no text (v3: the request is on the monitors only)
+ *   play {mute}     the sound on the experiment PC (its earphones, device_audio.py): this phone muted (v3)
  *   pause / seek    block end / jump
+ *
+ * v4: four ArUco markers (DICT_4X4_50 ids 20-23) in the black bars above and below the video, so the
+ * gaze analysis (_Experiment2/mirror_aoi.py) finds the phone's screen in the Glasses 2 scene camera;
+ * where they and the video are (phone px) goes with every report ("layout").
  *
  * Commands that carry a "device" other than "phone" (another condition's block) are ignored.
  * After each command and every 2 s it reports (POST /api/state, device "phone"): position, paused, covered.
  */
 public class MainActivity extends Activity {
-    static final int VERSION = 2;   // 2: play {restart}: the clip from its start
+    static final int VERSION = 4;   // 2: play {restart}: the clip from its start, 3: portrait, TOR without text, play {mute}, 4: ArUco markers
     static final String DEFAULT_SERVER = "https://video.cocoju.dev";
     static final String UA = "drivingsim-phone-video/1";   // Cloudflare refuses some default agents
     static final List<String> VIDEO_EXT = Arrays.asList(".mp4", ".m4v", ".webm", ".mov", ".mkv");
@@ -79,6 +87,17 @@ public class MainActivity extends Activity {
     volatile boolean connected;
     volatile String netError = "";
 
+    // ArUco markers (v4): DICT_4X4_50, top left, top right, bottom right, bottom left of the screen;
+    // the inner 4 x 4 cells row by row, 1 white (cv2.aruco.generateImageMarker)
+    static final int[] MARKER_IDS = {20, 21, 22, 23};
+    static final String[] MARKER_BITS = {"1000011010001011", "1011000000101011", "1100110011010101", "1101110110000010"};
+    static final float MARKER_CM = 1.6f;      // the black square, edge to edge (smaller if the bars are short)
+    static final float MARKER_MIN_CM = 1.2f;  // never smaller (the Glasses 2 scene camera: about 16 px at 50 cm)
+    static final float QUIET_CM = 0.25f;      // white border round it
+    static final float INSET_CM = 0.3f;       // off the screen's edges (rounded corners)
+    final int[][] markerAt = new int[4][];    // x, y, size of each marker's black square (phone px), null: not laid out
+    View markers;
+
     // views
     FrameLayout player;
     VideoView video;
@@ -91,6 +110,8 @@ public class MainActivity extends Activity {
 
     // player state
     boolean inPlayer, prepared, wantPlay;
+    boolean muted;          // play {mute}: the sound on the experiment PC
+    MediaPlayer media;      // the VideoView's, for its volume (set when prepared)
     String title = "";
     static class Held { boolean wasPlaying, frozen; }
     Held held;   // during freeze / pause from the experiment
@@ -221,9 +242,12 @@ public class MainActivity extends Activity {
         cover.addView(coverText);
         cover.setVisibility(View.GONE);
         player.addView(cover, new FrameLayout.LayoutParams(-1, -1));
+        markers = new MarkerView();   // over everything, also over the cover (not clickable: touches go through)
+        player.addView(markers, new FrameLayout.LayoutParams(-1, -1));
+        video.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> markers.invalidate());
         root.addView(player, new FrameLayout.LayoutParams(-1, -1));
 
-        video.setOnPreparedListener(mp -> { prepared = true; if (!wantPlay) video.pause(); paintOsd(); });
+        video.setOnPreparedListener(mp -> { prepared = true; media = mp; applyMute(); if (!wantPlay) video.pause(); paintOsd(); });
         video.setOnCompletionListener(mp -> {
             prefs.edit().putInt("pos:" + title, 0).apply();
             wantPlay = false;
@@ -278,6 +302,74 @@ public class MainActivity extends Activity {
         homeScroll.addView(home);
         root.addView(homeScroll, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+    }
+
+    // ---------------------------------- markers -------------------------------------------------
+
+    float pxPerCm() {
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        return (m.xdpi + m.ydpi) / 2f / 2.54f;
+    }
+
+    /** Where the markers go: the corners of the screen, in the bars above and below the video. */
+    void layoutMarkers(int w, int h) {
+        float cm = pxPerCm();
+        int q = Math.round(QUIET_CM * cm), inset = Math.round(INSET_CM * cm);
+        int top = video.getTop(), bottom = h - video.getBottom();
+        int bar = video.getHeight() > 0 ? Math.min(top, bottom) : h / 4;
+        float s = Math.min(MARKER_CM * cm, bar - 2 * q - inset);
+        s = Math.max(s, MARKER_MIN_CM * cm);
+        int cell = Math.max(1, (int) (s / 6));   // 6 x 6 cells (4 x 4 and the black border), whole px
+        int size = 6 * cell;
+        int left = inset + q, right = w - inset - q - size, up = inset + q, down = h - inset - q - size;
+        int[][] at = {{left, up}, {right, up}, {right, down}, {left, down}};
+        for (int k = 0; k < 4; k++) markerAt[k] = new int[]{at[k][0], at[k][1], size};
+        // the controls above the bottom markers
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) osd.getLayoutParams();
+        int margin = inset + 2 * q + size;
+        if (lp != null && lp.bottomMargin != margin) { lp.bottomMargin = margin; osd.setLayoutParams(lp); }
+    }
+
+    class MarkerView extends View {
+        final Paint white = new Paint(), black = new Paint();
+
+        MarkerView() {
+            super(MainActivity.this);
+            white.setColor(Color.WHITE);
+            black.setColor(Color.BLACK);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            layoutMarkers(getWidth(), getHeight());
+            int q = Math.round(QUIET_CM * pxPerCm());
+            for (int k = 0; k < 4; k++) {
+                int x = markerAt[k][0], y = markerAt[k][1], size = markerAt[k][2], cell = size / 6;
+                c.drawRect(x - q, y - q, x + size + q, y + size + q, white);
+                c.drawRect(x, y, x + size, y + size, black);
+                String bits = MARKER_BITS[k];
+                for (int i = 0; i < 16; i++) {
+                    if (bits.charAt(i) != '1') continue;
+                    int cx = x + (1 + i % 4) * cell, cy = y + (1 + i / 4) * cell;
+                    c.drawRect(cx, cy, cx + cell, cy + cell, white);
+                }
+            }
+        }
+    }
+
+    /** The markers and the video on the screen (phone px), for the analysis; null before they are laid out. */
+    JSONObject layout() throws Exception {
+        if (!inPlayer || markerAt[0] == null || markers.getWidth() == 0) return null;
+        JSONObject o = new JSONObject();
+        o.put("screen_px", new JSONArray().put(markers.getWidth()).put(markers.getHeight()));
+        o.put("video_px", new JSONArray().put(video.getLeft()).put(video.getTop()).put(video.getRight()).put(video.getBottom()));
+        JSONObject m = new JSONObject();
+        for (int k = 0; k < 4; k++)
+            m.put(String.valueOf(MARKER_IDS[k]), new JSONArray().put(markerAt[k][0]).put(markerAt[k][1]).put(markerAt[k][2]));
+        o.put("markers_px", m);   // id: x, y, size of the black square (top left corner first)
+        o.put("px_per_cm", Math.round(pxPerCm() * 10) / 10.0);
+        o.put("dictionary", "DICT_4X4_50");
+        return o;
     }
 
     // ---------------------------------- home ----------------------------------------------------
@@ -362,7 +454,7 @@ public class MainActivity extends Activity {
                     + (pos > 0 ? "   이어보기 " + clock(pos) : ""), 17, n.equals(sel) ? 0xFF4CD964 : Color.WHITE);
             row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
             row.addView(button("선택", v -> { prefs.edit().putString("selected", n).apply(); renderList(); }));
-            row.addView(button("재생", v -> { prefs.edit().putString("selected", n).apply(); open(n, 0); }));
+            row.addView(button("재생", v -> { prefs.edit().putString("selected", n).apply(); muted = false; open(n, 0); }));
             row.addView(button("처음부터", v -> { prefs.edit().putInt("pos:" + n, 0).apply(); renderList(); }));
             list.addView(row);
         }
@@ -378,7 +470,7 @@ public class MainActivity extends Activity {
             row.addView(text(n + "   " + size(v.optLong("size")) + (p != null ? "   " + p : ""), 17, Color.WHITE),
                     new LinearLayout.LayoutParams(0, -2, 1));
             if (p == null) row.addView(button("휴대폰에 받기", x -> download(n)));
-            row.addView(button("스트리밍", x -> open(n, 0)));
+            row.addView(button("스트리밍", x -> { muted = false; open(n, 0); }));
             list.addView(row);
         }
     }
@@ -606,7 +698,6 @@ public class MainActivity extends Activity {
                     osd.setVisibility(View.GONE);
                     cover.setVisibility(View.VISIBLE);
                 }
-                if (a.equals("alert")) coverText.setText(d.optString("text", "지금 직접 운전하세요"));
                 break;
             case "alert_off":
                 coverText.setText("");
@@ -621,6 +712,8 @@ public class MainActivity extends Activity {
             }
             case "play": {
                 held = null;
+                muted = d.optBoolean("mute", false);
+                applyMute();
                 cover.setVisibility(View.GONE);
                 coverText.setText("");
                 String file = d.optString("file", "");
@@ -651,6 +744,13 @@ public class MainActivity extends Activity {
         report(a, id);
     }
 
+    /** play {mute}: no sound from the phone (the experiment PC plays it); a play of one's own: sound. */
+    void applyMute() {
+        MediaPlayer mp = media;
+        if (mp == null || !prepared) return;
+        try { mp.setVolume(muted ? 0f : 1f, muted ? 0f : 1f); } catch (Exception ignored) { }
+    }
+
     /** State to the server (as the glasses app does), device "phone". */
     void report(String action, String id) {
         try {
@@ -660,7 +760,10 @@ public class MainActivity extends Activity {
              .put("title", inPlayer ? title : "")
              .put("t", inPlayer && prepared ? Math.round(video.getCurrentPosition()) / 1000.0 : JSONObject.NULL)
              .put("paused", inPlayer ? !isPlaying() : JSONObject.NULL)
-             .put("frozen", held != null && held.frozen).put("ts", System.currentTimeMillis()).put("v", VERSION);
+             .put("frozen", held != null && held.frozen).put("ts", System.currentTimeMillis()).put("v", VERSION)
+             .put("muted", muted);
+            JSONObject layout = layout();
+            if (layout != null) b.put("layout", layout);
             final byte[] body = b.toString().getBytes("UTF-8");
             final String base = server;
             reports.execute(() -> {

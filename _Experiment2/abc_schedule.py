@@ -402,11 +402,11 @@ def lead_car(cid, hold_from, hold_to, x_hold, v_in, v_out, spawn_dx, t_end, brak
     return car
 
 
-def rear2_car(cid, hold_from, hold_to, x_hold, v_in, spawn_dx, t_end, kind='rear2'):
+def rear2_car(cid, hold_from, hold_to, x_hold, v_in, spawn_dx, t_end, kind='rear2', a=0.4):
     """Lane 2 behind: comes up from spawn_dx[0] behind at +v_in (m/s), slowing down gently (0.4 m/s^2) to hold
     x_hold (-48 .. -42 m: never closer than -40 m, and slower than 3 km/h by the time it is in the
-    grid's 50 m), falls back at -8 km/h from hold_to."""
-    a = 0.4
+    grid's 50 m), falls back at -8 km/h from hold_to. a: its deceleration (a question's car behind,
+    2026-11-14: 0.8, it holds 20-25 m behind and comes in shorter)"""
     d_decel = v_in * v_in / (2.0 * a)
     t_decel = hold_from - v_in / a
     t_start = math.ceil((t_decel - (x_hold - d_decel + spawn_dx[0]) / v_in) / DT) * DT
@@ -602,7 +602,9 @@ class Rules(object):
             t = (new.i0 + i) * DT
             index = new.i0 + i
             braking = any(a <= t <= b for a, b in spans)   # an F: the ego car brakes too, the real gap is kept
-            if new.lane == 2 and new.kind != 'event' and not braking:
+            # a question's own car in lane 2 (anchor_cars): nearer than the other lane 2 cars may come
+            # (2026-11-14: 20-25 m behind, 20-24 m ahead), it stands there for the question
+            if new.lane == 2 and new.kind != 'event' and not braking and not new.extra.get('anchor'):
                 if (x < 0 and x > self.lane2_rear + 1e-6) or (x > 0 and x < self.lane2_front - 1e-6):
                     return False
             for lane, i0, i1, low, high in self.clear:
@@ -631,7 +633,10 @@ class Rules(object):
 # side for the error of the prediction (abc_ego.py: 1-2 s). Town04's loop does not have straights
 # for all of them (two places for a car event per 137 s lap, ten car events 30 s apart): the
 # seconds in a curve are kept as few as can be (CURVE_WEIGHT), then the moving.
-CRITICAL = {'S': (-6.0, 8.0), 'SD': (-6.0, 8.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-2.0, 1.0),
+# Q (2026-11-14): -3 .. +0.5 and never in a curve (Q_IN_CURVE): in a curve the cars behind in the own lane
+# showed in a side mirror (A-Q1 at a curve's start: the car 24 m behind 78 px in the left mirror), the questions'
+# mirror answers would not hold
+CRITICAL = {'S': (-6.0, 8.0), 'SD': (-6.0, 8.0), 'R': (-2.0, 7.0), 'F': (-1.0, 4.0), 'Q': (-3.0, 0.5),
             'TOR': (-10.0, 15.0)}   # TOR: config TOR straight_rel_s, all of it on a straight (not just few s)
 CURVE_MARGIN = 1.0
 CURVE_WEIGHT = 20.0           # cost of a second in a curve, in seconds moved
@@ -763,7 +768,10 @@ def plan_times(events, block, curves, tor=None, avoid=()):
             else:
                 ok = adapt + 12.0 <= t <= last
             if ok:
-                out.append((t, CURVE_WEIGHT * in_curve(curves, e['type'], t) + abs(d)))
+                curve = in_curve(curves, e['type'], t)
+                if e['type'] == 'Q' and curve > 0:
+                    continue   # Q_IN_CURVE: never
+                out.append((t, CURVE_WEIGHT * curve + abs(d)))
         return out
 
     def gap_ok(prev, t_prev, cur, t_cur):
@@ -956,6 +964,8 @@ def make_schedule(config, name, plan=None):
         TOR_AFTER before the TOR."""
         if t < block['adaptation_end_s'] or t > rules.events_end:
             return False
+        if curves is not None and in_curve(curves, 'Q', t) > 0:
+            return False   # never in a curve (CRITICAL Q)
         if tor is not None and t > tor['t'] - TOR_AFTER['Q']:
             return False
         for other in events:
@@ -1090,6 +1100,38 @@ def make_schedule(config, name, plan=None):
                 allowed = [event['t_doc'] + d for d in shifts if f_time_ok(event, event['t_doc'] + d)]
                 raise RuntimeError('%s: no lead car found (allowed times: %s; questions at %s)' % (
                     event['id'], allowed, [e['t'] for e in events if e['type'] == 'Q']))
+
+    # 3b. far ahead during each question's hold (2026-11-14): far_n cars beyond far_dx_m[0] that come back
+    # from spawn_ahead_dx_m and pull away again, so the hold (nothing moves in the grid) does not give
+    # the question away. Beyond gap_far_m: not in the questions
+    far_n = qt.get('far_n', 0)
+    far_low, far_high = qt.get('far_dx_m', (100.0, 240.0))
+    hold_s = qt.get('hold_s', 0.0)
+    for event in events:
+        if event['type'] != 'Q' or not far_n:
+            continue
+        added = 0
+        for _ in range(ANCHOR_TRIES):
+            if added >= far_n:
+                break
+            t_q = event['t']
+            v_in, v_out = rng.uniform(v_low, v_high) * KMH, rng.uniform(v_low, v_high) * KMH
+            t_start = math.floor((t_q - hold_s - rng.uniform(-6.0, 14.0)) / DT) * DT
+            t_turn = t_q - hold_s + rng.uniform(0.0, hold_s + 6.0)
+            commands = [(t_start, -v_in, FAR_ACCEL), (t_turn, v_out, 1.0)]
+            xs = simulate(t_start, spawn[1], _far(spawn[1], -v_in), commands, t_end, exit_dx=spawn, min_t=t_turn)
+            car = Car(new_id('Far'), 'bg', rng.choice(GRID_LANES), t_start, xs, [], far=True)
+            if min(xs) < far_low or not rules.ok(car, cars):
+                count[0] -= 1
+                continue
+            # moving in the hold: in the window at least 30 m of its course, and in sight (far_high)
+            window = [car.at(t_q - hold_s + k * 0.5) for k in range(int(2 * hold_s) + 1)]
+            window = [x for x in window if x is not None and x <= far_high]
+            if len(window) < hold_s or max(window) - min(window) < 30.0:
+                count[0] -= 1
+                continue
+            cars.append(car)
+            added += 1
 
     # 4. background cars until 4-6 are within 50 m
     low, high = bg['n_within_50m']
@@ -1318,14 +1360,16 @@ def anchor_cars(new_id, q, rng, targets, v_low, v_high, spawn, t_end, f_events=(
                     # question: its course is short (with a
                     # 10 s hold a slow one runs into the TOR's clearing, or meets the previous question's car
                     # ahead still leaving: one lane, they would cross)
+                    front = targets.get('lane2_front') or (max(targets['front'][0], targets.get('lane2_front_min', 0.0)),
+                                                           targets['front'][1])
                     cars.append(lead_car(new_id('Q'), t - rng.uniform(early, 30), t + rng.uniform(3, 12),
-                                         rng.uniform(max(targets['front'][0], targets.get('lane2_front_min', 0.0)),
-                                                     targets['front'][1]), rng.uniform(15, 35) * KMH,
+                                         rng.uniform(*front), rng.uniform(15, 35) * KMH,
                                          rng.uniform(10, 25) * KMH, spawn, t_end, kind='bg'))
                 else:
                     cars.append(rear2_car(new_id('Q'), t - rng.uniform(early + 1, 30), t + rng.uniform(3, 12),
                                           rng.uniform(*targets['rear_lane2']), rng.uniform(15, 25) * KMH,
-                                          spawn, t_end, kind='bg'))
+                                          spawn, t_end, kind='bg', a=0.8))
+                cars[-1].extra['anchor'] = True
             continue
         follow = None
         if lane in q['approach'] and len(zones) > 1:

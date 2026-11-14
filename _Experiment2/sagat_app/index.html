@@ -56,21 +56,29 @@
             border-radius: 12px; background: #2a9d52; color: #fff; cursor: pointer; }
   #submit:disabled { background: #2a2f36; color: #5f6670; cursor: default; }
   #missing { color: var(--dim); font-size: 13px; text-align: center; margin-top: 6px; min-height: 16px; }
-  /* the SAGAT questions: one zone at a time (2026-11-13) */
-  #question .slide { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(220px, 0.8fr) 1.2fr;
+  /* the SAGAT questions (2026-11-14): one at a time, as mirror pictures behind and the lanes ahead */
+  #question .slide { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 1.05fr 1fr;
                      gap: 28px; align-items: center; }
-  #question .map svg { width: 100%; height: auto; max-height: 72vh; display: block; }
-  #question .zone { fill: none; stroke: #3a414b; stroke-dasharray: 4 3; }
-  #question .zone.on { fill: #2a63b8; stroke: #8fb8ff; stroke-width: 3; stroke-dasharray: none; }
-  #question .ask h2 { font-size: 34px; margin: 0 0 6px; }
-  #question .ask #q-where { color: var(--dim); font-size: 19px; margin: 0 0 clamp(14px, 3vh, 30px); }
-  #question .answer { display: grid; grid-template-columns: 150px 150px 24px repeat(5, 56px); gap: 8px;
-                      align-items: center; margin-bottom: 8px; }
-  #question .answer button.yn { font-size: 21px; padding: clamp(10px, 2vh, 18px) 4px; }
-  #question .answer button.cf { font-size: 18px; padding: clamp(10px, 2vh, 18px) 0; }
-  #question .hint { color: var(--dim); font-size: 13px; margin-bottom: clamp(12px, 2.5vh, 26px); }
+  #question .pic svg { width: 100%; height: auto; max-height: 70vh; display: block; }
+  #question .mirror { fill: #0d0f12; stroke: #3a414b; stroke-width: 3; }
+  #question .mirror.on { fill: #12233d; stroke: #8fb8ff; stroke-width: 5; }
+  #question .incar { opacity: 0; }
+  #question .incar.on { opacity: 1; }
+  #question .lane { fill: #15191f; stroke: none; cursor: pointer; }
+  #question .lane.on { fill: #2a63b8; }
+  #question .ask h2 { font-size: 32px; margin: 0 0 6px; line-height: 1.25; }
+  #question .ask #q-where { color: var(--dim); font-size: 19px; margin: 0 0 clamp(14px, 3vh, 28px); }
+  #question .answer { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  #question .answer button.yn { font-size: 21px; padding: clamp(10px, 2vh, 18px) 4px; min-width: 128px; }
+  #question .answer button.yn.on[data-v="unknown"] { background: #6b5a2a; border-color: #6b5a2a; color: #fff; font-weight: 600; }
+  #question .answer button.yn.on[data-v="1"], #question .answer button.yn.on[data-v="2"],
+  #question .answer button.yn.on[data-v="3"] { background: var(--on); border-color: var(--on); color: #fff; font-weight: 600; }
+  #question .conf { display: grid; grid-template-columns: repeat(5, 56px); gap: 8px; margin-bottom: 4px; }
+  #question .conf button.cf { font-size: 18px; padding: clamp(10px, 2vh, 18px) 0; }
+  #question .conf.off { opacity: 0.25; pointer-events: none; }
+  #question .hint { color: var(--dim); font-size: 13px; margin-bottom: clamp(12px, 2.5vh, 24px); }
   #question .note { color: var(--dim); font-size: 13px; line-height: 1.5; margin-top: 14px; }
-  @media (orientation: portrait) { #question .slide { grid-template-columns: 1fr; } #question .map svg { max-height: 34vh; } }
+  @media (orientation: portrait) { #question .slide { grid-template-columns: 1fr; } #question .pic svg { max-height: 34vh; } }
   /* the NDRT video questions: one frame at a time */
   #ndrt .frame { max-width: 1320px; margin: 0 auto; text-align: center; }
   #ndrt img { max-width: 100%; max-height: 58vh; border-radius: 10px; display: block; margin: 0 auto; background: #0d0f12; }
@@ -105,34 +113,49 @@
 </div>
 
 <div id="question" class="screen">
-  <header><h1>화면이 멈춘 순간, 이 위치에 차가 있었나요? <small id="q-n" style="color: var(--dim); font-weight: 400"></small></h1><span id="left"></span></header>
+  <header><h1>화면이 멈춘 순간 <small id="q-n" style="color: var(--dim); font-weight: 400"></small></h1><span id="left"></span></header>
   <div class="slide">
-    <div class="map">
-      <!-- the four zones, the one asked about filled: three lanes, the ego car in the middle -->
-      <svg viewBox="0 0 220 360" aria-hidden="true">
-        <rect x="10" y="0" width="200" height="360" fill="#0d0f12"/>
-        <rect class="zone" data-zone="ahead" x="79" y="22" width="62" height="118"/>
-        <rect class="zone" data-zone="behind_left" x="12" y="236" width="62" height="100"/>
-        <rect class="zone" data-zone="behind" x="79" y="236" width="62" height="100"/>
-        <rect class="zone" data-zone="behind_right" x="146" y="236" width="62" height="100"/>
-        <text x="110" y="15" fill="#9fb6d8" font-size="12" text-anchor="middle">앞: 35 m 안 (차 약 7대 거리)</text>
-        <text x="110" y="354" fill="#8fc7a8" font-size="12" text-anchor="middle">뒤: 15~45 m 뒤 (미러로 보이는 곳)</text>
-        <line x1="77" y1="0" x2="77" y2="340" stroke="#6b7480" stroke-dasharray="10 9"/>
-        <line x1="143" y1="0" x2="143" y2="340" stroke="#6b7480" stroke-dasharray="10 9"/>
-        <rect x="94" y="150" width="32" height="56" rx="8" fill="var(--car)" stroke="#9aa3ad" stroke-width="2"/>
-        <text x="110" y="182" fill="#fff" font-size="11" text-anchor="middle">내 차</text>
+    <div class="pic">
+      <!-- behind: the three mirrors as seen from the driver's seat (rear-view mirror at the top, the side
+           mirrors low at the sides), the one asked about outlined with a car in it -->
+      <svg id="pic-mirrors" viewBox="0 0 400 260" aria-hidden="true">
+        <rect x="0" y="0" width="400" height="260" fill="#000"/>
+        <path d="M30 250 L370 250 L300 120 L100 120 Z" fill="#0b0d10"/>
+        <rect class="mirror" data-zone="behind" x="120" y="14" width="160" height="52" rx="14"/>
+        <path class="mirror" data-zone="behind_left" d="M14 170 Q14 150 40 148 L112 146 Q124 147 124 162 L122 212 Q120 226 104 226 L32 228 Q14 228 14 210 Z"/>
+        <path class="mirror" data-zone="behind_right" d="M386 170 Q386 150 360 148 L288 146 Q276 147 276 162 L278 212 Q280 226 296 226 L368 228 Q386 228 386 210 Z"/>
+        <g class="incar" data-zone="behind"><rect x="182" y="28" width="36" height="26" rx="6" fill="#d9dee5"/><rect x="187" y="33" width="26" height="9" rx="2" fill="#4b525c"/></g>
+        <g class="incar" data-zone="behind_left"><rect x="52" y="168" width="38" height="34" rx="7" fill="#d9dee5"/><rect x="57" y="174" width="28" height="12" rx="2" fill="#4b525c"/></g>
+        <g class="incar" data-zone="behind_right"><rect x="310" y="168" width="38" height="34" rx="7" fill="#d9dee5"/><rect x="315" y="174" width="28" height="12" rx="2" fill="#4b525c"/></g>
+        <text x="200" y="92" fill="#8a929c" font-size="13" text-anchor="middle">룸미러</text>
+        <text x="69" y="246" fill="#8a929c" font-size="13" text-anchor="middle">왼쪽 사이드미러</text>
+        <text x="331" y="246" fill="#8a929c" font-size="13" text-anchor="middle">오른쪽 사이드미러</text>
+      </svg>
+      <!-- ahead: the three lanes ahead as seen through the windshield, tap one -->
+      <svg id="pic-ahead" viewBox="0 0 400 260" aria-hidden="true" style="display: none">
+        <rect x="0" y="0" width="400" height="260" fill="#000"/>
+        <path class="lane" data-lane="1" d="M20 250 L150 250 L188 60 L168 60 Z"/>
+        <path class="lane" data-lane="2" d="M150 250 L250 250 L212 60 L188 60 Z"/>
+        <path class="lane" data-lane="3" d="M250 250 L380 250 L232 60 L212 60 Z"/>
+        <line x1="150" y1="250" x2="188" y2="60" stroke="#c8ccd2" stroke-width="3" stroke-dasharray="16 14"/>
+        <line x1="250" y1="250" x2="212" y2="60" stroke="#c8ccd2" stroke-width="3" stroke-dasharray="16 14"/>
+        <line x1="20" y1="250" x2="168" y2="60" stroke="#c8ccd2" stroke-width="3"/>
+        <line x1="380" y1="250" x2="232" y2="60" stroke="#c8ccd2" stroke-width="3"/>
+        <text x="95" y="236" fill="#d0d5db" font-size="15" text-anchor="middle">왼쪽 차로</text>
+        <text x="200" y="236" fill="#d0d5db" font-size="15" text-anchor="middle">내 차로</text>
+        <text x="305" y="236" fill="#d0d5db" font-size="15" text-anchor="middle">오른쪽 차로</text>
       </svg>
     </div>
     <div class="ask">
       <h2 id="q-zone"></h2>
       <p id="q-where"></p>
-      <div class="answer">
-        <button class="yn" data-v="yes">있었다</button><button class="yn" data-v="no">없었다</button><span></span>
+      <div class="answer" id="q-answer"></div>
+      <div class="conf" id="q-conf">
         <button class="cf" data-c="1">1</button><button class="cf" data-c="2">2</button><button class="cf" data-c="3">3</button><button class="cf" data-c="4">4</button><button class="cf" data-c="5">5</button>
       </div>
-      <div class="hint">확신: 1 (전혀) … 5 (매우)</div>
+      <div class="hint">확신: 1 (전혀) … 5 (매우). "모른다"는 확신을 고르지 않습니다.</div>
       <button id="submit" disabled>다음</button>
-      <p class="note">그보다 멀리 작게 보인 차는 "없었다"입니다. 뒤는 차로로 답합니다: 룸미러에 비친 옆 차로의 차는 그 차로 뒤입니다.</p>
+      <p class="note" id="q-note"></p>
     </div>
   </div>
 </div>
@@ -140,46 +163,84 @@
 
 <script>
 (function () {
-  // the questions (four zones since 2026-11-13), one at a time (slides, 2026-11-13): key (as
-  // abc_experiment.py scores it), its zone, where it is
+  // the questions (2026-11-14): key (as abc_experiment.py scores it), the question, where, kind
   var ITEMS = [
-    ['behind_left', '왼쪽 차로 뒤', '왼쪽 사이드미러로 보이는 곳 (15~45 m 뒤)'],
-    ['behind', '내 차로 뒤', '룸미러로 보이는 곳 (15~45 m 뒤)'],
-    ['behind_right', '오른쪽 차로 뒤', '오른쪽 사이드미러로 보이는 곳 (15~45 m 뒤)'],
-    ['ahead', '내 차로 앞', '바로 앞 35 m 안 (차 약 7대 거리)']
+    ['behind_left', '왼쪽 사이드미러에 차가 있었나요?', '왼쪽 차로 뒤 (15~45 m)', 'rear'],
+    ['behind', '룸미러에 차가 있었나요?', '내 차로 뒤 (15~45 m)', 'rear'],
+    ['behind_right', '오른쪽 사이드미러에 차가 있었나요?', '오른쪽 차로 뒤 (15~45 m)', 'rear'],
+    ['ahead', '앞의 차는 어느 차로에 있었나요?', '앞 35 m 안 (차 약 7대 거리). 그림의 차로를 눌러도 됩니다', 'front']
   ];
+  var CHOICES = {rear: [['yes', '있었다'], ['no', '없었다'], ['unknown', '모른다']],
+                 front: [['1', '왼쪽'], ['2', '내 차로'], ['3', '오른쪽'], ['unknown', '모른다']]};
+  var NOTES = {rear: '그보다 멀리 작게 보인 차는 "없었다"입니다.', front: ''};
   var current = null;       // qid on screen
   var sentFor = null;       // qid already answered
   var answer = {};
   var opened = Date.now();
   var k = 0;                // the question on screen
   var since = Date.now();   // when it came
-  var slide = document.querySelector('#question .ask');
+  var row = document.getElementById('q-answer');
+  var conf = document.getElementById('q-conf');
 
   function showItem() {
     var item = ITEMS[k];
     since = Date.now();
-    Array.prototype.forEach.call(slide.querySelectorAll('button.on'), function (b) { b.classList.remove('on'); });
-    Array.prototype.forEach.call(document.querySelectorAll('#question .zone'), function (z) {
+    row.innerHTML = '';
+    CHOICES[item[3]].forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'yn'; b.setAttribute('data-v', c[0]); b.textContent = c[1];
+      row.appendChild(b);
+    });
+    Array.prototype.forEach.call(conf.querySelectorAll('button.on'), function (b) { b.classList.remove('on'); });
+    document.getElementById('pic-mirrors').style.display = item[3] === 'rear' ? '' : 'none';
+    document.getElementById('pic-ahead').style.display = item[3] === 'front' ? '' : 'none';
+    Array.prototype.forEach.call(document.querySelectorAll('#question .mirror, #question .incar'), function (z) {
       z.classList.toggle('on', z.getAttribute('data-zone') === item[0]);
     });
+    Array.prototype.forEach.call(document.querySelectorAll('#question .lane'), function (z) { z.classList.remove('on'); });
     document.getElementById('q-zone').textContent = item[1];
     document.getElementById('q-where').textContent = item[2];
+    document.getElementById('q-note').textContent = NOTES[item[3]];
     document.getElementById('q-n').textContent = (k + 1) + ' / ' + ITEMS.length;
     document.getElementById('submit').textContent = k + 1 < ITEMS.length ? '다음' : '제출';
     check();
   }
 
-  slide.querySelector('.answer').addEventListener('click', function (event) {
-    var button = event.target.closest('button');
-    if (!button) return;
-    var a = answer[ITEMS[k][0]];
-    var kind = button.classList.contains('yn') ? 'yn' : 'cf';
-    Array.prototype.forEach.call(slide.querySelectorAll('button.' + kind), function (b) { b.classList.remove('on'); });
-    button.classList.add('on');
-    if (kind === 'yn') a.present = button.getAttribute('data-v') === 'yes';
-    else a.confidence = parseInt(button.getAttribute('data-c'), 10);
+  function choose(value) {
+    var item = ITEMS[k], a = answer[item[0]];
+    Array.prototype.forEach.call(row.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-v') === value);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#question .lane'), function (z) {
+      z.classList.toggle('on', z.getAttribute('data-lane') === value);
+    });
+    a.unknown = value === 'unknown';
+    if (item[3] === 'front') a.lane = a.unknown ? null : parseInt(value, 10);
+    else a.present = a.unknown ? null : value === 'yes';
+    if (a.unknown) {
+      a.confidence = null;
+      Array.prototype.forEach.call(conf.querySelectorAll('button.on'), function (b) { b.classList.remove('on'); });
+    }
     check();
+    draft();
+  }
+  row.addEventListener('click', function (event) {
+    var button = event.target.closest('button');
+    if (button) choose(button.getAttribute('data-v'));
+  });
+  document.getElementById('pic-ahead').addEventListener('click', function (event) {
+    var lane = event.target.closest('.lane');
+    if (lane) choose(lane.getAttribute('data-lane'));
+  });
+  conf.addEventListener('click', function (event) {
+    var button = event.target.closest('button');
+    var a = answer[ITEMS[k][0]];
+    if (!button || a.unknown) return;
+    Array.prototype.forEach.call(conf.querySelectorAll('button'), function (b) { b.classList.remove('on'); });
+    button.classList.add('on');
+    a.confidence = parseInt(button.getAttribute('data-c'), 10);
+    check();
+    draft();
   });
 
   function show(id) {
@@ -190,26 +251,49 @@
 
   function reset() {
     answer = {};
-    ITEMS.forEach(function (item) { answer[item[0]] = {present: null, confidence: null}; });
+    ITEMS.forEach(function (item) {
+      answer[item[0]] = item[3] === 'front' ? {lane: null, unknown: false, confidence: null}
+                                            : {present: null, unknown: false, confidence: null};
+    });
     opened = Date.now();
     k = 0;
     showItem();
   }
 
-  function check() {
-    var a = answer[ITEMS[k][0]];
-    document.getElementById('submit').disabled = !a || a.present === null || a.confidence === null;
+  function done(a, item) {
+    if (!a) return false;
+    if (a.unknown) return true;
+    var value = item[3] === 'front' ? a.lane : a.present;
+    return value !== null && a.confidence !== null;
   }
 
-  document.getElementById('submit').addEventListener('click', function () {
-    answer[ITEMS[k][0]].ms = Date.now() - since;
-    if (k + 1 < ITEMS.length) { k += 1; showItem(); return; }
-    var body = {qid: current, items: answer, answer_ms: Date.now() - opened};
+  function check() {
+    var a = answer[ITEMS[k][0]];
+    conf.classList.toggle('off', !!(a && a.unknown));
+    document.getElementById('submit').disabled = !done(a, ITEMS[k]);
+  }
+
+  function post(body, onload) {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/answer');
     xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function () { sentFor = body.qid; show('sent'); };
+    if (onload) xhr.onload = onload;
     xhr.send(JSON.stringify(body));
+  }
+
+  // the answers so far, at every tap: at the time limit they are what counts (2026-11-14)
+  function draft() {
+    var items = {};
+    ITEMS.forEach(function (item) { if (done(answer[item[0]], item)) items[item[0]] = answer[item[0]]; });
+    post({qid: current, kind: 'draft', items: items, answer_ms: Date.now() - opened});
+  }
+
+  document.getElementById('submit').addEventListener('click', function () {
+    if (!done(answer[ITEMS[k][0]], ITEMS[k])) return;
+    answer[ITEMS[k][0]].ms = Date.now() - since;
+    if (k + 1 < ITEMS.length) { k += 1; showItem(); return; }
+    var body = {qid: current, items: answer, answer_ms: Date.now() - opened};
+    post(body, function () { sentFor = body.qid; show('sent'); });
     document.getElementById('submit').disabled = true;
   });
 
@@ -237,12 +321,15 @@
     else nd.confidence = parseInt(button.getAttribute('data-c'), 10);
     document.getElementById('ndrt-next').disabled = nd.shown === null || nd.confidence === null;
   });
+  function ndDraft() {   // the frames answered so far: at the time limit they count
+    post({qid: nd.qid, kind: 'ndrt_draft', answers: nd.answers.slice(), answer_ms: Date.now() - nd.opened});
+  }
   document.getElementById('ndrt-next').addEventListener('click', function () {
     if (nd.shown === null || nd.confidence === null) return;
     nd.answers.push({image: nd.images[nd.k].replace(/^\/ndrt\//, ''), shown: nd.shown, confidence: nd.confidence,
                      ms: Date.now() - nd.since});
     nd.k += 1;
-    if (nd.k < nd.images.length) { ndrtFrame(); return; }
+    if (nd.k < nd.images.length) { ndDraft(); ndrtFrame(); return; }
     var body = {qid: nd.qid, kind: 'ndrt', answers: nd.answers, answer_ms: Date.now() - nd.opened};
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/answer');

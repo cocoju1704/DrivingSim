@@ -12,6 +12,9 @@ shown per stop differs (1-3 of 4) so one answer does not give away the next.
 
 It checks every shown frame against the stop times in schedules/<block>.json and stops if one is
 no longer 5-55 s before its stop (the schedule changed): pick new frames then.
+Every frame (shown and not shown) must also be bright enough for the glasses display (2026-11-14:
+night scenes of 중국 were hard to see there): mean luma (PIL 'L' of the 1280x720 frame) >= MIN_LUMA,
+else it stops; pick a brighter frame then.
 """
 import json
 import os
@@ -19,7 +22,7 @@ import random
 import subprocess
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -29,13 +32,17 @@ SRC = os.path.join(ROOT, 'mrbd-video')                # the episodes
 MEDIA = os.path.join(SRC, 'media')                    # the clips (served by mrbd-video/server.py)
 FONT = ImageFont.truetype(r'C:\Windows\Fonts\malgun.ttf', 15)
 BEFORE_STOP = (5.0, 55.0)   # s: a shown frame this long before its stop
+# mean luma 0-255: the night frames of 중국 were 13 and 27, every day frame of the four sets 61-181
+MIN_LUMA = 50
 
 # block: episode, clip file, clip start and length in the episode (s), per stop: shown frames (s into
 # the clip), not-shown frames (s into the episode)
 BLOCKS = {
     'A': ('중국', '중국_A.mp4', 0.0, 690, {
-        'A-Q1': ([141.2], [1627.7, 2265.0, 2290.5]),
-        'A-Q2': ([341.5, 362.0], [2829.3, 2789.8]),
+        # 2026-11-14: Q2's 5-55 s window (314-364 s) is night (luma 13-28) but for the embroidery stall
+        # (306-317.5 s, the last 3 s at 314.5); Q1 takes the 2nd shown frame (the boat, 156-170 s)
+        'A-Q1': ([141.2, 163.0], [2265.0, 3139.5]),
+        'A-Q2': ([315.5], [2829.3, 2789.8, 2346.5]),
         'A-Q3': ([452.5, 489.7, 497.3], [1775.5])}),
     'B': ('스위스러시아', '스위스러시아_B.mp4', 0.0, 690, {
         'B-Q1': ([113.6], [737.7, 756.7, 794.9]),
@@ -44,7 +51,7 @@ BLOCKS = {
     'C': ('스페인 남부', '스페인남부_C.mp4', 0.0, 690, {
         'C-Q1': ([187.0, 196.0], [763.8, 1238.2]),
         'C-Q2': ([350.5, 358.4, 394.0], [770.0]),
-        'C-Q3': ([455.4], [1145.6, 757.0, 1122.4])}),
+        'C-Q3': ([455.4], [1145.6, 757.0, 1482.0])}),
     # practice: a Galapagos nature documentary (its first minute is the preview)
     'P': ('연습주행', '연습주행_P.mp4', 0.0, 240, {
         'P-Q1': ([105.0, 125.3], [1033.0, 387.9])}),
@@ -59,6 +66,7 @@ def main():
     rng = random.Random(20261112)
     items = {}
     bad = []
+    dark = []
     for b, (ep, clip, start, length, stops) in BLOCKS.items():
         sched = json.load(open(os.path.join(HERE, '..', 'schedules', b + '.json'), encoding='utf-8'))
         stop_t = {e['id']: e['t'] for e in sched['events']}
@@ -87,9 +95,16 @@ def main():
                 name = '%s-%d.jpg' % (qid, k)
                 p = os.path.join(HERE, b, name)
                 t_ep = start + t if is_shown else t
-                subprocess.run([FF, '-loglevel', 'error', '-y', '-ss', '%.2f' % t_ep, '-i', src, '-frames:v', '1',
-                                '-vf', 'scale=1280:720', '-q:v', '3', p], check=True)
-                row = {'image': '%s/%s' % (b, name), 'shown': is_shown, 'episode_t': round(t_ep, 2)}
+                # low priority, one thread: may run next to a driving session on the same PC
+                subprocess.run([FF, '-loglevel', 'error', '-y', '-threads', '1', '-ss', '%.2f' % t_ep, '-i', src,
+                                '-frames:v', '1', '-vf', 'scale=1280:720', '-q:v', '3', p], check=True,
+                               creationflags=getattr(subprocess, 'IDLE_PRIORITY_CLASS', 0))
+                luma = ImageStat.Stat(Image.open(p).convert('L')).mean[0]
+                if luma < MIN_LUMA:
+                    dark.append('%s (%s %s): mean luma %.0f < %d' % (
+                        name, 'shown' if is_shown else 'not shown', mmss(t_ep), luma, MIN_LUMA))
+                row = {'image': '%s/%s' % (b, name), 'shown': is_shown, 'episode_t': round(t_ep, 2),
+                       'luma': round(luma)}
                 if is_shown:
                     row['video_t'] = t
                     row['before_stop_s'] = round(qt - t, 1)
@@ -102,10 +117,13 @@ def main():
         sheet.save(os.path.join(HERE, 'sheet_%s.jpg' % b), quality=88)
     if bad:
         sys.exit('Shown frames no longer before their stops (schedule changed?):\n  ' + '\n  '.join(bad))
+    if dark:
+        sys.exit('Frames too dark for the glasses display (ndrt_items.json not written):\n  ' + '\n  '.join(dark))
     out = {'_comment': 'NDRT scene questions after each SAGAT stop (make_items.py): "이 장면이 영상에 나왔나요?" '
                        'yes/no + confidence. shown: from the clip, video_t s into it (the shot starts ~1.5 s '
                        'earlier), before_stop_s before the stop; not shown: same episode outside the clip and its '
-                       'preview. episode_t: where the frame is in the episode. Asked in the listed order.'}
+                       'preview. episode_t: where the frame is in the episode; luma: the frame\'s mean luma '
+                       '(>= %d, bright enough for the glasses display). Asked in the listed order.' % MIN_LUMA}
     out.update(items)
     with open(os.path.join(HERE, 'ndrt_items.json'), 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=1)

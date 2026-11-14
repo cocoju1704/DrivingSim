@@ -6,6 +6,9 @@ Tobii Pro Glasses 2: how accurate the gaze is after g2_calibrate.py, in degrees,
     python g2_validate.py [HOST]          both: the monitors, then the glasses display
     python g2_validate.py --monitor       only the monitors
     python g2_validate.py --display       only the glasses display (Meta Ray-Ban Display)
+    python g2_validate.py --quick         short (the re-wear between blocks, menu "빠른 재착용"): the road
+                                          target, the three mirror targets and QUICK_DISPLAY_POINTS; the
+                                          same limits (no monitor mean: no corners)
 
 The glasses' live streams are saved meanwhile (g2_stream.py) in VALIDATION_DIR/<time>/, the result in
 there and in RESULT_FILE (the latest, copied into each block's data folder by abc_experiment).
@@ -59,8 +62,7 @@ SCENE_PX = (960, 540)                # the live scene video
 SETTLE_S = 1.0                       # s after a target appears before its gaze counts
 COLLECT_S = 1.5                      # s of gaze per target
 MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
-MIRROR_MESSAGE = ('다음 점은 미러 위에 나타납니다',          # before the first mirror target: the
-                  '운전할 때처럼 고개를 자연스럽게 돌려서 봐 주세요')   # participant's view, what comes next
+MIRROR_MESSAGE = ('다음 나타나는 점들은 자연스럽게 고개를 돌려 바라보세요',)   # before the first mirror target (2026-11-14: one short line)
 MIN_SAMPLES = 20
 # pass (the participant's fit is good enough for the experiment), from the 2026-11-11 pilot
 PASS_ROAD_DEG = 1.5              # the road target
@@ -84,6 +86,79 @@ MONITOR_POINTS = [('road', 0, 0.5, 0.45), ('middle top left', 0, 0.08, 0.15), ('
 MIRRORS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mirrors_last.json')
 MIRROR_POINT_NAMES = {'left': 'left mirror', 'rear': 'rear-view mirror', 'right': 'right mirror'}
 MONITOR_PX = (1920, 1080)
+# the HUD's place (2026-11-14): its centre and four corners, in every block's validation (all conditions: the
+# same procedure, and the gaze's error there is known). The rectangle as the experiment draws it
+# (abc_experiment writes hud_last.json at each block); the gaze on these points makes the HUD's outline
+# as this participant's gaze sees it (hud_gaze.json), the way g2_display.json is the glasses display's
+HUD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hud_last.json')
+HUD_GAZE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hud_gaze.json')
+HUD_POINTS = ('hud centre', 'hud top left', 'hud top right', 'hud bottom right', 'hud bottom left')
+# --hud: the short check after a block (the road + the HUD points, no display); --post DIR: its
+# outline into that block folder (hud_gaze_post.json); --post-last: the newest block folder under Data
+HUD_ONLY = '--hud' in sys.argv
+# window px per degree on the middle monitor (1920 px across 43 degrees, at its middle)
+PX_PER_DEG = MONITOR_PX[0] / 2.0 / math.tan(math.radians(43.0 / 2.0)) * math.pi / 180.0
+
+
+def hud_rect():
+    """The HUD rectangle [x, y, w, h] in window px (hud_last.json), or None."""
+    try:
+        with open(HUD_FILE, encoding='utf-8') as handle:
+            return json.load(handle)['rect_px']
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def hud_points():
+    """(name, monitor, fx, fy) of the HUD's centre and corners (HUD_POINTS), [] without hud_last.json."""
+    rect = hud_rect()
+    if not rect:
+        return []
+    x, y, w, h = rect
+    places = {'hud centre': (x + w / 2.0, y + h / 2.0), 'hud top left': (x, y), 'hud top right': (x + w, y),
+              'hud bottom right': (x + w, y + h), 'hud bottom left': (x, y + h)}
+    out = []
+    for name in HUD_POINTS:
+        px, py = places[name]
+        monitor = int(px // MONITOR_PX[0]) - 1
+        out.append((name, monitor, round(px / MONITOR_PX[0] - (monitor + 1), 4), round(py / MONITOR_PX[1], 4)))
+    return out
+
+
+def hud_outline(results):
+    """The HUD outline as the gaze sees it: each corner where it is drawn plus the gaze's error there
+    (gaze - target in the scene camera, degrees, to window px at PX_PER_DEG); None unless all four
+    corners were measured."""
+    rect = hud_rect()
+    points = {p['point']: p for p in results or [] if 'gaze_gp' in p}
+    if not rect or not all(n in points for n in HUD_POINTS[1:]):
+        return None
+    x, y, w, h = rect
+    drawn = {'hud top left': (x, y), 'hud top right': (x + w, y), 'hud bottom right': (x + w, y + h),
+             'hud bottom left': (x, y + h), 'hud centre': (x + w / 2.0, y + h / 2.0)}
+    out, offsets = [], {}
+    for name in HUD_POINTS:
+        p = points.get(name)
+        if p is None:
+            continue
+        dx = (p['gaze_gp'][0] - p['target_gp'][0]) * SCENE_FOV_DEG[0]
+        dy = (p['gaze_gp'][1] - p['target_gp'][1]) * SCENE_FOV_DEG[1]
+        offsets[name] = [round(dx, 2), round(dy, 2)]
+        if name != 'hud centre':
+            out.append([round(drawn[name][0] + dx * PX_PER_DEG, 1), round(drawn[name][1] + dy * PX_PER_DEG, 1)])
+    return {'rect_px': rect, 'outline_px': out, 'offset_deg': offsets, 'px_per_deg': round(PX_PER_DEG, 2),
+            'accuracy_deg': {n: points[n].get('accuracy_deg') for n in HUD_POINTS if n in points}}
+
+
+def last_block():
+    """The newest block folder under Data (with a run.json), or None."""
+    best = None
+    for root, dirs, files in os.walk(os.path.join(HERE, 'Data')):
+        if 'run.json' in files:
+            t = os.path.getmtime(os.path.join(root, 'run.json'))
+            if best is None or t > best[0]:
+                best = (t, root)
+    return best and best[1]
 
 
 def glass_centre(poly):
@@ -117,6 +192,10 @@ def mirror_points():
 TARGET_DIAMETER = 0.045              # the ring's outer diameter, of a monitor's width (32 inch: 32 mm)
 # the glasses display (600 x 600 px): not the five points of g2_calibrate.py
 DISPLAY_POINTS = [(300, 30), (570, 300), (300, 570), (30, 300), (165, 165), (435, 165), (435, 435), (165, 435)]
+# --quick (the re-wear between blocks): the road and the mirrors (no corners), four display points
+QUICK = '--quick' in sys.argv
+QUICK_POINTS = ('road', 'left mirror', 'rear-view mirror', 'right mirror')
+QUICK_DISPLAY_POINTS = [(165, 165), (435, 165), (435, 435), (165, 435)]
 
 
 # ---------------------------------------------------------------- geometry
@@ -325,6 +404,7 @@ class Screen(object):
                                highlightthickness=0)
             canvas.pack()
             window.bind('<Escape>', lambda e: self._abort())
+            window.bind('<Button-3>', lambda e: self._abort())     # a right click: as Esc
             window.bind('<Return>', lambda e: self.enter.set())
             self.canvases.append(canvas)
         self.canvases[len(self.canvases) // 2].winfo_toplevel().focus_force()
@@ -409,48 +489,70 @@ class Screen(object):
         self._call(draw)
         return True
 
-    def report(self, title, ok, sections, footer=''):
-        """A g2_report report on every monitor: the title, the first section across the top, the others
+    def report(self, title, ok, sections, footer='', advice=()):
+        """A g2_report report on every monitor (2026-11-14, was all one size and hard to read): the
+        verdict big, under it advice (what to do next, its first line in the verdict's colour), the
+        first section (the criteria) large with each row in its mark's colour, the others small and
         side by side under it."""
         import tkinter.font as tkfont
         import g2_report
 
         def draw():
-            font = tkfont.Font(family='Malgun Gothic', size=17)
-            bold = tkfont.Font(family='Malgun Gothic', size=19, weight='bold')
-            line = font.metrics('linespace') + 8
-            gap = 36
+            big = tkfont.Font(family='Malgun Gothic', size=24)
+            big_bold = tkfont.Font(family='Malgun Gothic', size=24, weight='bold')
+            small = tkfont.Font(family='Malgun Gothic', size=15)
+            small_bold = tkfont.Font(family='Malgun Gothic', size=16, weight='bold')
             for canvas, (left, top, right, bottom) in zip(self.canvases, self.monitors):
                 canvas.delete('all')
                 w, h = right - left, bottom - top
 
-                def table(centre, y, heading, rows):
+                def table(centre, y, heading, rows, font, bold, whole_row):
+                    line = font.metrics('linespace') + (14 if whole_row else 6)
+                    gap = 48 if whole_row else 28
                     n = max([len(r) for r in rows] or [0])
                     widths = [max(font.measure(g2_report.cell(r[i])[0]) for r in rows if i < len(r))
                               for i in range(n)]
-                    x = centre - max(sum(widths) + gap * (n - 1), bold.measure(heading)) / 2.0
-                    canvas.create_text(x, y, text=heading, anchor='nw', font=bold, fill='black')
-                    y += line + 6
+                    head = heading.split('\n')
+                    x = centre - max([sum(widths) + gap * (n - 1)] + [bold.measure(t) for t in head]) / 2.0
+                    for k, text in enumerate(head):
+                        canvas.create_text(x, y, text=text, anchor='nw', font=bold if k == 0 else font,
+                                           fill='black' if k == 0 else '#666666')
+                        y += bold.metrics('linespace') + 4
+                    y += 6
                     for r in rows:
+                        marks = [g2_report.cell(c)[1] for c in r if g2_report.cell(c)[1] is not None]
+                        row_mark = marks[-1] if marks else None
+                        if whole_row and row_mark is False:   # a failed criterion: a light red band
+                            canvas.create_rectangle(x - 16, y - 5, x + sum(widths) + gap * (n - 1) + 16,
+                                                    y + line - 9, fill='#fde8e8', outline='')
                         cx = x
                         for i, c in enumerate(r):
                             text, mark = g2_report.cell(c)
-                            canvas.create_text(cx, y, text=text, anchor='nw', font=font,
-                                               fill=g2_report.colour(mark))
+                            colour = g2_report.colour(row_mark if whole_row else mark)
+                            if not whole_row and mark is None:
+                                colour = '#444444'
+                            canvas.create_text(cx, y, text=text, anchor='nw',
+                                               font=bold if whole_row and i == 0 else font, fill=colour)
                             cx += widths[i] + gap
                         y += line
                     return y
 
-                canvas.create_text(w / 2.0, h * 0.08, text=title, fill=g2_report.colour(ok),
-                                   font=('Malgun Gothic', 48, 'bold'))
-                y = h * 0.15
+                canvas.create_text(w / 2.0, h * 0.075, text=title, fill=g2_report.colour(ok),
+                                   font=('Malgun Gothic', 60, 'bold'))
+                y = h * 0.145
+                for k, text in enumerate(advice or ()):
+                    canvas.create_text(w / 2.0, y, text=text, anchor='n',
+                                       fill=g2_report.colour(ok) if k == 0 else '#333333',
+                                       font=('Malgun Gothic', 24 if k == 0 else 20, 'bold' if k == 0 else 'normal'))
+                    y += 44 if k == 0 else 36
+                y += 24
                 if sections:
-                    y = table(w / 2.0, y, *sections[0]) + line
+                    y = table(w / 2.0, y, *sections[0], font=big, bold=big_bold, whole_row=True) + 36
                 rest = sections[1:]
                 for k, section in enumerate(rest):
-                    table(w * (k + 0.5) / len(rest), y, *section)
+                    table(w * (k + 0.5) / len(rest), y, *section, font=small, bold=small_bold, whole_row=False)
                 if footer:
-                    canvas.create_text(w / 2.0, h * 0.94, text=footer, fill='#555555', font=('Malgun Gothic', 20))
+                    canvas.create_text(w - 40, h - 30, text=footer, anchor='se', fill='#555555', font=('Malgun Gothic', 20))
         self._call(draw)
 
     def clear(self):
@@ -479,6 +581,11 @@ def validate_monitor(host, out_dir, screen, link):
         return None, None
     rec = Recording(host, os.path.join(out_dir, 'monitor'))
     points, source = mirror_points()
+    if QUICK:
+        points = [p for p in points if p[0] in QUICK_POINTS]
+    if HUD_ONLY:
+        points = [p for p in points if p[0] == 'road']
+    points = points + hud_points()
     print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s); the mirrors from %s'
           % (len(points), len(points) * (SETTLE_S + COLLECT_S), source))
     for name, monitor, fx, fy in points:
@@ -579,14 +686,15 @@ def validate_display(host, out_dir, screen, link):
     corners = [display['dots'][d] for d in ('tl', 'tr', 'br', 'bl')]
     h = homography([c['display_px'] for c in corners], [c['gp'] for c in corners])
     rec = Recording(host, os.path.join(out_dir, 'display'))
+    dots = QUICK_DISPLAY_POINTS if QUICK else DISPLAY_POINTS
     print('\nGlasses display: the participant looks at each red dot on the glasses display until it moves '
-          '(%d dots, %.0f s)' % (len(DISPLAY_POINTS), len(DISPLAY_POINTS) * (SETTLE_S + COLLECT_S)))
+          '(%d dots, %.0f s)' % (len(dots), len(dots) * (SETTLE_S + COLLECT_S)))
     screen.message('이제 글래스를 보세요', '안경 화면의 빨간 점을 따라 봐 주세요')
     glasses_cue(link, '이제 글래스를 보세요')
     time.sleep(MESSAGE_S)
     shown = []
     try:
-        for x, y in DISPLAY_POINTS:
+        for x, y in dots:
             if screen.aborted:
                 break
             link.calib_now('px:%d,%d' % (x, y))
@@ -618,7 +726,13 @@ def summary(results, valid):
 
 POINT_NAMES = {'road': '도로 중앙', 'middle top left': '모니터 왼쪽 위', 'middle top right': '모니터 오른쪽 위',
                'middle bottom right': '모니터 오른쪽 아래', 'middle bottom left': '모니터 왼쪽 아래',
-               'left mirror': '왼쪽 미러', 'rear-view mirror': '룸미러', 'right mirror': '오른쪽 미러'}
+               # the mirror points by where they are on the side monitors (setup wording: no "미러")
+               'left mirror': '왼쪽 사이드 모니터', 'rear-view mirror': '오른쪽 사이드 모니터 위',
+               'right mirror': '오른쪽 사이드 모니터 아래',
+               # the HUD's place (judged by nothing: its outline for the analysis, hud_gaze.json)
+               'hud centre': '계기판 위 영상 자리 가운데', 'hud top left': '영상 자리 왼쪽 위',
+               'hud top right': '영상 자리 오른쪽 위', 'hud bottom right': '영상 자리 오른쪽 아래',
+               'hud bottom left': '영상 자리 왼쪽 아래'}
 DISPLAY_NAMES = {(300, 30): '위', (570, 300): '오른쪽', (300, 570): '아래', (30, 300): '왼쪽',
                  (165, 165): '왼쪽 위', (435, 165): '오른쪽 위', (435, 435): '오른쪽 아래', (165, 435): '왼쪽 아래'}
 ERROR_NAMES = {'too few gaze samples': '시선 샘플 부족', 'target not seen by the scene camera': '카메라에 안 보임'}
@@ -643,15 +757,16 @@ def criteria(result):
         road = points.get('road', {}).get('accuracy_deg')
         rows.append(('도로 중앙', _deg(road), '≤ %.1f°' % PASS_ROAD_DEG, road is not None and road <= PASS_ROAD_DEG))
         # each mirror on its own (2026-11-14): what mirror_aoi.py judges glances by is the error there
-        for name, limit in PASS_MIRROR_DEG.items():
+        for name, limit in ({} if result.get('hud_only') else PASS_MIRROR_DEG).items():
             value = points.get(name, {}).get('accuracy_deg')
             rows.append((POINT_NAMES.get(name, name), _deg(value) if value is not None else '측정 안 됨',
                          '≤ %.1f°' % limit, value is not None and value <= limit))
         values = [p['accuracy_deg'] for name, p in points.items()
-                  if 'mirror' not in name and p.get('accuracy_deg') is not None]
+                  if 'mirror' not in name and not name.startswith('hud') and p.get('accuracy_deg') is not None]
         mean = sum(values) / len(values) if values else None
-        rows.append(('모니터 평균', _deg(mean), '≤ %.1f°' % PASS_MONITOR_MEAN_DEG,
-                     mean is not None and mean <= PASS_MONITOR_MEAN_DEG))
+        if not result.get('quick') and not result.get('hud_only'):   # --quick / --hud: no corners
+            rows.append(('모니터 평균', _deg(mean), '≤ %.1f°' % PASS_MONITOR_MEAN_DEG,
+                         mean is not None and mean <= PASS_MONITOR_MEAN_DEG))
     if 'display' in result:
         median = (result.get('display_summary') or {}).get('accuracy_median_deg')
         rows.append(('안경 화면 중앙값', _deg(median), '≤ %.1f°' % PASS_DISPLAY_MEDIAN_DEG,
@@ -670,35 +785,52 @@ def judge(result):
 
 def _points_section(heading, points, s):
     if s:
-        heading += '   평균 %.2f° · 중앙값 %.2f° · 최대 %.2f° · 시선 유효 %.0f%%' % (
+        heading += '\n평균 %.1f° · 중앙값 %.1f° · 최대 %.1f° · 시선 유효 %.0f%%' % (
             s['accuracy_mean_deg'], s['accuracy_median_deg'], s['accuracy_max_deg'],
             100 * (s['gaze_valid_share'] or 0))
     rows = []
     for p in points or []:
         if 'accuracy_deg' in p:
-            rows.append([point_name(p['point']), '%.2f°' % p['accuracy_deg'], '정밀도 %.2f°' % p['s2s_rms_deg']])
+            rows.append([point_name(p['point']), '%.1f°' % p['accuracy_deg'], '정밀도 %.1f°' % p['s2s_rms_deg']])
         else:
             rows.append([point_name(p['point']), ('×', False), ERROR_NAMES.get(p.get('error'), p.get('error', ''))])
     return heading, rows or [['측정 안 됨']]
+
+
+def advice(result):
+    """What to do next, for the report's top: [the step, the criteria short of their limit]."""
+    rows = criteria(result)
+    if not rows:
+        return []
+    failed = [name for name, value, limit, ok in rows if not ok]
+    if not failed:
+        return ['이대로 블록을 시작합니다']
+    if result.get('quick'):
+        step = '다시: 메뉴 "빠른 재착용" (안 되면 착용 점검 → 캘리브레이션 + 검증)'
+    elif all(name.startswith('안경 화면') for name in failed):
+        step = '안경 화면만 다시: 메뉴 "안경 화면 보정만"'
+    else:
+        step = '다시: 착용 점검 → 캘리브레이션 + 검증'
+    return [step, '미달 %d개: %s' % (len(failed), ', '.join(failed))]
 
 
 def report(result):
     """The run's result as a g2_report report (title, ok, sections)."""
     verdict = judge(result)
     title = '검증 끝' if verdict is None else ('통과' if verdict[0] else '다시 착용')
-    sections = [('판정 기준', [[name, value, '기준 ' + limit, ('통과' if ok else '미달', ok)]
+    sections = [('판정 기준', [[name, value, limit, ('통과' if ok else '미달', ok)]
                                for name, value, limit, ok in criteria(result)])]
     if 'monitor' in result:
-        sections.append(_points_section('모니터·미러', result['monitor'], result.get('monitor_summary')))
+        sections.append(_points_section('모니터 점', result['monitor'], result.get('monitor_summary')))
     if 'display' in result:
-        sections.append(_points_section('안경 화면', result['display'], result.get('display_summary')))
+        sections.append(_points_section('안경 화면 점', result['display'], result.get('display_summary')))
     return title, None if verdict is None else verdict[0], sections
 
 
 def show_result(screen, result):
     """The result on the monitors until Enter (or Esc)."""
     title, ok, sections = report(result)
-    screen.report(title, ok, sections, 'Enter: 닫기')
+    screen.report(title, ok, sections, 'Enter: 닫기', advice(result))
     screen.wait_enter()
 
 
@@ -709,8 +841,11 @@ def run(host, devices, out_dir, screen, result):
         link = glasses_link(devices['video']) if devices.get('video') else None
         if '--display' not in sys.argv:
             result['monitor'], valid = validate_monitor(host, out_dir, screen, link)
-            result['monitor_summary'] = summary(result['monitor'], valid)
-        if '--monitor' not in sys.argv and not screen.aborted:
+            # the summary of the monitor and mirror points (the HUD points are for its outline)
+            result['monitor_summary'] = summary([p for p in result['monitor'] or []
+                                                 if not p['point'].startswith('hud')], valid)
+            result['hud_gaze'] = hud_outline(result['monitor'])
+        if '--monitor' not in sys.argv and not HUD_ONLY and not screen.aborted:
             if link is None:
                 print('No glasses app: the glasses display check is skipped')
             else:
@@ -730,6 +865,8 @@ def run(host, devices, out_dir, screen, result):
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    if '--post' in sys.argv and sys.argv.index('--post') + 1 < len(sys.argv):
+        args.remove(sys.argv[sys.argv.index('--post') + 1])
     with open(os.path.join(HERE, 'devices.json'), encoding='utf-8') as handle:
         devices = json.load(handle)
     host = args[0] if args else devices['g2']
@@ -737,6 +874,10 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     result = {'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'scene_fov_deg': list(SCENE_FOV_DEG),
               'settle_s': SETTLE_S, 'collect_s': COLLECT_S}
+    if QUICK:
+        result['quick'] = True       # the short check: road, mirrors, QUICK_DISPLAY_POINTS
+    if HUD_ONLY:
+        result['hud_only'] = True    # after a block: the road and the HUD points
     try:
         with open(os.path.join(HERE, 'g2_calibration.json'), encoding='utf-8') as handle:
             result['g2_calibration'] = json.load(handle).get('ca_id')
@@ -758,6 +899,22 @@ def main():
         print('Stopped (Esc)')
     with open(os.path.join(out_dir, 'g2_validation.json'), 'w', encoding='utf-8') as handle:
         json.dump(result, handle, indent=1)
+    if result.get('hud_gaze'):
+        hud = dict(result['hud_gaze'], time=result['time'], validation=os.path.basename(out_dir))
+        post = None
+        if '--post-last' in sys.argv:
+            post = last_block()
+        elif '--post' in sys.argv and sys.argv.index('--post') + 1 < len(sys.argv):
+            post = sys.argv[sys.argv.index('--post') + 1]
+        path = os.path.join(post, 'hud_gaze_post.json') if post else HUD_GAZE_FILE
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump(hud, handle, indent=1)
+        print('HUD outline as the gaze sees it -> %s' % path)
+    elif HUD_ONLY or hud_rect() is None:
+        print('No HUD outline (%s)' % ('no hud_last.json: run a block once' if hud_rect() is None
+                                       else 'its corners were not all measured'))
+    if HUD_ONLY:          # the block's after-check: not the participant's validation (RESULT_FILE)
+        return 0 if result.get('hud_gaze') else 3
     # RESULT_FILE keeps the other part from the last run when only one was measured (--monitor,
     # --display): it goes into each block's data folder
     latest = dict(result)
