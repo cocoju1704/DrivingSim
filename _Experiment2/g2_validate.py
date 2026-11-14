@@ -59,9 +59,12 @@ RESULT_FILE = os.path.join(HERE, 'g2_validation.json')
 DISPLAY_FILE = os.path.join(HERE, 'g2_display.json')
 SCENE_FOV_DEG = (82.0, 52.0)
 SCENE_PX = (960, 540)                # the live scene video
-SETTLE_S = 1.0                       # s after a target appears before its gaze counts
-COLLECT_S = 1.5                      # s of gaze per target
-MESSAGE_S = 3.0                      # s of "이제 ... 보세요" before each part
+# 2026-11-14 shorter (was 1.0 + 1.5 s a target, 3 s messages: about 38 + 23 s): 50 Hz gaze gives ~50 samples
+# in COLLECT_S (MIN_SAMPLES 20), the median error is the measure
+SETTLE_S = 0.7                       # s after a target appears before its gaze counts (the eyes only)
+MIRROR_SETTLE_S = 1.2                # the side monitors' targets: the head turns first
+COLLECT_S = 1.0                      # s of gaze per target
+MESSAGE_S = 2.0                      # s of "이제 ... 보세요" before each part
 MIRROR_MESSAGE = ('다음 나타나는 점들은 자연스럽게 고개를 돌려 바라보세요',)   # before the first mirror target (2026-11-14: one short line)
 MIN_SAMPLES = 20
 # pass (the participant's fit is good enough for the experiment), from the 2026-11-11 pilot
@@ -573,6 +576,10 @@ def glasses_cue(link, text=None):
 
 
 # ---------------------------------------------------------------- 1. the monitors
+def settle_of(name):
+    return MIRROR_SETTLE_S if 'mirror' in name else SETTLE_S
+
+
 def validate_monitor(host, out_dir, screen, link):
     try:
         import cv2
@@ -586,8 +593,11 @@ def validate_monitor(host, out_dir, screen, link):
     if HUD_ONLY:
         points = [p for p in points if p[0] == 'road']
     points = points + hud_points()
+    # the middle monitor's targets (road, corners, HUD) first, then the side monitors' after their one line
+    # (2026-11-14: the HUD points had come after the mirrors)
+    points = [p for p in points if 'mirror' not in p[0]] + [p for p in points if 'mirror' in p[0]]
     print('\nMonitors: the participant looks at the dot of each target (%d targets, %.0f s); the mirrors from %s'
-          % (len(points), len(points) * (SETTLE_S + COLLECT_S), source))
+          % (len(points), sum(settle_of(p[0]) + COLLECT_S for p in points), source))
     for name, monitor, fx, fy in points:
         if 'mirror' in name:
             print('  %-17s monitor %+d at %.3f, %.3f' % (name, monitor, fx, fy))
@@ -607,7 +617,7 @@ def validate_monitor(host, out_dir, screen, link):
             told = True
         if screen.target(point[1:]):
             shown.append((point, time.time()))
-            time.sleep(SETTLE_S + COLLECT_S)
+            time.sleep(settle_of(point[0]) + COLLECT_S)
     screen.clear()
     time.sleep(0.5)
     rec.stop()
@@ -619,17 +629,25 @@ def validate_monitor(host, out_dir, screen, link):
     a, b = rec.sync['pts_to_ts']
     capture = cv2.VideoCapture(video)
     frames = []                         # (glasses ts, target gp or None)
+    # the target looked for only in the frames of a target's gaze window (2026-11-14: was every frame)
+    windows = sorted((rec.pc_to_ts(at + settle_of(point[0])), rec.pc_to_ts(at + settle_of(point[0]) + COLLECT_S))
+                     for point, at in shown)
     while True:
-        ok, frame = capture.read()
-        if not ok:
+        if not capture.grab():
             break
         pts = pts0 + capture.get(cv2.CAP_PROP_POS_MSEC) * 90.0
+        ts = a * pts + b
+        if not any(w0 <= ts <= w1 for w0, w1 in windows):
+            continue
+        ok, frame = capture.retrieve()
+        if not ok:
+            continue
         found = find_target(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cv2)
         frames.append((a * pts + b, None if found is None else (found[0] / SCENE_PX[0], found[1] / SCENE_PX[1])))
     results = []
     rotation, bias = rec.head_rotation(still, shown[0][1] if shown else still[1])
     for point, at in shown:
-        t0, t1 = rec.pc_to_ts(at + SETTLE_S), rec.pc_to_ts(at + SETTLE_S + COLLECT_S)
+        t0, t1 = rec.pc_to_ts(at + settle_of(point[0])), rec.pc_to_ts(at + settle_of(point[0]) + COLLECT_S)
         gaze = [(t, x, y) for t, _, x, y in rec.gaze if t0 <= t <= t1]
         errors, targets = [], []
         for ft, target in frames:
@@ -873,7 +891,7 @@ def main():
     out_dir = os.path.join(VALIDATION_DIR, time.strftime('%y%m%d_%H%M%S'))
     os.makedirs(out_dir, exist_ok=True)
     result = {'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'scene_fov_deg': list(SCENE_FOV_DEG),
-              'settle_s': SETTLE_S, 'collect_s': COLLECT_S}
+              'settle_s': SETTLE_S, 'mirror_settle_s': MIRROR_SETTLE_S, 'collect_s': COLLECT_S}
     if QUICK:
         result['quick'] = True       # the short check: road, mirrors, QUICK_DISPLAY_POINTS
     if HUD_ONLY:

@@ -13,6 +13,9 @@ so a block started meanwhile keeps its frame rate. Log: <folder>/postprocess.log
                                     events' windows and each TOR (below)
     3b. display_position.csv,       where the glasses display lay over the monitors (glasses
         display_heatmap.png         condition; mirror_aoi.csv's display_* columns), per segment
+    3c. screen_gaze.csv             the NDRT screen of the condition, one rule for all (screen_gaze)
+    3d. look_out.csv                how often the driver looked out of the car: road, side monitors,
+                                    mirrors, from the NDRT / the car (look_out)
     4. gaze_video.py                gaze_video.mp4: the scene video with the gaze and the drive
 
     python _Experiment2/postprocess.py <block folder>
@@ -779,6 +782,161 @@ def screen_gaze(folder, gaze):
             '' if shift is None else ', before/after %.1f deg apart%s' % (shift, ' (FLAG)' if shift > HUD_SHIFT_FLAG_DEG else '')))
 
 
+# -- looks out of the car (2026-11-14) ---------------------------------------------------------------
+
+LOOKOUT_JOIN_S = 0.2      # missing (or head-only) frames shorter than this inside a look out: it goes on
+LOOKOUT_MIN_S = 0.2       # shorter looks out are not counted
+CLUSTER_PX = (2285, 734, 3475, 1080)   # window px of the cluster panel (abc_experiment CLUSTER_PANEL): in the car
+LOOKOUT_HEAD_MARKERS = 3  # phone: a frame without a gaze, no phone marker and this many bezel markers: head up
+
+
+def look_out(folder, gaze):
+    """look_out.csv: how often the driver looked out of the car, from the NDRT or anywhere in it. Out
+    = the gaze on the road (the monitors, but the cluster and the NDRT screen), a side monitor or a
+    mirror; in = the NDRT screen (the same outlines and margin as screen_gaze: in it or within m deg,
+    SCREEN_MAIN_MARGIN_DEG the main, 0 and 3 deg as well), the cluster, below or off the monitors
+    (unmapped: mostly the phone, the lap). A look out: out frames, missing frames shorter than
+    LOOKOUT_JOIN_S bridged, at least LOOKOUT_MIN_S. The glasses' NDRT lies over the road: a look at
+    the road through the video counts as on the NDRT (the gaze cannot tell). Phone condition: a frame
+    without a gaze, no phone marker and LOOKOUT_HEAD_MARKERS bezel markers in view (the head up to the
+    monitors) is out too (head_frames), the gaze's own looks out are counted without it as well.
+    Rows: block, auto, sagat_pre, TOR_pre, TOR_post and each mirror event's gaze window (gaze_windows.csv)."""
+    condition = gaze.condition or block_condition(folder)
+    frames = [r for r in read_csv(os.path.join(folder, 'mirror_aoi.csv'))
+              if not r.get('dropout') and r.get('display_only') in (None, '', '0')]
+    if not frames:
+        log(folder, '  look_out: no mirror_aoi.csv frames (run mirror_aoi.py)')
+        return
+    if condition == 'glasses':
+        poly, scale = display_outline(folder), SCENE_FOV_DEG
+    elif condition == 'hud':
+        poly = hud_outline(folder)[0]
+        scale = (1.0 / HUD_PX_PER_DEG, 1.0 / HUD_PX_PER_DEG)
+    else:
+        poly, scale = None, None
+    margins = (0.0, SCREEN_MAIN_MARGIN_DEG, 3.0)
+
+    def kind(r, m):
+        """'mirror', 'side', 'road', 'in', 'missing' or 'head' (phone: no gaze, the head up)."""
+        if not r.get('gaze_x_px'):
+            if condition == 'phone' and len((r.get('phone_markers') or '').split()) < 2 and \
+                    len((r.get('markers_left') or '').split() + (r.get('markers_right') or '').split()) >= LOOKOUT_HEAD_MARKERS:
+                return 'head'
+            return 'missing'
+        if condition == 'phone' and r.get('phone_deg') and float(r['phone_deg']) <= m:
+            return 'in'
+        if condition == 'glasses' and poly is not None and \
+                _near(poly, float(r['gaze_x_px']) / 960.0, float(r['gaze_y_px']) / 540.0, m, scale[0], scale[1]):
+            return 'in'
+        if r.get('mirror') or r.get('glance'):
+            return 'mirror'
+        monitor = r.get('window_monitor')
+        if monitor in ('left', 'right'):
+            return 'side'
+        if monitor != 'middle' or not r.get('window_x_px'):
+            return 'in'
+        x, y = float(r['window_x_px']), float(r['window_y_px'])
+        if condition == 'hud' and poly is not None and _near(poly, x, y, m, scale[0], scale[1]):
+            return 'in'
+        if not 0 <= y < 1080 or (CLUSTER_PX[0] <= x < CLUSTER_PX[2] and y >= CLUSTER_PX[1]):
+            return 'in'
+        return 'road'
+
+    samples = []
+    for r in frames:
+        w = gaze.sim_to_pc(float(r['t_sim']))
+        if gaze.driving(w):
+            samples.append((w, r))
+    samples.sort(key=lambda s: s[0])
+    ws = [w for w, _ in samples]
+    kinds = {m: [kind(r, m) for _, r in samples] for m in margins}
+    OUT = ('mirror', 'side', 'road')
+
+    def looks(ks, i0, i1, head):
+        """[(start, end, set of kinds)] of the looks out among samples i0..i1."""
+        out, cur, last_out = [], None, None
+        for k in range(i0, i1):
+            w, what = ws[k], ks[k]
+            if what in OUT or (head and what == 'head'):
+                if cur is not None and w - last_out <= LOOKOUT_JOIN_S:
+                    cur[1] = w
+                    cur[2].add(what)
+                else:
+                    if cur is not None:
+                        out.append(cur)
+                    cur = [w, w, {what}]
+                last_out = w
+            elif what in ('missing', 'head'):
+                continue
+            elif cur is not None:
+                out.append(cur)
+                cur = None
+        if cur is not None:
+            out.append(cur)
+        return [g for g in out if g[1] - g[0] >= LOOKOUT_MIN_S]
+
+    def row(rid, kind_, w0, w1):
+        i0, i1 = bisect.bisect_left(ws, w0), bisect.bisect_left(ws, w1)
+        minutes = (w1 - w0) / 60.0
+        out = {'id': rid, 'type': kind_, 'condition': condition, 'seconds': round(w1 - w0, 1), 'frames': i1 - i0}
+        ks = kinds[SCREEN_MAIN_MARGIN_DEG]
+        valid = [k for k in range(i0, i1) if ks[k] not in ('missing', 'head')]
+        out['missing_share'] = round(1 - len(valid) / float(i1 - i0), 3) if i1 > i0 else ''
+        out['out_share'] = round(sum(ks[k] in OUT for k in valid) / float(len(valid)), 3) if valid else ''
+        head = condition == 'phone'
+        g = looks(ks, i0, i1, head)
+        out['looks'] = len(g)
+        out['looks_per_min'] = round(len(g) / minutes, 2) if minutes > 0 else ''
+        out['looks_mirror_side'] = sum(1 for a in g if a[2] & {'mirror', 'side'})
+        out['looks_road_only'] = sum(1 for a in g if a[2] <= {'road', 'head'})
+        if g:
+            d = sorted(b - a for a, b, _ in g)
+            out['look_median_s'] = round(d[len(d) // 2], 2)
+            out['look_max_s'] = round(d[-1], 2)
+            out['first_look_s'] = round(g[0][0] - w0, 2)
+        if head:
+            out['looks_gaze_only'] = len(looks(ks, i0, i1, False))
+            out['head_frames'] = sum(ks[k] == 'head' for k in range(i0, i1))
+        for m in margins:
+            if m != SCREEN_MAIN_MARGIN_DEG:
+                out['looks_%gdeg' % m] = len(looks(kinds[m], i0, i1, head))
+        return out
+
+    if not gaze.f_w:
+        return
+    t_tor = None
+    for r in read_csv(os.path.join(folder, 'tor_events.csv')):
+        if r.get('t_tor'):
+            t_tor = float(r['t_tor'])
+    rows = [row('block', 'block', gaze.f_w[0], gaze.f_w[-1]),
+            row('auto', 'auto', gaze.f_w[0], gaze.sim_to_pc(t_tor) if t_tor is not None else gaze.f_w[-1])]
+    for r in read_csv(os.path.join(folder, 'events.csv')):
+        what = r.get('what') or r.get('event') or ''
+        if what.startswith('freeze (SAGAT'):
+            t = float(r.get('t_sim') or r.get('t') or 0)
+            rows.append(row(r.get('id') or r.get('eid') or 'Q', 'sagat_pre', gaze.sim_to_pc(t - PRE_S), gaze.sim_to_pc(t)))
+    for r in read_csv(os.path.join(folder, 'gaze_windows.csv')):
+        if r.get('window_start') and r.get('window_end'):
+            rows.append(row(r['id'], r['type'], gaze.sim_to_pc(float(r['window_start'])), gaze.sim_to_pc(float(r['window_end']))))
+    if t_tor is not None:
+        rows.append(row('TOR', 'TOR_pre', gaze.sim_to_pc(t_tor - PRE_S), gaze.sim_to_pc(t_tor)))
+        rows.append(row('TOR', 'TOR_post', gaze.sim_to_pc(t_tor), gaze.sim_to_pc(t_tor + TOR_POST_S)))
+    keys = ['id', 'type', 'condition', 'seconds', 'frames', 'missing_share', 'out_share', 'looks', 'looks_per_min',
+            'looks_mirror_side', 'looks_road_only', 'look_median_s', 'look_max_s', 'first_look_s',
+            'looks_0deg', 'looks_3deg', 'looks_gaze_only', 'head_frames']
+    with open(os.path.join(folder, 'look_out.csv'), 'w', newline='', encoding='utf-8') as handle:
+        writer = csv.DictWriter(handle, fieldnames=keys, extrasaction='ignore')
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+    for r in rows:
+        if r['type'] in ('block', 'auto', 'TOR_pre', 'TOR_post'):
+            log(folder, '  look out %-6s %-8s %s looks (%s/min; mirror/side %s, road only %s), out %s of the gaze%s' % (
+                r['id'], r['type'], r['looks'], r['looks_per_min'], r['looks_mirror_side'], r['looks_road_only'],
+                r['out_share'], '' if 'head_frames' not in r else ', gaze only %s, head frames %s' % (
+                    r['looks_gaze_only'], r['head_frames'])))
+
+
 def pending(test=False):
     """Block folders under Data with Glasses 2 streams (g2_sync.json) and no finished postprocess
     (no 'done' in postprocess.log), oldest first. Data/test only with test."""
@@ -841,7 +999,7 @@ def main():
     except Exception as error:  # pylint: disable=broad-except
         log(folder, 'reading the gaze failed: %s' % error)
         gaze = None
-    for step in (sagat_gaze, display_gaze, display_position, screen_gaze) if gaze else ():
+    for step in (sagat_gaze, display_gaze, display_position, screen_gaze, look_out) if gaze else ():
         try:
             step(folder, gaze)
         except Exception as error:  # pylint: disable=broad-except

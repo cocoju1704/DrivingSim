@@ -12,6 +12,7 @@ server.py          Python 표준 라이브러리만 쓰는 서버 (설치할 것
 public/index.html  안경 앱 (600x600, 방향키/Enter 조작)
 public/app.js      화면 이동, 유튜브 IFrame 플레이어, IndexedDB 저장, SSE 수신
 public/phone.html  폰/PC 리모컨 (유튜브 링크 전송, 영상 업로드)
+public/mirror.html 안경 화면 미러 (서버 노트북 브라우저에서 http://localhost:8080/mirror.html): 안경 앱의 보고(/api/state)와 명령(/api/events?viewer=1)으로 같은 영상(음소거)·가림·검은 화면·보정 점을 다시 그림. 캡처가 아니라 앱이 보고한 상태. viewer 연결은 명령의 delivered 수에 들지 않음
 public/sw.js       앱 셸 프리캐시 (오프라인에서 즉시 실행)
 media/             업로드된 영상 보관 폴더
 ```

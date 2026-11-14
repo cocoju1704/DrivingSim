@@ -46,7 +46,8 @@ SAGAT 태블릿/노트북입니다. SAGAT은 15초 동안 페이지를 직접 �
 7. 휴식 뒤나 안경을 만진 뒤에는 5·6번을 다시.
 8. 검증에는 모든 조건에서 HUD 자리(계기판 위 영상 자리)의 가운데와 네 모서리 점 5개가 들어갑니다(실험이 블록마다 쓰는 `hud_last.json`의 사각형, 통과 기준에는 안 씀).
    그 점들의 시선 오차만큼 옮긴 모서리가 "이 사람의 시선으로 본 HUD 윤곽"(`hud_gaze.json`, 블록 폴더로 복사)입니다. 글래스 화면 윤곽(`g2_display.json`)이 시선으로 정해지는 것과 같게 하려는 것입니다.
-9. 블록이 끝나면 안경을 벗기 전에 메뉴 "블록 뒤 HUD 점검"(`g2_validate.py --hud --post-last`: 도로 중앙 + HUD 5점, 약 15초) → 가장 최근 블록 폴더에 `hud_gaze_post.json`. 블록 동안 안경이 밀린 정도입니다.
+9. 블록이 끝나면 안경을 벗기 전에 메뉴 "블록 뒤 HUD 점검"(`g2_validate.py --hud --post-last`: 도로 중앙 + HUD 5점, 약 12초) → 가장 최근 블록 폴더에 `hud_gaze_post.json`. 블록 동안 안경이 밀린 정도입니다.
+10. 검증 순서와 시간(2026-11-14): 가운데 모니터 점(도로 중앙·네 모서리·HUD 5점)을 먼저, 그다음 "다음 나타나는 점들은 자연스럽게 고개를 돌려 바라보세요" 한 줄 뒤에 사이드 모니터 3점. 점마다 눈만 0.7 s(사이드 모니터는 고개를 돌리니 1.2 s) 뒤 1.0 s를 모으고 안내 문구는 2 s(전에는 1.0 + 1.5 s, 3 s): 정식 검증 약 62 s → 약 43 s(점 보는 시간, 분석 시간 빼고). 장면 영상에서 점 찾기는 각 점의 시선 구간 프레임에서만.
 
 ### 빠른 재착용 (블록마다, 메뉴 "빠른 재착용")
 
@@ -68,8 +69,19 @@ SAGAT 태블릿/노트북입니다. SAGAT은 15초 동안 페이지를 직접 �
 
 ## 블록 배정 (`launcher.py`의 `assignment()`)
 
-- 조건 순서: (글래스, 휴대폰, HUD)의 6가지 순열, 참가자 `p`는 `(p-1) % 6`번째 → 6명마다 완전 상쇄
-- 세트: 3×3 라틴방격의 `((p-1) // 6) % 3`행, 블록 k = 세트 `"ABC"[(k + 행) % 3]` → 18명마다 한 바퀴
+- 6명이 한 사이클(`DESIGN`, 2026-11-14): 참가자 `p`는 `DESIGN[(p-1) % 6]`
+
+  | 참가자 | 블록 1 | 블록 2 | 블록 3 |
+  |---|---|---|---|
+  | 1 | A 글래스 | B 휴대폰 | C HUD |
+  | 2 | B 휴대폰 | C 글래스 | A HUD |
+  | 3 | C HUD | A 휴대폰 | B 글래스 |
+  | 4 | C 휴대폰 | A HUD | B 글래스 |
+  | 5 | B HUD | C 글래스 | A 휴대폰 |
+  | 6 | A 글래스 | B HUD | C 휴대폰 |
+
+- 6명 안에서: 조건 순서 6가지가 한 번씩(각 조건이 각 블록 위치에 2번), 세트도 각 블록 위치에 2번, 세트-조건 9쌍이 각 2번. 1–3번, 4–6번 참가자는 블록 1의 세트·조건이 서로 다름
+- 7번부터 같은 표를 세트 이름만 돌려(A→B→C→A, 6명마다) 다시 씀 → 18명마다 한 바퀴
 - 모든 블록과 연습 주행은 TOR로 끝납니다(아래 "TOR"). 블록 길이는 세트마다 다릅니다(TOR + 50 s: 2026-11-13에 30 → 50 s, 수동 주행 지표를 볼 시간; 정지하면 정지 후 5 s).
 - 연습 주행(세트 P, 약 3.5분)은 그 참가자의 블록 1 조건으로 진행합니다.
 
@@ -289,12 +301,13 @@ venv_carla\Scripts\python.exe _Experiment2\abc_experiment.py --set P --test --st
 - 차량 소리(carla-audio-engine), TOR 경고음(`carla_base.AlertSound`), HUD 영상 소리(`hud_video.py`)는 모두 Windows 기본 출력 장치로 나갑니다(장치를 지정하지 않음).
   각 프로그램은 시작할 때의 기본 장치를 쓰므로 블록 전에 이어폰을 기본 장치로 해 둡니다.
 - 사전 점검의 "소리 출력"이 지금 기본 출력 장치 이름을 보여 주고, `devices.json`의 `"earphones"`(이름의 일부, 지금 "JBL Tour Pro 3")가 아니면 주의를 띄웁니다.
-  이어폰이 연결 안 돼 있으면 PC 소리가 글래스 등 다른 장치로 나갑니다. "헤드셋(... Hands-Free)"은 통화용이라 음질이 나쁘므로 "스피커(...)" 쪽을 고릅니다.
+  이어폰이 연결 안 돼 있으면 PC 소리는 다른 출력(지금은 모니터 스피커)으로 나갑니다. "헤드셋(... Hands-Free)"은 통화용이라 음질이 나쁘므로 "스피커(...)" 쪽을 고릅니다.
 - 차량 소리는 `_Experiment`(TOR 실험)와 같은 carla-audio-engine 폴더, 같은 소리 파일(`Sounds/ev_motor.wav`, `ev_cabin.wav`)과 같은 설정으로 같은 방식으로 켜집니다(비교 결과 이미 같음).
   `ev_road.wav`(노면 소리)는 두 실험 모두 파일이 없습니다. 소리가 더 빨리 오르내리는 것은 자율주행 스로틀 변화 속도(`carla_base.AUTO_THROTTLE_RATE`: `_Experiment` 0.3, 여기 0.6) 때문일 수 있습니다.
 - 글래스·휴대폰 조건의 영상 소리: 기기는 음소거하고(`play {mute}`, 안경 앱 v17·폰 앱 v3), 실험 PC가 같은 클립의 소리를 기본 출력(이어폰)으로 재생합니다(`device_audio.py`).
   기기가 보고하는 재생 위치 `t`에 맞추고, 0.3 s 넘게 어긋나면 다시 맞춥니다. SAGAT·TOR 정지 때는 바로 끄고, 재개 뒤 기기 보고가 재생 중이면 다시 켭니다.
-  보고가 6 s 없거나 기기가 음소거가 아니면(옛 앱) PC는 소리를 내지 않습니다. 기기 위치보다 0.2 s 앞에서 냅니다(`LEAD_S`: 보고 지연 + 블루투스).
+  보고가 6 s 없거나 기기가 음소거가 아니면(옛 앱) PC는 소리를 내지 않습니다.
+  블록 시작 때 Windows 기본 출력이 이어폰(`devices.json` `"earphones"`)이 아니면 PC가 영상 소리를 내지 않고 기기가 직접 냅니다(음소거 없는 play: 글래스는 Ray-Ban 스피커, 휴대폰은 폰 스피커; `video_link.earphones_on`, 2026-11-14). 차량 소리·TOR 경고음·HUD 영상 소리는 PC에서만 나오므로 그때의 기본 출력으로 나갑니다. 기기 위치보다 0.2 s 앞에서 냅니다(`LEAD_S`: 보고 지연 + 블루투스).
   클립은 실험 PC의 `mrbd-video/media/`에도 있어야 합니다. events.csv의 `video pc_sound_start / resync / stop`.
 - 블루투스 지연(한 번 재서 여기 적기): TOR 경고음 시각은 소리를 보낸 시각입니다. `venv_carla\Scripts\python.exe _Experiment2\bt_latency.py`
   (2초마다 클릭음 + 창이 하얗게, 10회, 보낸 시각은 `claude_reply/bt_latency_*.csv`)를 휴대폰 슬로모션(240 fps)으로 화면과 이어폰을 함께 찍어
@@ -363,6 +376,7 @@ SAGAT은 2026-11-14부터 태블릿에 한 장에 한 문항씩, 그림으로 �
 | mirror_aoi.py (글래스 화면 위치) | 글래스 조건이면 프레임마다 글래스 화면(`g2_display.json`)의 NDRT 영상 띠(`postprocess.ndrt_rect`)와 화면 전체(600×600)를 실험 창 px로 옮겨 `mirror_aoi.csv`에 같이 저장(`display_on` middle/left/right, `display_band_px`, `display_full_px`). 가운데 모니터는 옆 모니터 안쪽 끝 마커 L3/L4 + R1/R3(양쪽 하나 이상)로 근사한 호모그래피, 띠 중심이 옆 모니터면 그 모니터의 가까운 마커. 시선점이 없는 프레임도 행으로 남음(`display_only` 1: 판정·응시 계산에서 뺌). 예전 CSV에는 이 열이 없음(`--from-csv`로는 안 생기고 전체 실행 필요) |
 | postprocess.py (화면 위치) | `display_position.csv` + `display_heatmap.png`(글래스 조건): 구간별(block, auto, sagat_pre, tor_pre, tor_post; SAGAT 정지 프레임 제외) 위치 잡은 비율, 띠 중심 중앙값·사분위(창 px), 띠가 각 미러 유리·도로 앞 점에 겹친 비율. 1113154053: 97 %, 중심 x 3294 y 867, 미러와 겹침 0–0.1 % |
 | postprocess.py (화면 판정, `screen_gaze.csv`) | 세 조건의 NDRT 화면을 같은 규칙으로 판정(2026-11-14): 시선으로 정한 윤곽(글래스 `g2_display.json`, HUD `hud_gaze.json`과 `hud_gaze_post.json`의 모서리 평균, 둘 다 없으면 그린 사각형 `hud.json`), 윤곽 안이거나 m° 안이면 화면 응시(m = 0·1·2·3°, 주 기준 1°), 응시는 0.2 s 안의 들락날락을 하나로·0.1 s 이상. 구간: block, auto(TOR 전), sagat_pre, TOR_pre, TOR_post. 블록 전후 HUD 윤곽이 1.5° 넘게 다르면 `flag_shift` 1. HUD의 가운데 모니터 시선은 `mirror_aoi.py`가 옆 모니터 안쪽 마커 호모그래피로 창 px에 옮긴 값(`window_monitor` middle; 2026-11-14 전 CSV에는 없어 전체 다시 실행 필요). 휴대폰은 폰 앱 v4 마커로 프레임마다 잡은 영상 사각형(`phone_screen.json`, `mirror_aoi.csv`의 `phone_deg`)에 같은 규칙. 마커가 2개 미만이거나 맞춤 오차가 3 px를 넘는 프레임은 빠진 표본 |
+| postprocess.py (차 밖 보기, `look_out.csv`) | 차 밖을 본 횟수(2026-11-14): 도로(모니터 중 계기판·NDRT 화면 빼고)·사이드 모니터·미러를 본 것을 "밖", NDRT 화면(`screen_gaze`와 같은 윤곽·여유 m°, 주 기준 1°, 0°·3°도)·계기판·모니터 밖(폰·무릎)을 "안"으로, 밖 프레임이 0.2 s 이상 이어지면 1회(시선 없는 0.2 s 이하는 이어 봄). 글래스는 영상이 도로에 겹쳐 영상 너머로 도로를 본 것은 영상 응시로 셈(시선으로 구별 불가). 휴대폰은 시선이 없어도 폰 마커 없이 베젤 마커 3개 이상이 보이면 고개를 든 것으로 보충(`head_frames`, 시선만으로 센 값 `looks_gaze_only`도). 열: 횟수·분당, 미러·옆 모니터를 본 횟수, 도로만 본 횟수, 길이 중앙값·최대, 첫 회까지 시간. 행: block, auto, sagat_pre, 사건 시선 창마다, TOR_pre, TOR_post. 2026-11-14 전 블록은 가운데 모니터 시선이 없어 `mirror_aoi.py` 전체 재실행 뒤 |
 | mirror_aoi_group.py | 참가자 간 미러 지표: `Data/` 아래 모든 블록의 `mirror_aoi_rates.csv` + `run.json` → 조건 × 구간 × 미러의 분당 응시 수·응시 시간 비율 평균·SD·n, 확실한 응시만(sure)과 `left?`/`right?` 포함(with_unsure) 두 가지(민감도 분석). `--test`: Data/test 포함, `--practice`: 연습 포함 → `mirror_aoi_group_blocks.csv`, `mirror_aoi_group_summary.csv` |
 | ndrt_timing.py | 영상 질문의 실제 시각: events.csv의 정지 때 영상 위치로 문항마다 장면이 실제로 정지 몇 초 전이었는지(`real_before_s`), 영상 지연, 시뮬/실제 시간 비 → 블록 폴더 `ndrt_timing.csv`. 2026-11-14 전 데이터와 기기 재생이 어긋난 블록용 |
 | sagat_cells.py | 8칸 시절(~2026-11-12) SAGAT 칸별 정답률·이항검정·hit/FA: `python sagat_cells.py --sets A` |

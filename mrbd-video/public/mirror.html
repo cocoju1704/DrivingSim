@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>안경 화면 미러</title>
+<!--
+  The glasses' screen as the experimenter's copy (2026-11-14), on the video server laptop:
+  http://localhost:8080/mirror.html (or the server's address). Rebuilt from what the glasses app
+  reports (POST /api/state, every 2 s and after each command) and from the commands themselves
+  (/api/events, the moment they are sent): the same video (muted) kept within DRIFT_S of the glasses'
+  position, the freeze cover, the black screen (another condition's block, blank), the calibration
+  dots and their text. Not a capture of the glasses: what the app says it shows.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #202124; color: #ddd; font: 14px sans-serif; }
+  #wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px; }
+  #screen { position: relative; width: 600px; height: 600px; background: #000; outline: 1px solid #555;
+            transform-origin: top center; }
+  #video { position: absolute; right: 0; top: 0; width: 400px; height: 225px; background: #000;
+           object-fit: contain; object-position: right top; }
+  #cover, #black { position: absolute; inset: 0; background: #000; }
+  #cover { right: 0; top: 0; left: auto; bottom: auto; width: 400px; height: 225px; }
+  #calib { position: absolute; inset: 0; background: #000; }
+  #dot { position: absolute; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%;
+         box-sizing: border-box; border: 5px solid #ff2a2a; background: #fff; }
+  #ctext { position: absolute; left: 0; right: 0; top: 42%; text-align: center; color: #ff4040;
+           font: bold 44px sans-serif; }
+  #info { font: 13px ui-monospace, Consolas, monospace; text-align: center; line-height: 1.6; }
+  .warn { color: #ffb74d; }
+  .bad { color: #ef5350; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="screen">
+    <video id="video" muted playsinline preload="auto"></video>
+    <div id="cover" hidden></div>
+    <div id="black" hidden></div>
+    <div id="calib" hidden><div id="dot"></div><div id="ctext"></div></div>
+  </div>
+  <div id="info">연결 중…</div>
+</div>
+<script>
+'use strict';
+const DEVICE = new URLSearchParams(location.search).get('device') || 'glasses';
+const DRIFT_S = 0.4;        // the copy is moved to the glasses' position when further off than this
+const POLL_MS = 500;
+const STALE_MS = 6000;      // no report for this long: the glasses are not reporting
+const $ = (s) => document.querySelector(s);
+const video = $('#video');
+let state = null, stateAt = 0, files = [], src = '';
+let calib = null;           // {dot, text} from the last calib command (null: off)
+
+function fit() {            // the 600 x 600 screen scaled to the window
+  const k = Math.min((innerWidth - 24) / 600, (innerHeight - 90) / 600, 1.6);
+  $('#screen').style.transform = 'scale(' + Math.max(k, 0.3) + ')';
+  $('#screen').style.marginBottom = (600 * (Math.max(k, 0.3) - 1)) + 'px';
+}
+addEventListener('resize', fit); fit();
+
+async function loadFiles() {
+  try { files = await (await fetch('/api/videos', { cache: 'no-store' })).json(); } catch (e) { files = []; }
+}
+
+function urlOf(title) {
+  const v = files.find((f) => f.name === title);
+  return v ? v.url : (title ? '/media/' + encodeURIComponent(title) : '');
+}
+
+function glassesTime() {    // where the glasses are now: their report plus the time since (server clock)
+  if (!state || state.t == null) return null;
+  const since = (Date.now() + skew - (state.received_ts || stateAt)) / 1000;
+  return state.paused ? state.t : state.t + Math.max(0, since);
+}
+let skew = 0;               // server clock - this clock
+
+function render() {
+  const s = state || {};
+  const stale = !state || Date.now() + skew - (s.received_ts || 0) > STALE_MS;
+  $('#black').hidden = !s.blank;
+  $('#cover').hidden = !s.frozen;
+  // the calibration dot: the command's own spec, else what the report says
+  let c = calib;
+  if (!c && s.calib && s.calib.boxDisplay !== 'none') c = { report: s.calib };
+  if (c) {
+    $('#calib').hidden = false;
+    const dot = $('#dot');
+    let at = null;
+    if (c.report) {
+      const r = c.report, w = (r.win || [600, 600])[0], h = (r.win || [600, 600])[1];
+      at = r.w ? [(r.x + r.w / 2) * 600 / w, (r.y + r.h / 2) * 600 / h] : null;
+    } else if (c.dot && c.dot !== 'blank') {
+      const i = 30, px = c.dot.startsWith('px:') ? c.dot.slice(3).split(',').map(Number) : null;
+      at = px && px.length === 2 ? px : { c: [300, 300], tl: [i, i], tr: [600 - i, i], br: [600 - i, 600 - i],
+        bl: [i, 600 - i] }[c.dot] || [300, 300];
+    }
+    dot.style.display = at ? 'block' : 'none';
+    if (at) { dot.style.left = at[0] + 'px'; dot.style.top = at[1] + 'px'; }
+    $('#ctext').textContent = c.text || '';
+  } else {
+    $('#calib').hidden = true;
+  }
+  // the video: the same file, the same place
+  const title = s.mode ? s.title : '';
+  const want = title ? urlOf(title) : '';
+  if (want !== src) {
+    src = want;
+    if (src) { video.src = src; video.load(); } else { video.removeAttribute('src'); video.load(); }
+  }
+  const t = glassesTime();
+  if (src && t != null && video.readyState >= 1) {
+    if (Math.abs(video.currentTime - t) > DRIFT_S) video.currentTime = t;
+    if (s.paused || s.frozen || s.blank) { if (!video.paused) video.pause(); }
+    else if (video.paused) video.play().catch(() => {});
+  }
+  const age = state ? ((Date.now() + skew - (s.received_ts || 0)) / 1000).toFixed(1) : '-';
+  $('#info').innerHTML =
+    '<b>' + DEVICE + '</b> v' + (s.v || '?') + ' · ' + (title || '영상 없음') +
+    ' · ' + (t == null ? '-' : t.toFixed(1) + ' s') + (s.paused ? ' ❚❚' : s.mode ? ' ▶' : '') +
+    (s.frozen ? ' · 가림' : '') + (s.blank ? ' · 검은 화면' : '') + (s.muted ? ' · 음소거' : s.mode ? ' · 소리 켬' : '') +
+    '<br><span class="' + (stale ? 'bad' : 'warn') + '">마지막 보고 ' + age + ' s 전' +
+    (stale ? ' (안경 앱이 보고하지 않음)' : '') + '</span> · 이 화면은 앱 보고로 다시 그린 것 (캡처 아님)';
+}
+
+async function poll() {
+  try {
+    const r = await (await fetch('/api/state?device=' + DEVICE, { cache: 'no-store' })).json();
+    if (r.server_ts) skew = r.server_ts - Date.now();
+    if (r.ts || r.received_ts) {
+      const changed = !state || r.title !== state.title;
+      state = r; stateAt = Date.now() + skew;
+      if (changed && r.title && !files.some((f) => f.name === r.title)) await loadFiles();
+      // the report's calib: the command's spec is dropped once the glasses say the dot is off
+      if (!r.calib && calib && Date.now() - calib.at > 3000) calib = null;
+    }
+  } catch (e) { /* the server is restarting */ }
+  render();
+}
+
+function listen() {         // the commands the moment they are sent (the report comes after them)
+  const es = new EventSource('/api/events?viewer=1');
+  es.addEventListener('control', (ev) => {
+    let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (d.device && d.device !== DEVICE && d.action !== 'calib' && d.action !== 'blank') {
+      if (state) { if (d.action === 'play') state.blank = true; else if (d.action === 'pause') state.blank = false; }
+    } else if (d.action === 'calib') {
+      calib = d.dot && d.dot !== 'off' ? { dot: d.dot, text: d.text || '', at: Date.now() } : null;
+    } else if (state) {
+      if (d.action === 'freeze' || d.action === 'alert') { state.frozen = true; state.paused = true; }
+      else if (d.action === 'pause') state.paused = true;
+      else if (d.action === 'resume') { state.frozen = false; state.paused = false; }
+      else if (d.action === 'blank') state.blank = !!d.on;
+    }
+    render();
+  });
+  es.onerror = () => {};    // EventSource reconnects by itself
+}
+
+loadFiles().then(() => { poll(); setInterval(poll, POLL_MS); listen(); });
+</script>
+</body>
+</html>

@@ -16,7 +16,9 @@ PC: python mrbd-video/server.py).
 The sound (glasses and phone conditions): played on this PC (its default output, the earphones) by
 device_audio.DeviceAudio, in step with the device's reports; play carries mute (the device plays
 muted: glasses app v17, phone app v3; an older app reports no "muted" and keeps its own sound, this
-PC stays silent). --no-pc-sound / pc_sound=False: the device's own sound.
+PC stays silent). --no-pc-sound / pc_sound=False: the device's own sound. The earphones not the
+Windows default output at the block start (earphones_on, devices.json "earphones"): the device's own
+sound too (the glasses' speakers, the phone's), not this PC's speakers.
 
 Another condition's block (phone, HUD): the glasses app (v17) shows nothing for the whole block (its
 display black from the play to the pause), as it gets every command with the block's condition;
@@ -48,6 +50,30 @@ CONFIRM_S = 3.0   # s: the phone app's report of a command (it reports at once a
 RETRY_S = 12.0    # s: a command sent again until an app got it (the phone: did it) for up to this long
 # Cloudflare (https://video.cocoju.dev) answers urllib's default "Python-urllib/x.y" with 403 (error 1010)
 HEADERS = {'User-Agent': 'drivingsim-video-link/1.0'}
+
+
+def earphones_on():
+    """(True / False / None, the default output's name): the Windows default output is the earphones
+    (devices.json "earphones", part of their name; preflight.check_audio). None: not known (no name
+    there, or Windows not read): the sound stays on this PC as before."""
+    import os  # pylint: disable=import-outside-toplevel
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        with open(os.path.join(here, 'devices.json'), encoding='utf-8') as handle:
+            wanted = (json.load(handle).get('earphones') or '').strip().lower()
+    except (OSError, ValueError):
+        wanted = ''
+    if not wanted:
+        return None, ''
+    try:
+        import sys  # pylint: disable=import-outside-toplevel
+        sys.path.insert(0, here)
+        from preflight import audio_outputs  # pylint: disable=import-outside-toplevel
+        default, _ = audio_outputs()
+    except Exception as error:  # pylint: disable=broad-except
+        logging.warning('Sound output not read (%s): the video sound stays on this PC', error)
+        return None, ''
+    return bool(default) and wanted in default.lower(), default or 'none'
 
 
 class VideoLink(object):
@@ -209,6 +235,16 @@ class VideoLink(object):
             fields['t'] = self._start
         elif not self._resume:
             fields['restart'] = True   # from the start: the phone app v2+, the glasses app v15+
+        if self._pc_sound and self.audio is None:
+            self._pc_sound = False
+            on, output = earphones_on()
+            if on is False:
+                # 2026-11-14: no earphones on this PC: the device keeps its own sound (the glasses' speakers;
+                # the phone's), not this PC's speakers
+                logging.warning('Earphones not the default output (%s): the %s plays the video sound itself',
+                                output, self.device)
+            else:
+                self._pc_sound = True
         if self._pc_sound and self.audio is None:
             self._pc_sound = False
             try:

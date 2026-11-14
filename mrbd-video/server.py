@@ -44,6 +44,7 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("text/javascript", ".js")
 
 _clients: set[queue.Queue] = set()
+_viewers: set[queue.Queue] = set()   # mirror.html: get the events, not counted as delivered
 _clients_lock = threading.Lock()
 _states: dict = {}  # 기기별(glasses, phone) 마지막으로 보고한 플레이어 상태 (/api/state)
 CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_off", "calib"}
@@ -52,9 +53,9 @@ CONTROL_ACTIONS = {"freeze", "resume", "pause", "play", "seek", "alert", "alert_
 def broadcast(event: str, data: dict) -> int:
     msg = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
     with _clients_lock:
-        for q in list(_clients):
+        for q in list(_clients) + list(_viewers):
             q.put(msg)
-        return len(_clients)
+        return len(_clients)   # the apps only: a mirror page open does not make a command look delivered
 
 
 def safe_name(name: str) -> str | None:
@@ -168,7 +169,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(list_videos())
 
         if path == "/api/events":
-            return self.sse()
+            return self.sse(viewer=bool(urllib.parse.parse_qs(url.query).get("viewer")))
 
         if path == "/api/state":
             device = (urllib.parse.parse_qs(url.query).get("device") or ["glasses"])[0]
@@ -250,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
                                "ts": int(time.time() * 1000)})
         return self.send_json({"ok": True, "delivered": n})
 
-    def sse(self):
+    def sse(self, viewer=False):
         self.close_connection = True
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -260,7 +261,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         q: queue.Queue = queue.Queue()
         with _clients_lock:
-            _clients.add(q)
+            (_viewers if viewer else _clients).add(q)
         try:
             self.wfile.write(b"retry: 1500\n\n")
             self.wfile.flush()
@@ -275,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             with _clients_lock:
-                _clients.discard(q)
+                (_viewers if viewer else _clients).discard(q)
 
 
 def lan_ip() -> str:
@@ -307,6 +308,7 @@ def main():
     print(f"MRBD Video 서버 실행 중")
     print(f"  안경 앱 : {scheme}://{ip}:{args.port}/")
     print(f"  리모컨  : {scheme}://{ip}:{args.port}/phone.html")
+    print(f"  안경 화면 미러: {scheme}://localhost:{args.port}/mirror.html")
     print(f"  영상 폴더: {MEDIA}")
     try:
         httpd.serve_forever()

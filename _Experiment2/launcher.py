@@ -6,10 +6,13 @@ and condition (assignment()); pick the block and Start runs abc_experiment.py in
 the run is over the window comes back with the next block selected. The choices are kept in
 launcher_last.json next to this script (not in git).
 
-Assignment, participant p (1, 2, ...):
-    condition order  the 6 orders of (glasses, phone, HUD), ORDERS[(p - 1) % 6]: full counterbalancing
-    sets             a 3 x 3 Latin square row ((p - 1) // 6) % 3: block k gets set "ABC"[(k + row) % 3],
-                     so each set meets each condition, and every 18 participants it all comes round
+Assignment, participant p (1, 2, ...): DESIGN[(p - 1) % 6] (2026-11-14: balanced within 6 participants)
+    condition order  the 6 orders of (glasses, phone, HUD), each once: each condition twice in each
+                     block position, each condition after each other one equally often
+    sets             each set twice in each block position (the rows ABC, BCA, CAB twice each), and
+                     each set with each condition twice (the 9 pairs, 18 blocks)
+    first 3 / last 3 participants: block 1 has three different sets and three different conditions
+    from participant 7 on the six again with the sets relabelled (A->B->C->A every 6, 18: all round)
     practice drive   set P, with the condition of the participant's block 1 (every block and the practice drive end with the TOR)
 
 Also started from here when ticked: the CARLA server (if not running), the mrbd-video server for the
@@ -39,6 +42,10 @@ SAGAT_PORT = 5011
 CONDITIONS = ('glasses', 'phone', 'hud')
 CONDITION_NAMES = {'glasses': '글래스', 'phone': '휴대폰', 'hud': '앞유리 화면(HUD)'}
 ORDERS = list(itertools.permutations(CONDITIONS))
+# (sets of blocks 1-3, conditions of blocks 1-3; g glasses, p phone, h HUD): two 3 x 3 Latin squares of
+# conditions (the cyclic orders, the reversed ones), each with the set rows paired so that every set
+# meets every condition once in each square
+DESIGN = [('ABC', 'gph'), ('BCA', 'pgh'), ('CAB', 'hpg'), ('CAB', 'phg'), ('BCA', 'hgp'), ('ABC', 'ghp')]
 BLOCKS = [('P', '연습 주행 (세트 P)'), ('1', '블록 1'), ('2', '블록 2'), ('3', '블록 3')]
 DEFAULTS = {'participant': 1, 'block': 'P', 'manual': False, 'set': 'A', 'condition': 'glasses', 'input': 'wheel',
             'test': True, 'out': '', 'g2': '', 'g2_record': False, 'video': '', 'video_server': False,
@@ -48,9 +55,10 @@ DEFAULTS = {'participant': 1, 'block': 'P', 'manual': False, 'set': 'A', 'condit
 def assignment(participant):
     """[(block, set, condition)] for blocks 1-3 of a participant (1, 2, ...)."""
     p = max(1, int(participant))
-    order = ORDERS[(p - 1) % len(ORDERS)]
-    row = ((p - 1) // len(ORDERS)) % 3
-    return [(str(k + 1), 'ABC'[(k + row) % 3], order[k]) for k in range(3)]
+    sets, conditions = DESIGN[(p - 1) % len(DESIGN)]
+    shift = ((p - 1) // len(DESIGN)) % 3
+    full = {'g': 'glasses', 'p': 'phone', 'h': 'hud'}
+    return [(str(k + 1), 'ABC'[('ABC'.index(sets[k]) + shift) % 3], full[conditions[k]]) for k in range(3)]
 
 
 def own_address():
